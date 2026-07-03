@@ -33,7 +33,6 @@ public class BuildMirrorStore {
   private final JenkinsBridgeSettingsProvider settingsProvider;
   private final ServerPaths serverPaths;
   private final Gson gson = new GsonBuilder().setPrettyPrinting().create();
-  private final ProjectManager myProjectManager;
   private final CustomDataStorage myStorage;
   @Deprecated
   private Path loadedStateFile;
@@ -44,8 +43,7 @@ public class BuildMirrorStore {
   public BuildMirrorStore(ServerPaths serverPaths, JenkinsBridgeSettingsProvider settingsProvider, ProjectManager projectManager) {
     this.serverPaths = serverPaths;
     this.settingsProvider = settingsProvider;
-    myProjectManager = projectManager;
-    myStorage = myProjectManager.getRootProject().getCustomDataStorage(CUSTOM_DATA_STORAGE_NAME);
+    myStorage = projectManager.getRootProject().getCustomDataStorage(CUSTOM_DATA_STORAGE_NAME);
     state = new BridgeState(myStorage);
   }
 
@@ -282,11 +280,12 @@ public class BuildMirrorStore {
     }
 
     if (parseError != null) {
-      // A corrupt/truncated storage entry must not brick the bridge (R7). Move it aside and start
-      // fresh; mirrors re-bind to existing TeamCity builds via restore-by-key on the next sync.
-      LOG.warn("Jenkins Bridge store is corrupt; quarantining it and starting with previous/empty state",
+      // A corrupt/truncated storage entry must not brick the bridge (R7). It's better to start fresh.
+      // Mirrors re-bind to existing TeamCity builds via restore-by-key on the next sync.
+      // The quarantine logic was removed since the log works for observability, and polluting the TeamCity DB is a bigger problem.
+      LOG.warn("Jenkins Bridge state is corrupt and will be reset. Removed state: " + myStorage.getValues(),
           parseError);
-      quarantineCorruptStorageState();
+      myStorage.clear();
     }
   }
 
@@ -303,15 +302,6 @@ public class BuildMirrorStore {
     } catch (IOException moveError) {
       LOG.warn("Failed to move corrupt Jenkins Bridge state file " + stateFile + " aside", moveError);
     }
-  }
-
-  private void quarantineCorruptStorageState() {
-    Map<String, String> corruptValues = myStorage.getValues();
-    if (corruptValues != null) {
-      CustomDataStorage corruptDataStorage = myProjectManager.getRootProject().getCustomDataStorage(CUSTOM_DATA_STORAGE_NAME + "-corrupt-" + System.currentTimeMillis());
-      corruptDataStorage.putValues(corruptValues);
-    }
-    myStorage.clear();
   }
 
   /**
