@@ -6,8 +6,11 @@ import com.google.gson.JsonParseException;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsBuildInfo;
 import com.jetbrains.teamcity.jenkinsbridge.settings.JenkinsBridgeSettings;
 import com.jetbrains.teamcity.jenkinsbridge.settings.JenkinsBridgeSettingsProvider;
+import jetbrains.buildServer.serverSide.CustomDataStorage;
+import jetbrains.buildServer.serverSide.ProjectManager;
 import jetbrains.buildServer.serverSide.ServerPaths;
 
+import com.intellij.openapi.diagnostic.Logger;
 import java.io.IOException;
 import java.io.Reader;
 import java.io.Writer;
@@ -19,33 +22,39 @@ import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.logging.Level;
-import java.util.logging.Logger;
 
 public class BuildMirrorStore {
-  private static final Logger LOG = Logger.getLogger(BuildMirrorStore.class.getName());
+  public static final String CUSTOM_DATA_STORAGE_NAME = "jenkinsBridgeStateStorage";
+  private static final Logger LOG = Logger.getInstance(BuildMirrorStore.class.getName());
 
   private final JenkinsBridgeSettingsProvider settingsProvider;
   private final ServerPaths serverPaths;
   private final Gson gson = new GsonBuilder().setPrettyPrinting().create();
+  private final ProjectManager myProjectManager;
+  private final CustomDataStorage myStorage;
+  @Deprecated
   private Path loadedStateFile;
   private BridgeState state;
 
-  public BuildMirrorStore(ServerPaths serverPaths, JenkinsBridgeSettingsProvider settingsProvider) {
+  public BuildMirrorStore(ServerPaths serverPaths, JenkinsBridgeSettingsProvider settingsProvider, ProjectManager projectManager) {
     this.serverPaths = serverPaths;
     this.settingsProvider = settingsProvider;
+    myProjectManager = projectManager;
+    myStorage = myProjectManager.getRootProject().getCustomDataStorage(CUSTOM_DATA_STORAGE_NAME);
   }
 
   public synchronized BuildMirror getOrCreateMirror(String mirrorKey, String jobName,
                                                     String teamCityBuildTypeExternalId,
                                                     JenkinsBuildInfo jenkinsInfo) throws IOException {
-    ensureLoaded();
+    ensureStateIsLoaded();
 
     BuildMirror mirror = state.getBuilds().get(mirrorKey);
     if (mirror == null) {
       mirror = BuildMirror.create(mirrorKey, jobName, jenkinsInfo, teamCityBuildTypeExternalId, now());
       state.getBuilds().put(mirrorKey, mirror);
-      saveState();
+      saveStorageState();
       return mirror;
     }
 
@@ -67,21 +76,25 @@ public class BuildMirrorStore {
   }
 
   public synchronized void saveMirror(BuildMirror mirror) throws IOException {
-    ensureLoaded();
+    ensureStateIsLoaded();
     mirror.setUpdatedAt(now());
     state.getBuilds().put(mirror.getJenkinsBuildKey(), mirror);
-    saveState();
+    saveStorageState();
   }
 
-  /** Returns the mirror for the given key, or {@code null} if none exists. Does not create one. */
+  /**
+   * Returns the mirror for the given key, or {@code null} if none exists. Does not create one.
+   */
   public synchronized BuildMirror findMirror(String key) throws IOException {
-    ensureLoaded();
+    ensureStateIsLoaded();
     return state.getBuilds().get(key);
   }
 
-  /** Returns mirrors for the job that have not yet reached {@code TEAMCITY_FINISHED}. */
+  /**
+   * Returns mirrors for the job that have not yet reached {@code TEAMCITY_FINISHED}.
+   */
   public synchronized List<BuildMirror> getActiveMirrors(String jobName) throws IOException {
-    ensureLoaded();
+    ensureStateIsLoaded();
     List<BuildMirror> active = new ArrayList<BuildMirror>();
     for (BuildMirror mirror : state.getBuilds().values()) {
       if (jobName.equals(mirror.getJenkinsJob())
@@ -99,7 +112,7 @@ public class BuildMirrorStore {
    */
   public synchronized List<BuildMirror> getActiveMirrors(String teamCityBuildTypeExternalId, String jobName)
       throws IOException {
-    ensureLoaded();
+    ensureStateIsLoaded();
     List<BuildMirror> active = new ArrayList<BuildMirror>();
     for (BuildMirror mirror : state.getBuilds().values()) {
       if (jobName.equals(mirror.getJenkinsJob())
@@ -111,20 +124,40 @@ public class BuildMirrorStore {
     return active;
   }
 
+  /**
+   * Removes the mirrors that have reached {@code TEAMCITY_FINISHED} from the store and returns them.
+   *
+   * @return The list of pruned mirrors.
+   * @throws IOException If reading or writing the state file fails.
+   */
+  public synchronized List<BuildMirror> pruneFinishedMirrors() throws IOException {
+    ensureStateIsLoaded();
+    List<BuildMirror> pruned = new ArrayList<>();
+    state.getBuilds().values().removeIf(mirror -> {
+      if (mirror.getSyncState() == SyncState.TEAMCITY_FINISHED) {
+        pruned.add(mirror);
+        return true;
+      }
+      return false;
+    });
+    saveStorageState();
+    return pruned;
+  }
+
   public synchronized int getLastSeenBuildNumber(String jobName) throws IOException {
-    ensureLoaded();
+    ensureStateIsLoaded();
     Integer value = state.getLastSeenBuildNumbers().get(jobName);
     return value == null ? 0 : value;
   }
 
   public synchronized void setLastSeenBuildNumber(String jobName, int buildNumber) throws IOException {
-    ensureLoaded();
+    ensureStateIsLoaded();
     Integer current = state.getLastSeenBuildNumbers().get(jobName);
     if (current != null && current >= buildNumber) {
       return;
     }
     state.getLastSeenBuildNumbers().put(jobName, buildNumber);
-    saveState();
+    saveStorageState();
   }
 
   public synchronized void markBuildError(BuildMirror mirror, Exception error) {
@@ -133,32 +166,36 @@ public class BuildMirrorStore {
       mirror.setLastError(error.getMessage());
       saveMirror(mirror);
     } catch (IOException saveError) {
-      LOG.log(Level.WARNING, "Failed to persist Jenkins Bridge build error", saveError);
+      LOG.warn("Failed to persist Jenkins Bridge build error", saveError);
     }
   }
 
   public synchronized void markPollSuccess() {
     try {
-      ensureLoaded();
+      ensureStateIsLoaded();
       state.setLastPollTime(now());
       state.setLastError(null);
-      saveState();
+      saveStorageState();
     } catch (IOException e) {
-      LOG.log(Level.WARNING, "Failed to persist Jenkins Bridge poll status", e);
+      LOG.warn("Failed to persist Jenkins Bridge poll status", e);
     }
   }
 
   public synchronized void markPollError(Exception error) {
     try {
-      ensureLoaded();
+      ensureStateIsLoaded();
       state.setLastPollTime(now());
       state.setLastError(error.getMessage());
-      saveState();
+      saveStorageState();
     } catch (IOException e) {
-      LOG.log(Level.WARNING, "Failed to persist Jenkins Bridge poll error", e);
+      LOG.warn("Failed to persist Jenkins Bridge poll error", e);
     }
   }
 
+  /**
+   * Uses files in the plugin folder instead of {@link CustomDataStorage}.
+   */
+  @Deprecated
   public Path getStateFile() {
     JenkinsBridgeSettings settings = settings();
     if (settings.hasCustomStateFile()) {
@@ -189,6 +226,10 @@ public class BuildMirrorStore {
     return timestampSeparator < 0 ? buildKey : buildKey.substring(0, timestampSeparator);
   }
 
+  /**
+   * Uses files in the plugin folder instead of {@link CustomDataStorage}.
+   */
+  @Deprecated
   private void ensureLoaded() throws IOException {
     Path stateFile = getStateFile();
     if (state != null && stateFile.equals(loadedStateFile)) {
@@ -215,8 +256,7 @@ public class BuildMirrorStore {
     if (parseError != null) {
       // A corrupt/truncated state file must not brick the bridge (R7). Move it aside and start
       // fresh; mirrors re-bind to existing TeamCity builds via restore-by-key on the next sync.
-      LOG.log(Level.WARNING,
-          "Jenkins Bridge state file " + stateFile + " is corrupt; quarantining it and starting with empty state",
+      LOG.warn("Jenkins Bridge state file " + stateFile + " is corrupt; quarantining it and starting with empty state",
           parseError);
       quarantineCorruptStateFile(stateFile);
       state = new BridgeState();
@@ -233,17 +273,87 @@ public class BuildMirrorStore {
     loadedStateFile = stateFile;
   }
 
+  private void ensureStateIsLoaded() throws IOException {
+    if (state == null) {
+      state = new BridgeState();
+      state.setVersion(1);
+    }
+
+    BridgeState backupState = null;
+    try {
+      backupState = (BridgeState) state.clone();
+    } catch (CloneNotSupportedException e) {
+      LOG.warn("Failed to clone bridge state. A further parsing error will remove the entire global state.");
+    }
+
+    Map<String, String> storageValues = myStorage.getValues();
+    if (storageValues == null || storageValues.isEmpty()) {
+      return;
+    }
+
+    String rawState = storageValues.get("STATE");
+    if (rawState == null) {
+      LOG.warn("Jenkins Bridge store has values but is missing the STATE entry; starting with previous/empty state");
+      return;
+    }
+
+    JsonParseException parseError = null;
+    try {
+      state = gson.fromJson(rawState, BridgeState.class);
+    } catch (JsonParseException e) {
+      parseError = e;
+    }
+//    for (Map.Entry<String, String> entry : storageValues.entrySet()) {
+//      try {
+//        BuildMirror mirror = gson.fromJson(entry.getValue(), BuildMirror.class);
+//        state.getBuilds().put(entry.getKey(), mirror);
+//      } catch (JsonParseException e) {
+//        parseError = e;
+//      }
+//    }
+
+
+    if (parseError != null || state == null) {
+      // A corrupt/truncated storage entry must not brick the bridge (R7). Move it aside and start
+      // fresh; mirrors re-bind to existing TeamCity builds via restore-by-key on the next sync.
+      LOG.warn("Jenkins Bridge store is corrupt; quarantining it and starting with previous/empty state",
+          parseError);
+      if (parseError != null) {
+        quarantineCorruptStorageState(storageValues);
+      }
+      if (backupState != null) {
+        state = backupState;
+      } else {
+        state = new BridgeState();
+        state.setVersion(1);
+      }
+    }
+  }
+
+  /**
+   * Uses files in the plugin folder instead of {@link CustomDataStorage}.
+   */
+  @Deprecated
   private void quarantineCorruptStateFile(Path stateFile) {
     Path target = stateFile.resolveSibling(
         stateFile.getFileName().toString() + ".corrupt-" + System.currentTimeMillis());
     try {
       Files.move(stateFile, target);
-      LOG.warning("Moved corrupt Jenkins Bridge state file to " + target);
+      LOG.warn("Moved corrupt Jenkins Bridge state file to " + target);
     } catch (IOException moveError) {
-      LOG.log(Level.WARNING, "Failed to move corrupt Jenkins Bridge state file " + stateFile + " aside", moveError);
+      LOG.warn("Failed to move corrupt Jenkins Bridge state file " + stateFile + " aside", moveError);
     }
   }
 
+  private void quarantineCorruptStorageState(Map<String, String> corruptValues) {
+    CustomDataStorage corruptDataStorage = myProjectManager.getRootProject().getCustomDataStorage(CUSTOM_DATA_STORAGE_NAME + "-corrupt-" + System.currentTimeMillis());
+    corruptDataStorage.putValues(corruptValues);
+  }
+
+  /**
+   * Uses files in the plugin folder instead of {@link CustomDataStorage}.
+   */
+  @Deprecated
   private void saveState() throws IOException {
     Path stateFile = loadedStateFile == null ? getStateFile() : loadedStateFile;
     Path parent = stateFile.getParent();
@@ -264,6 +374,15 @@ public class BuildMirrorStore {
     } catch (IOException e) {
       Files.move(temporaryFile, stateFile, StandardCopyOption.REPLACE_EXISTING);
     }
+  }
+
+  private synchronized void saveStorageState() throws IOException {
+    // TODO: Only update what is needed
+    myStorage.clear();
+    myStorage.putValue("STATE", gson.toJson(state));
+//    for (Map.Entry<String, BuildMirror> entry : state.getBuilds().entrySet()) {
+//      myStorage.putValue(entry.getKey(), gson.toJson(entry.getValue()));
+//    }
   }
 
   private String now() {

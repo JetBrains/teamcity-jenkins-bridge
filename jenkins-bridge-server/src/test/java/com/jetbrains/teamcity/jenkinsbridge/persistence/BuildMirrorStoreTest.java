@@ -7,12 +7,13 @@ import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsPipelineGraphNode;
 import com.jetbrains.teamcity.jenkinsbridge.model.GraphConfidence;
 import com.jetbrains.teamcity.jenkinsbridge.settings.JenkinsBridgeSettings;
 import com.jetbrains.teamcity.jenkinsbridge.settings.JenkinsBridgeSettingsProvider;
+import jetbrains.buildServer.serverSide.CustomDataStorage;
+import jetbrains.buildServer.serverSide.ProjectManager;
+import jetbrains.buildServer.serverSide.SProject;
 import org.junit.Test;
 
 import java.io.File;
 import java.lang.reflect.Constructor;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -23,6 +24,9 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.startsWith;
+import static org.mockito.Mockito.*;
 
 public class BuildMirrorStoreTest {
   @Test
@@ -40,14 +44,15 @@ public class BuildMirrorStoreTest {
   @Test
   public void lastSeenBuildNumberPersistsAndIsMonotonic() throws Exception {
     JenkinsBridgeSettingsProvider provider = providerWithTempStateFile();
-    BuildMirrorStore store = new BuildMirrorStore(null, provider);
+    ProjectManager projectManager = buildMockProjectManager();
+    BuildMirrorStore store = new BuildMirrorStore(null, provider, projectManager);
 
     assertEquals(0, store.getLastSeenBuildNumber("job"));
     store.setLastSeenBuildNumber("job", 42);
     assertEquals(42, store.getLastSeenBuildNumber("job"));
 
-    // A fresh store instance must read the watermark back from disk.
-    BuildMirrorStore reloaded = new BuildMirrorStore(null, provider);
+    // A fresh store instance must read the watermark back from the shared custom data storage.
+    BuildMirrorStore reloaded = new BuildMirrorStore(null, provider, projectManager);
     assertEquals(42, reloaded.getLastSeenBuildNumber("job"));
 
     // Lower values are ignored (watermark only moves forward).
@@ -57,7 +62,7 @@ public class BuildMirrorStoreTest {
 
   @Test
   public void getActiveMirrorsExcludesFinishedBuilds() throws Exception {
-    BuildMirrorStore store = new BuildMirrorStore(null, providerWithTempStateFile());
+    BuildMirrorStore store = new BuildMirrorStore(null, providerWithTempStateFile(), buildMockProjectManager());
 
     store.getOrCreateMirror(BuildMirrorStore.buildKey("job", 1), "job", "buildType", buildInfo(1));
     BuildMirror finished = store.getOrCreateMirror(BuildMirrorStore.buildKey("job", 2), "job", "buildType", buildInfo(2));
@@ -71,7 +76,7 @@ public class BuildMirrorStoreTest {
 
   @Test
   public void findMirrorReturnsNullWhenAbsent() throws Exception {
-    BuildMirrorStore store = new BuildMirrorStore(null, providerWithTempStateFile());
+    BuildMirrorStore store = new BuildMirrorStore(null, providerWithTempStateFile(), buildMockProjectManager());
     store.getOrCreateMirror(BuildMirrorStore.buildKey("job", 1), "job", "buildType", buildInfo(1));
 
     assertNotNull(store.findMirror(BuildMirrorStore.buildKey("job", 1)));
@@ -80,37 +85,43 @@ public class BuildMirrorStoreTest {
 
   @Test
   public void corruptStateFileIsQuarantinedAndBridgeStartsFresh() throws Exception {
-    File stateFile = File.createTempFile("jenkins-bridge-store-test", ".json");
-    stateFile.deleteOnExit();
-    Files.write(stateFile.toPath(), "@@@ definitely not json @@@".getBytes(StandardCharsets.UTF_8));
+    Map<String, String> corruptValues = new LinkedHashMap<String, String>();
+    corruptValues.put("STATE", "@@@ definitely not json @@@");
 
-    BuildMirrorStore store =
-        new BuildMirrorStore(null, providerForStateFile(stateFile.getAbsolutePath()));
+    CustomDataStorage storage = mock(CustomDataStorage.class);
+    when(storage.getValues()).thenReturn(corruptValues);
+
+    CustomDataStorage quarantineStorage = mock(CustomDataStorage.class);
+
+    SProject rootProject = mock(SProject.class);
+    when(rootProject.getCustomDataStorage(BuildMirrorStore.CUSTOM_DATA_STORAGE_NAME)).thenReturn(storage);
+    when(rootProject.getCustomDataStorage(startsWith(BuildMirrorStore.CUSTOM_DATA_STORAGE_NAME + "-corrupt-")))
+        .thenReturn(quarantineStorage);
+
+    ProjectManager projectManager = mock(ProjectManager.class);
+    when(projectManager.getRootProject()).thenReturn(rootProject);
+
+    BuildMirrorStore store = new BuildMirrorStore(null, providerWithTempStateFile(), projectManager);
 
     // Must not throw, and must start from empty state.
     assertEquals(0, store.getLastSeenBuildNumber("job"));
     assertNull(store.findMirror(BuildMirrorStore.buildKey("job", 1)));
 
-    // The corrupt file is moved aside to a .corrupt-* sibling rather than left to brick every poll.
-    File[] quarantined = stateFile.getParentFile()
-        .listFiles((dir, name) -> name.startsWith(stateFile.getName() + ".corrupt-"));
-    assertNotNull(quarantined);
-    assertTrue("expected a quarantined .corrupt-* file", quarantined.length >= 1);
-    for (File f : quarantined) {
-      f.deleteOnExit();
-    }
+    // The corrupt values are moved aside to a "-corrupt-*" storage rather than left to brick every poll.
+    verify(quarantineStorage, atLeastOnce()).putValues(corruptValues);
   }
 
   @Test
   public void pipelineGraphSnapshotPersistsAcrossReload() throws Exception {
     JenkinsBridgeSettingsProvider provider = providerWithTempStateFile();
-    BuildMirrorStore store = new BuildMirrorStore(null, provider);
+    ProjectManager projectManager = buildMockProjectManager();
+    BuildMirrorStore store = new BuildMirrorStore(null, provider, projectManager);
     BuildMirror mirror = store.getOrCreateMirror(BuildMirrorStore.buildKey("job", 7), "job", "buildType", buildInfo(7));
 
     mirror.setPipelineGraph(graph("hash-a", "SUCCESS", Collections.<String>emptyList()));
     store.saveMirror(mirror);
 
-    BuildMirrorStore reloaded = new BuildMirrorStore(null, provider);
+    BuildMirrorStore reloaded = new BuildMirrorStore(null, provider, projectManager);
     BuildMirror restored = reloaded.findMirror(BuildMirrorStore.buildKey("job", 7));
 
     assertNotNull(restored);
@@ -123,7 +134,8 @@ public class BuildMirrorStoreTest {
   @Test
   public void jenkinsBuildParametersPersistAcrossReload() throws Exception {
     JenkinsBridgeSettingsProvider provider = providerWithTempStateFile();
-    BuildMirrorStore store = new BuildMirrorStore(null, provider);
+    ProjectManager projectManager = buildMockProjectManager();
+    BuildMirrorStore store = new BuildMirrorStore(null, provider, projectManager);
     BuildMirror mirror = store.getOrCreateMirror(BuildMirrorStore.buildKey("job", 9), "job", "buildType", buildInfo(9));
 
     Map<String, String> parameters = new LinkedHashMap<String, String>();
@@ -132,7 +144,7 @@ public class BuildMirrorStoreTest {
     mirror.setJenkinsBuildParameters(parameters);
     store.saveMirror(mirror);
 
-    BuildMirrorStore reloaded = new BuildMirrorStore(null, provider);
+    BuildMirrorStore reloaded = new BuildMirrorStore(null, provider, projectManager);
     BuildMirror restored = reloaded.findMirror(BuildMirrorStore.buildKey("job", 9));
 
     assertNotNull(restored);
@@ -144,7 +156,8 @@ public class BuildMirrorStoreTest {
   @Test
   public void pipelineChainSnapshotPersistsAcrossReload() throws Exception {
     JenkinsBridgeSettingsProvider provider = providerWithTempStateFile();
-    BuildMirrorStore store = new BuildMirrorStore(null, provider);
+    ProjectManager projectManager = buildMockProjectManager();
+    BuildMirrorStore store = new BuildMirrorStore(null, provider, projectManager);
     BuildMirror mirror = store.getOrCreateMirror(BuildMirrorStore.buildKey("job", 8), "job", "buildType", buildInfo(8));
 
     Map<String, PipelineChainNodeMirror> nodes = new LinkedHashMap<String, PipelineChainNodeMirror>();
@@ -160,7 +173,7 @@ public class BuildMirrorStoreTest {
         true));
     store.saveMirror(mirror);
 
-    BuildMirrorStore reloaded = new BuildMirrorStore(null, provider);
+    BuildMirrorStore reloaded = new BuildMirrorStore(null, provider, projectManager);
     BuildMirror restored = reloaded.findMirror(BuildMirrorStore.buildKey("job", 8));
 
     assertNotNull(restored);
@@ -239,5 +252,33 @@ public class BuildMirrorStoreTest {
         }
       }
     };
+  }
+
+  /**
+   * Uses an implementation of {@link CustomDataStorage} with an in-memory map so multiple {@link BuildMirrorStore}
+   * instances sharing this {@link ProjectManager} observe each other's writes, like reloading from disk.
+   */
+  public static ProjectManager buildMockProjectManager() {
+    final Map<String, String> backingValues = new LinkedHashMap<>();
+
+    CustomDataStorage storage = mock(CustomDataStorage.class);
+    when(storage.getValues()).thenAnswer(invocation -> new LinkedHashMap<>(backingValues));
+    doAnswer(invocation -> {
+      backingValues.clear();
+      return null;
+    }).when(storage).clear();
+    doAnswer(invocation -> {
+      backingValues.put(invocation.getArgument(0), invocation.getArgument(1));
+      return null;
+    }).when(storage).putValue(anyString(), anyString());
+
+    SProject rootProject = mock(SProject.class);
+    when(rootProject.getCustomDataStorage(BuildMirrorStore.CUSTOM_DATA_STORAGE_NAME)).thenReturn(storage);
+    when(rootProject.getCustomDataStorage(startsWith(BuildMirrorStore.CUSTOM_DATA_STORAGE_NAME + "-corrupt-")))
+        .thenAnswer(invocation -> mock(CustomDataStorage.class));
+
+    ProjectManager projectManager = mock(ProjectManager.class);
+    when(projectManager.getRootProject()).thenReturn(rootProject);
+    return projectManager;
   }
 }

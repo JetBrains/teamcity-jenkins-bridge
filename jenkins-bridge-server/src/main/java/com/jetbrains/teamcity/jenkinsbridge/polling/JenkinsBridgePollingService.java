@@ -17,6 +17,7 @@ import com.jetbrains.teamcity.jenkinsbridge.settings.JenkinsBridgeSettingsProvid
 import com.jetbrains.teamcity.jenkinsbridge.settings.MirroredJob;
 import com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityBuildMirrorService;
 
+import com.intellij.openapi.diagnostic.Logger;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -29,10 +30,9 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Level;
-import java.util.logging.Logger;
 
 public class JenkinsBridgePollingService {
-  private static final Logger LOG = Logger.getLogger(JenkinsBridgePollingService.class.getName());
+  private static final Logger LOG = Logger.getInstance(JenkinsBridgePollingService.class.getName());
 
   private final JenkinsBridgeSettingsProvider settingsProvider;
   private final JenkinsClient jenkinsClient;
@@ -104,7 +104,7 @@ public class JenkinsBridgePollingService {
       LOG.info("[Jenkins Bridge DEBUG] Poll cycle completed");
     } catch (Exception e) {
       mirrorStore.markPollError(e);
-      LOG.log(Level.WARNING, "Jenkins Bridge polling failed", e);
+      LOG.warn("Jenkins Bridge polling failed", e);
     }
   }
 
@@ -122,14 +122,14 @@ public class JenkinsBridgePollingService {
         pollJob(mirroredJob, settings);
       } catch (Exception e) {
         // Isolate per-job failures so one broken job does not abort the rest of the cycle.
-        LOG.log(Level.WARNING, "Jenkins Bridge: failed to poll " + mirroredJob.describeForLog(), e);
+        LOG.warn("Jenkins Bridge: failed to poll " + mirroredJob.describeForLog(), e);
       }
     }
   }
 
   private void pollJob(MirroredJob mirroredJob, JenkinsBridgeSettings settings) throws Exception {
     if (!mirroredJob.hasMinimumConfiguration()) {
-      LOG.warning(mirroredJob.describeMinimumConfigurationProblem());
+      LOG.warn(mirroredJob.describeMinimumConfigurationProblem());
       return;
     }
 
@@ -160,7 +160,7 @@ public class JenkinsBridgePollingService {
           + "; backfilling from build " + (coldStartAfter + 1) + " (latest=" + latest + ")");
     } else if (latest < lastSeen) {
       resetDetected = true;
-      LOG.warning("Jenkins Bridge detected build-number reset for job " + job
+      LOG.warn("Jenkins Bridge detected build-number reset for job " + job
           + " (lastSeen=" + lastSeen + ", latest=" + latest
           + "); processing recent builds by timestamped identity");
     } else if (oldest > lastSeen + 1) {
@@ -196,10 +196,14 @@ public class JenkinsBridgePollingService {
       handled.add(build.getNumber());
     }
 
+    int prunedCount = mirrorStore.pruneFinishedMirrors().size();
+    LOG.info("[Jenkins Bridge DEBUG] " + mirroredJob.describeForLog() + ": " + prunedCount + " build(s) pruned");
+
     // Keep syncing builds that are still in progress but already past the watermark.
     List<BuildMirror> active = mirroredJob.isLegacy()
         ? mirrorStore.getActiveMirrors(job)
         : mirrorStore.getActiveMirrors(mirroredJob.getTeamCityBuildTypeExternalId(), job);
+
     for (BuildMirror mirror : active) {
       if (handled.contains(mirror.getJenkinsBuildNumber())) {
         continue;
@@ -262,7 +266,7 @@ public class JenkinsBridgePollingService {
       if (mirror != null) {
         mirrorStore.markBuildError(mirror, e);
       }
-      LOG.log(Level.WARNING, "Failed to sync Jenkins build " + job + "#" + buildNumber, e);
+      LOG.warn("Failed to sync Jenkins build " + job + "#" + buildNumber, e);
     }
   }
 
@@ -272,7 +276,7 @@ public class JenkinsBridgePollingService {
       if (mirror.getJenkinsBuildTimestamp() > 0L
           && buildInfo.getTimestamp() > 0L
           && mirror.getJenkinsBuildTimestamp() != buildInfo.getTimestamp()) {
-        LOG.warning("Skipping active Jenkins mirror " + mirror.getJenkinsBuildKey()
+        LOG.warn("Skipping active Jenkins mirror " + mirror.getJenkinsBuildKey()
             + " because Jenkins now reports build #" + mirror.getJenkinsBuildNumber()
             + " with timestamp " + buildInfo.getTimestamp()
             + " instead of " + mirror.getJenkinsBuildTimestamp()
@@ -282,7 +286,7 @@ public class JenkinsBridgePollingService {
       syncBuild(mirror, buildInfo);
     } catch (Exception e) {
       mirrorStore.markBuildError(mirror, e);
-      LOG.log(Level.WARNING, "Failed to sync Jenkins build " + mirror.getJenkinsBuildKey(), e);
+      LOG.warn("Failed to sync Jenkins build " + mirror.getJenkinsBuildKey(), e);
     }
   }
 
@@ -388,7 +392,7 @@ public class JenkinsBridgePollingService {
             + " Jenkins artifact(s) for " + mirror.getJenkinsBuildKey());
         mirrorService.syncArtifactsIfNeeded(mirror, teamCityBuildId, artifacts, jenkinsClient);
       } catch (Exception e) {
-        LOG.log(Level.WARNING, "Jenkins Bridge: artifact mirroring failed for "
+        LOG.warn("Jenkins Bridge: artifact mirroring failed for "
             + mirror.getJenkinsBuildKey() + "; finishing will continue", e);
         mirror.setArtifactsSynced(true);
         mirror.setArtifactSyncError(e.getClass().getSimpleName()
@@ -396,7 +400,7 @@ public class JenkinsBridgePollingService {
         try {
           mirrorStore.saveMirror(mirror);
         } catch (Exception saveError) {
-          LOG.log(Level.WARNING, "Jenkins Bridge: failed to persist artifact sync failure for "
+          LOG.warn("Jenkins Bridge: failed to persist artifact sync failure for "
               + mirror.getJenkinsBuildKey(), saveError);
         }
       }

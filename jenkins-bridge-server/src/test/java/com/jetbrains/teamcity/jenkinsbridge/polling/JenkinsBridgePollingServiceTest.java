@@ -25,6 +25,7 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.util.Map;
 
+import static com.jetbrains.teamcity.jenkinsbridge.persistence.BuildMirrorStoreTest.buildMockProjectManager;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
@@ -34,7 +35,7 @@ public class JenkinsBridgePollingServiceTest {
   @Test
   public void pollJobProcessesBuildNumberResetByTimestampedIdentity() throws Exception {
     JenkinsBridgeSettingsProvider provider = providerWithTempStateFile();
-    BuildMirrorStore store = new BuildMirrorStore(null, provider);
+    BuildMirrorStore store = new BuildMirrorStore(null, provider, buildMockProjectManager());
     store.setLastSeenBuildNumber("buildType::job", 500);
 
     FakeJenkinsClient jenkinsClient = new FakeJenkinsClient();
@@ -52,7 +53,7 @@ public class JenkinsBridgePollingServiceTest {
   @Test
   public void coldStartStillBackfillsOnlyRecentBuildLimit() throws Exception {
     JenkinsBridgeSettingsProvider provider = providerWithTempStateFile();
-    BuildMirrorStore store = new BuildMirrorStore(null, provider);
+    BuildMirrorStore store = new BuildMirrorStore(null, provider, buildMockProjectManager());
 
     FakeJenkinsClient jenkinsClient = new FakeJenkinsClient();
     jenkinsClient.addBuild(buildInfo(3, 1710000000003L));
@@ -72,7 +73,7 @@ public class JenkinsBridgePollingServiceTest {
   @Test
   public void fetchesJenkinsBuildParametersOnceBeforeTeamCityBuildCreation() throws Exception {
     JenkinsBridgeSettingsProvider provider = providerWithTempStateFile();
-    BuildMirrorStore store = new BuildMirrorStore(null, provider);
+    BuildMirrorStore store = new BuildMirrorStore(null, provider, buildMockProjectManager());
     BuildMirror mirror = store.getOrCreateMirror("job#1", "job", "buildType", buildInfo());
 
     FakeJenkinsClient jenkinsClient = new FakeJenkinsClient();
