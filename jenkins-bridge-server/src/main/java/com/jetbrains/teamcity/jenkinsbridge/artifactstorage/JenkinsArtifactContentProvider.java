@@ -7,10 +7,7 @@ import jetbrains.buildServer.serverSide.artifacts.ArtifactContentProvider;
 import jetbrains.buildServer.serverSide.artifacts.StoredBuildArtifactInfo;
 import org.jetbrains.annotations.NotNull;
 
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
+import java.io.*;
 
 public class JenkinsArtifactContentProvider implements ArtifactContentProvider {
 
@@ -40,17 +37,21 @@ public class JenkinsArtifactContentProvider implements ArtifactContentProvider {
 
     final ByteArrayOutputStream buffer = new ByteArrayOutputStream();
     try {
-      myJenkinsClient.streamArtifact(job, buildNumber, relativePath,
-          (BridgeHttpClient.StreamHandler) inputStream -> {
-            byte[] chunk = new byte[8192];
-            int read;
-            while ((read = inputStream.read(chunk)) != -1) {
-              buffer.write(chunk, 0, read);
-            }
-          });
+      handleArtifactStream(job, buildNumber, relativePath, buffer);
     } catch (BridgeHttpException e) {
       throw new IOException("Failed to fetch Jenkins artifact " + relativePath + ": " + e.getMessage(), e);
     }
     return new ByteArrayInputStream(buffer.toByteArray());
+  }
+
+  public void handleArtifactStream(String job, int buildNumber, String relativePath, OutputStream buffer) throws BridgeHttpException {
+    myJenkinsClient.streamArtifact(job, buildNumber, relativePath,
+        (BridgeHttpClient.StreamHandler) inputStream -> {
+          byte[] chunk = new byte[8192];
+          int read;
+          while ((read = inputStream.read(chunk)) != -1) {
+            buffer.write(chunk, 0, read);
+          }
+        });
   }
 }
