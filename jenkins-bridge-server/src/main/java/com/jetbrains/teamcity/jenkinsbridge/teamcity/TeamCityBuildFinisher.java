@@ -61,9 +61,16 @@ public class TeamCityBuildFinisher {
   }
 
   /**
-   * Maps the Jenkins result onto a TeamCity outcome. TeamCity has no first-class "unstable" state,
-   * so UNSTABLE/FAILURE/UNKNOWN become build problems (failed build) while ABORTED/NOT_BUILT become
-   * interruptions (canceled build). SUCCESS is left untouched so TeamCity keeps its own status text.
+   * Maps the Jenkins result onto a TeamCity outcome.
+   * <li>FAILURE/UNKNOWN become build problems (failed build) while ABORTED/NOT_BUILT become
+   * interruptions (canceled build).
+   * <li>UNSTABLE is marked as successful, since an unstable build in Jenkins does not propagate failure.
+   * It has a custom status text.
+   * <li>SUCCESS is left untouched, so TeamCity keeps its own status text.
+   * <br>
+   * <p>
+   * NOTE: The status <em>badge</em> is not updated by the call to .setCustomStatusText(). That requires a change in
+   * the core (props of StatusBadge.tsx).
    */
   private void applyJenkinsVerdict(RunningBuildEx runningBuild, String jenkinsResult) {
     JenkinsVerdict verdict = JenkinsVerdict.fromResult(jenkinsResult);
@@ -71,25 +78,27 @@ public class TeamCityBuildFinisher {
       case SUCCESS:
         break;
       case UNSTABLE:
-        addJenkinsResultProblem(runningBuild, "UNSTABLE", "Jenkins marked build UNSTABLE");
-        runningBuild.setCustomStatusText("Jenkins result: UNSTABLE");
+        // Needs "Common Failure Conditions > at least one test failed" to be off in the build configuration settings to register "Unstable" as a successful status.
+        runningBuild.setCustomStatusText("Unstable");
         break;
       case FAILURE:
-        addJenkinsResultProblem(runningBuild, "FAILURE", "Jenkins marked build FAILURE");
-        runningBuild.setCustomStatusText("Jenkins result: FAILURE");
+        runningBuild.setCustomStatusText("Failure");
+        addJenkinsResultProblem(runningBuild, "failure", "Jenkins failed this build");
         break;
       case ABORTED:
-        runningBuild.setInterrupted(RunningBuildState.INTERRUPTED_BY_USER, null, "Canceled in Jenkins");
+        runningBuild.setInterrupted(RunningBuildState.INTERRUPTED_BY_USER, null, "Aborted in Jenkins");
         break;
       case NOT_BUILT:
-        runningBuild.setInterrupted(RunningBuildState.INTERRUPTED_BY_SYSTEM, null, "Jenkins result: NOT_BUILT");
+        // TODO: Find a way to represent it as "Skipped" in TeamCity, instead of just canceled.
+        runningBuild.setInterrupted(RunningBuildState.INTERRUPTED_BY_SYSTEM, null, "Failed to start in Jenkins");
         break;
       case UNKNOWN:
       default:
-        String raw = jenkinsResult == null ? "null" : jenkinsResult;
-        addJenkinsResultProblem(runningBuild, "UNKNOWN", "Unknown Jenkins result: " + raw);
-        runningBuild.setCustomStatusText("Jenkins result: " + raw);
-        break;
+        if (jenkinsResult == null) {
+          break; // Still running
+        }
+        addJenkinsResultProblem(runningBuild, "unknown", "Unknown Jenkins build status: " + jenkinsResult);
+        runningBuild.setCustomStatusText(jenkinsResult);
     }
   }
 
