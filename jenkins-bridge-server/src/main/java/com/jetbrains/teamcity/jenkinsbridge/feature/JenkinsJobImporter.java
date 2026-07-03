@@ -1,6 +1,7 @@
 package com.jetbrains.teamcity.jenkinsbridge.feature;
 
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClient;
+import jetbrains.buildServer.serverSide.BuildTypeOptions;
 import jetbrains.buildServer.serverSide.DuplicateBuildTypeNameException;
 import jetbrains.buildServer.serverSide.ProjectManager;
 import jetbrains.buildServer.serverSide.SBuildFeatureDescriptor;
@@ -69,6 +70,7 @@ public class JenkinsJobImporter {
         featureParams.put(BridgeBuildFeatureConstants.PARAM_JENKINS_URL, jenkinsClient.jobUrl(fullName));
         buildType.addBuildFeature(BridgeBuildFeatureConstants.TYPE, featureParams);
         buildType.addConfigParameter(parameterFactory.createSimpleParameter(AGENTLESS_PARAM, "true"));
+        buildType.setOption(BuildTypeOptions.BT_FAIL_IF_TESTS_FAIL, false); // Let Jenkins decide if failing tests fail the build. Not the case for "unstable" builds.
         buildType.persist();
 
         alreadyMirrored.add(fullName);
