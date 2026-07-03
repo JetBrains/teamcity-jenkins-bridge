@@ -29,7 +29,6 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.logging.Level;
 
 public class JenkinsBridgePollingService {
   private static final Logger LOG = Logger.getInstance(JenkinsBridgePollingService.class.getName());
@@ -77,7 +76,6 @@ public class JenkinsBridgePollingService {
       }
     });
 
-    LOG.info("Starting Jenkins Bridge polling; state file: " + mirrorStore.getStateFile());
     LOG.info("[Jenkins Bridge DEBUG] Scheduling poller every " + settings.getPollSeconds() + " second(s)");
     executorService.scheduleWithFixedDelay(new Runnable() {
       public void run() {

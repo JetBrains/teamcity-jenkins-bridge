@@ -24,6 +24,9 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.ArgumentMatchers.anySet;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.startsWith;
 import static org.mockito.Mockito.*;
@@ -263,14 +266,28 @@ public class BuildMirrorStoreTest {
 
     CustomDataStorage storage = mock(CustomDataStorage.class);
     when(storage.getValues()).thenAnswer(invocation -> new LinkedHashMap<>(backingValues));
+    when(storage.getValue(anyString())).thenAnswer(invocation -> backingValues.get((String) invocation.getArgument(0)));
     doAnswer(invocation -> {
       backingValues.clear();
       return null;
     }).when(storage).clear();
     doAnswer(invocation -> {
-      backingValues.put(invocation.getArgument(0), invocation.getArgument(1));
+      String key = invocation.getArgument(0);
+      String value = invocation.getArgument(1);
+      if (value == null) {
+        backingValues.remove(key);
+      } else {
+        backingValues.put(key, value);
+      }
       return null;
-    }).when(storage).putValue(anyString(), anyString());
+    }).when(storage).putValue(anyString(), any());
+    doAnswer(invocation -> {
+      Map<String, String> newOrChangedValues = invocation.getArgument(0);
+      java.util.Set<String> removedKeys = invocation.getArgument(1);
+      backingValues.putAll(newOrChangedValues);
+      removedKeys.forEach(backingValues::remove);
+      return null;
+    }).when(storage).updateValues(anyMap(), anySet());
 
     SProject rootProject = mock(SProject.class);
     when(rootProject.getCustomDataStorage(BuildMirrorStore.CUSTOM_DATA_STORAGE_NAME)).thenReturn(storage);
