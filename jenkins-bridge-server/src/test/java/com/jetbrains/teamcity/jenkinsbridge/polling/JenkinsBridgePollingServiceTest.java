@@ -11,6 +11,7 @@ import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsPipelineGraph;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsStages;
 import com.jetbrains.teamcity.jenkinsbridge.persistence.BuildMirror;
 import com.jetbrains.teamcity.jenkinsbridge.persistence.BuildMirrorStore;
+import com.jetbrains.teamcity.jenkinsbridge.persistence.SyncState;
 import com.jetbrains.teamcity.jenkinsbridge.settings.JenkinsBridgeSettings;
 import com.jetbrains.teamcity.jenkinsbridge.settings.JenkinsBridgeSettingsProvider;
 import com.jetbrains.teamcity.jenkinsbridge.settings.MirroredJob;
@@ -68,6 +69,26 @@ public class JenkinsBridgePollingServiceTest {
     assertNull(store.findMirror("buildType::job#2@1710000000002"));
     assertNull(store.findMirror("buildType::job#1@1710000000001"));
     assertEquals(3, store.getLastSeenBuildNumber("buildType::job"));
+  }
+
+  @Test
+  public void pollJobPrunesFinishedMirrors() throws Exception {
+    JenkinsBridgeSettingsProvider provider = providerWithTempStateFile();
+    BuildMirrorStore store = new BuildMirrorStore(null, provider, buildMockProjectManager());
+
+    BuildMirror finished = store.getOrCreateMirror(
+        "buildType::otherJob#1@1710000000001", "otherJob", "buildType", buildInfo(1, 1710000000001L));
+    finished.setSyncState(SyncState.TEAMCITY_FINISHED);
+    store.saveMirror(finished);
+
+    FakeJenkinsClient jenkinsClient = new FakeJenkinsClient();
+    jenkinsClient.addBuild(buildInfo(1, 1710000000001L));
+
+    JenkinsBridgePollingService service = newService(provider, jenkinsClient, new CapturingMirrorService(), store);
+
+    pollJob(service, new MirroredJob("job", "buildType", "Build", 0, false), provider.load());
+
+    assertNull(store.findMirror("buildType::otherJob#1@1710000000001"));
   }
 
   @Test

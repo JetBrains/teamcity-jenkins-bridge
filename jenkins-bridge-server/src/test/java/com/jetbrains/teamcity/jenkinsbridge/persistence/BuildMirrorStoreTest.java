@@ -79,6 +79,41 @@ public class BuildMirrorStoreTest {
   }
 
   @Test
+  public void pruneFinishedMirrorsRemovesFinishedAndPersistsAcrossReload() throws Exception {
+    JenkinsBridgeSettingsProvider provider = providerWithTempStateFile();
+    ProjectManager projectManager = buildMockProjectManager();
+    BuildMirrorStore store = new BuildMirrorStore(null, provider, projectManager);
+
+    store.getOrCreateMirror(BuildMirrorStore.buildKey("job", 1), "job", "buildType", buildInfo(1));
+    BuildMirror finished = store.getOrCreateMirror(BuildMirrorStore.buildKey("job", 2), "job", "buildType", buildInfo(2));
+    finished.setSyncState(SyncState.TEAMCITY_FINISHED);
+    store.saveMirror(finished);
+
+    List<BuildMirror> pruned = store.pruneFinishedMirrors();
+    assertEquals(1, pruned.size());
+    assertEquals(2, pruned.get(0).getJenkinsBuildNumber());
+
+    assertNull(store.findMirror(BuildMirrorStore.buildKey("job", 2)));
+    assertNotNull(store.findMirror(BuildMirrorStore.buildKey("job", 1)));
+
+    // Assert that pruning is persisted.
+    BuildMirrorStore reloaded = new BuildMirrorStore(null, provider, projectManager);
+    assertNull(reloaded.findMirror(BuildMirrorStore.buildKey("job", 2)));
+    assertNotNull(reloaded.findMirror(BuildMirrorStore.buildKey("job", 1)));
+  }
+
+  @Test
+  public void pruneFinishedMirrorsReturnsEmptyListWhenNoneFinished() throws Exception {
+    BuildMirrorStore store = new BuildMirrorStore(null, providerWithTempStateFile(), buildMockProjectManager());
+    store.getOrCreateMirror(BuildMirrorStore.buildKey("job", 1), "job", "buildType", buildInfo(1));
+
+    List<BuildMirror> pruned = store.pruneFinishedMirrors();
+
+    assertTrue(pruned.isEmpty());
+    assertNotNull(store.findMirror(BuildMirrorStore.buildKey("job", 1)));
+  }
+
+  @Test
   public void findMirrorReturnsNullWhenAbsent() throws Exception {
     BuildMirrorStore store = new BuildMirrorStore(null, providerWithTempStateFile(), buildMockProjectManager());
     store.getOrCreateMirror(BuildMirrorStore.buildKey("job", 1), "job", "buildType", buildInfo(1));
@@ -112,7 +147,6 @@ public class BuildMirrorStoreTest {
     assertEquals(0, store.getLastSeenBuildNumber("job"));
     assertNull(store.findMirror(BuildMirrorStore.buildKey("job", 1)));
 
-    // The corrupt values are moved aside to a "-corrupt-*" storage rather than left to brick every poll.
     verify(quarantineStorage, atLeastOnce()).putValues(corruptValues);
   }
 
