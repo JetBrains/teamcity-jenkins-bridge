@@ -19,11 +19,10 @@ import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.logging.Level;
-import java.util.logging.Logger;
+import com.intellij.openapi.diagnostic.Logger;
 
 public class BuildMirrorStore {
-  private static final Logger LOG = Logger.getLogger(BuildMirrorStore.class.getName());
+  private static final Logger LOG = Logger.getInstance(BuildMirrorStore.class.getName());
 
   private final JenkinsBridgeSettingsProvider settingsProvider;
   private final ServerPaths serverPaths;
@@ -133,7 +132,7 @@ public class BuildMirrorStore {
       mirror.setLastError(error.getMessage());
       saveMirror(mirror);
     } catch (IOException saveError) {
-      LOG.log(Level.WARNING, "Failed to persist Jenkins Bridge build error", saveError);
+      LOG.warn("Failed to persist Jenkins Bridge build error", saveError);
     }
   }
 
@@ -144,7 +143,7 @@ public class BuildMirrorStore {
       state.setLastError(null);
       saveState();
     } catch (IOException e) {
-      LOG.log(Level.WARNING, "Failed to persist Jenkins Bridge poll status", e);
+      LOG.warn("Failed to persist Jenkins Bridge poll status", e);
     }
   }
 
@@ -155,7 +154,7 @@ public class BuildMirrorStore {
       state.setLastError(error.getMessage());
       saveState();
     } catch (IOException e) {
-      LOG.log(Level.WARNING, "Failed to persist Jenkins Bridge poll error", e);
+      LOG.warn("Failed to persist Jenkins Bridge poll error", e);
     }
   }
 
@@ -215,8 +214,7 @@ public class BuildMirrorStore {
     if (parseError != null) {
       // A corrupt/truncated state file must not brick the bridge (R7). Move it aside and start
       // fresh; mirrors re-bind to existing TeamCity builds via restore-by-key on the next sync.
-      LOG.log(Level.WARNING,
-          "Jenkins Bridge state file " + stateFile + " is corrupt; quarantining it and starting with empty state",
+      LOG.warn("Jenkins Bridge state file " + stateFile + " is corrupt; quarantining it and starting with empty state",
           parseError);
       quarantineCorruptStateFile(stateFile);
       state = new BridgeState();
@@ -238,9 +236,9 @@ public class BuildMirrorStore {
         stateFile.getFileName().toString() + ".corrupt-" + System.currentTimeMillis());
     try {
       Files.move(stateFile, target);
-      LOG.warning("Moved corrupt Jenkins Bridge state file to " + target);
+      LOG.warn("Moved corrupt Jenkins Bridge state file to " + target);
     } catch (IOException moveError) {
-      LOG.log(Level.WARNING, "Failed to move corrupt Jenkins Bridge state file " + stateFile + " aside", moveError);
+      LOG.warn("Failed to move corrupt Jenkins Bridge state file " + stateFile + " aside", moveError);
     }
   }
 

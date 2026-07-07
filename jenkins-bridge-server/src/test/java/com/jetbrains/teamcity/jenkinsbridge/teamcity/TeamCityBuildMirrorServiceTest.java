@@ -4,9 +4,9 @@ import com.google.gson.JsonParser;
 import com.jetbrains.teamcity.jenkinsbridge.http.BridgeHttpClient;
 import com.jetbrains.teamcity.jenkinsbridge.http.BridgeHttpException;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClient;
+import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsArtifact;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsArtifacts;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsBuildInfo;
-import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsPipelineGraph;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsStageLog;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsStages;
 import com.jetbrains.teamcity.jenkinsbridge.persistence.BuildMirror;
@@ -23,8 +23,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.*;
 
 public class TeamCityBuildMirrorServiceTest {
   private final JsonParser parser = new JsonParser();
@@ -179,6 +178,79 @@ public class TeamCityBuildMirrorServiceTest {
         TeamCityBuildMirrorService.teamCityArtifactPath("safe/file.txt"));
   }
 
+  @Test
+  public void syncArtifactMetadataRegistersArtifactListAndLogsSummary() throws Exception {
+    CapturingArtifactListPublisher publisher = new CapturingArtifactListPublisher();
+    CapturingLogger logger = new CapturingLogger();
+    TeamCityBuildMirrorService service = new TeamCityBuildMirrorService(
+        null, null, null, null, logger, null, null, publisher, null, null, new NoopStore());
+
+    BuildMirror mirror = BuildMirror.create("job#8@1710000000008", "job", buildInfo(8), "buildType", "now");
+
+    service.syncArtifactMetadataIfNeeded(mirror, 77L, artifacts(
+        "{\"artifacts\":["
+            + "{\"fileName\":\"app.jar\",\"relativePath\":\"target/app.jar\"},"
+            + "{\"fileName\":\"report.txt\",\"relativePath\":\"reports/unit/report.txt\"}"
+            + "]}"));
+
+    assertTrue(mirror.isArtifactsSynced());
+    assertNull(mirror.getArtifactSyncError());
+    assertEquals(2, publisher.published.size());
+    assertEquals("target/app.jar", publisher.published.get(0).getRelativePath());
+    assertEquals("reports/unit/report.txt", publisher.published.get(1).getRelativePath());
+    assertTrue(logger.texts.get(0).contains("Registered artifacts: 2"));
+  }
+
+  @Test
+  public void syncArtifactMetadataTreatsMissingArtifactsAsEmptyList() throws Exception {
+    CapturingArtifactListPublisher publisher = new CapturingArtifactListPublisher();
+    CapturingLogger logger = new CapturingLogger();
+    TeamCityBuildMirrorService service = new TeamCityBuildMirrorService(
+        null, null, null, null, logger, null, null, publisher, null, null, new NoopStore());
+
+    BuildMirror mirror = BuildMirror.create("job#9@1710000000009", "job", buildInfo(9), "buildType", "now");
+
+    service.syncArtifactMetadataIfNeeded(mirror, 77L, artifacts("{}"));
+
+    assertTrue(mirror.isArtifactsSynced());
+    assertTrue(publisher.published.isEmpty());
+    assertTrue(logger.texts.get(0).contains("Registered artifacts: 0"));
+  }
+
+  @Test
+  public void syncArtifactMetadataIsIdempotentOnceSynced() throws Exception {
+    CapturingArtifactListPublisher publisher = new CapturingArtifactListPublisher();
+    TeamCityBuildMirrorService service = new TeamCityBuildMirrorService(
+        null, null, null, null, new CapturingLogger(), null, null, publisher, null, null, new NoopStore());
+
+    BuildMirror mirror = BuildMirror.create("job#10@1710000000010", "job", buildInfo(10), "buildType", "now");
+
+    service.syncArtifactMetadataIfNeeded(mirror, 77L, artifacts(
+        "{\"artifacts\":[{\"fileName\":\"a\",\"relativePath\":\"a\"}]}"));
+    service.syncArtifactMetadataIfNeeded(mirror, 77L, artifacts(
+        "{\"artifacts\":[{\"fileName\":\"a\",\"relativePath\":\"a\"},{\"fileName\":\"b\",\"relativePath\":\"b\"}]}"));
+
+    assertEquals(1, publisher.published.size());
+  }
+
+  @Test
+  public void syncArtifactMetadataRecordsFailureWhenPublishListThrows() throws Exception {
+    CapturingArtifactListPublisher publisher = new CapturingArtifactListPublisher();
+    publisher.fail = true;
+    CapturingLogger logger = new CapturingLogger();
+    TeamCityBuildMirrorService service = new TeamCityBuildMirrorService(
+        null, null, null, null, logger, null, null, publisher, null, null, new NoopStore());
+
+    BuildMirror mirror = BuildMirror.create("job#11@1710000000011", "job", buildInfo(11), "buildType", "now");
+
+    service.syncArtifactMetadataIfNeeded(mirror, 77L, artifacts(
+        "{\"artifacts\":[{\"fileName\":\"a\",\"relativePath\":\"a\"}]}"));
+
+    assertTrue(mirror.isArtifactsSynced());
+    assertTrue(mirror.getArtifactSyncError().contains("IOException"));
+    assertTrue(logger.texts.get(0).contains("Failures: 1"));
+  }
+
   private JenkinsStages stages(String name, String status, long start, long duration) {
     String json = "{\"stages\":[{\"id\":\"6\",\"name\":\"" + name + "\",\"status\":\"" + status
         + "\",\"startTimeMillis\":" + start + ",\"durationMillis\":" + duration + "}]}";
@@ -255,7 +327,7 @@ public class TeamCityBuildMirrorServiceTest {
     String failPath;
 
     CapturingArtifactPublisher() {
-      super(null);
+      super(null, null);
     }
 
     @Override
@@ -269,6 +341,23 @@ public class TeamCityBuildMirrorServiceTest {
         text.append((char)read);
       }
       published.put(artifactPath, text.toString());
+    }
+  }
+
+  private static class CapturingArtifactListPublisher extends TeamCityArtifactPublisher {
+    List<JenkinsArtifact> published = new ArrayList<>();
+    boolean fail;
+
+    CapturingArtifactListPublisher() {
+      super(null, null);
+    }
+
+    @Override
+    public void publishArtifactList(long buildId, List<JenkinsArtifact> artifacts) throws IOException {
+      if (fail) {
+        throw new IOException("boom");
+      }
+      published = new ArrayList<>(artifacts);
     }
   }
 

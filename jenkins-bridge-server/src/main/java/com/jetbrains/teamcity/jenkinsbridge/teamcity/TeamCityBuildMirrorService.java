@@ -19,7 +19,6 @@ import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsStage;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsStageLog;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsStages;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsTestReport;
-import com.jetbrains.teamcity.jenkinsbridge.settings.JenkinsBridgeSettings;
 import com.jetbrains.teamcity.jenkinsbridge.settings.JenkinsBridgeSettingsProvider;
 import jetbrains.buildServer.messages.BuildMessage1;
 
@@ -34,11 +33,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TimeZone;
-import java.util.logging.Level;
-import java.util.logging.Logger;
+import com.intellij.openapi.diagnostic.Logger;
 
 public class TeamCityBuildMirrorService {
-  private static final Logger LOG = Logger.getLogger(TeamCityBuildMirrorService.class.getName());
+  private static final Logger LOG = Logger.getInstance(TeamCityBuildMirrorService.class.getName());
   private static final Set<SyncState> RUNNING_DATA_ALREADY_SENT_STATES = EnumSet.of(
       SyncState.RUNNING_SENT,
       SyncState.LOG_SYNCING,
@@ -113,7 +111,7 @@ public class TeamCityBuildMirrorService {
             + e.getClass().getSimpleName()
             + (e.getMessage() == null ? "" : ": " + e.getMessage()));
         mirrorStore.saveMirror(mirror);
-        LOG.log(Level.WARNING, "Jenkins Bridge: failed to create native TeamCity Pipeline chain for "
+        LOG.warn("Jenkins Bridge: failed to create native TeamCity Pipeline chain for "
             + mirror.getJenkinsBuildKey() + "; falling back to a single mirror build", e);
       }
     }
@@ -267,7 +265,7 @@ public class TeamCityBuildMirrorService {
           "Native TeamCity Pipeline chain: failed: " + e.getClass().getSimpleName()
               + (e.getMessage() == null ? "" : ": " + e.getMessage()) + ".\n");
       mirrorStore.saveMirror(mirror);
-      LOG.log(Level.WARNING, "Jenkins Bridge: failed to create native TeamCity Pipeline chain for "
+      LOG.warn("Jenkins Bridge: failed to create native TeamCity Pipeline chain for "
           + mirror.getJenkinsBuildKey(), e);
     }
   }
@@ -458,6 +456,7 @@ public class TeamCityBuildMirrorService {
     mirrorStore.saveMirror(mirror);
   }
 
+  @Deprecated
   public void syncArtifactsIfNeeded(
       final BuildMirror mirror,
       final long teamCityBuildId,
@@ -496,7 +495,7 @@ public class TeamCityBuildMirrorService {
         } catch (Exception e) {
           failures.add(relativePath + ": " + e.getClass().getSimpleName()
               + (e.getMessage() == null ? "" : ": " + e.getMessage()));
-          LOG.log(Level.WARNING, "Jenkins Bridge: failed to publish artifact "
+          LOG.warn("Jenkins Bridge: failed to publish artifact "
               + relativePath + " for " + mirror.getJenkinsBuildKey(), e);
         }
       }
@@ -513,7 +512,7 @@ public class TeamCityBuildMirrorService {
     try {
       teamCityBuildLogger.addBuildLog(teamCityBuildId, message);
     } catch (Exception e) {
-      LOG.log(Level.WARNING, "Jenkins Bridge: failed to write artifact summary for "
+      LOG.warn("Jenkins Bridge: failed to write artifact summary for "
           + mirror.getJenkinsBuildKey(), e);
       failures.add("Failed to write artifact summary: " + e.getClass().getSimpleName()
           + (e.getMessage() == null ? "" : ": " + e.getMessage()));
@@ -527,7 +526,67 @@ public class TeamCityBuildMirrorService {
     try {
       mirrorStore.saveMirror(mirror);
     } catch (Exception e) {
-      LOG.log(Level.WARNING, "Jenkins Bridge: failed to persist artifact sync state for "
+      LOG.warn("Jenkins Bridge: failed to persist artifact sync state for "
+          + mirror.getJenkinsBuildKey(), e);
+    }
+  }
+
+  /**
+   * Registers Jenkins artifacts as externally stored references in TeamCity, without copying artifact bytes.
+   */
+  public void syncArtifactMetadataIfNeeded(
+      BuildMirror mirror,
+      long teamCityBuildId,
+      JenkinsArtifacts artifacts
+  ) {
+    if (mirror.isArtifactsSynced()) {
+      return;
+    }
+
+    int registered = 0;
+    List<String> failures = new ArrayList<String>();
+
+    List<JenkinsArtifact> safeArtifacts = new ArrayList<JenkinsArtifact>();
+    if (artifacts != null) {
+      for (JenkinsArtifact artifact : artifacts.getArtifacts()) {
+        safeArtifacts.add(artifact);
+        registered++;
+      }
+    }
+
+    try {
+      teamCityArtifactPublisher.publishArtifactList(teamCityBuildId, safeArtifacts);
+    } catch (Exception e) {
+      failures.add(e.getClass().getSimpleName() + (e.getMessage() == null ? "" : ": " + e.getMessage()));
+      LOG.warn("Jenkins Bridge: failed to register artifact list for "
+          + mirror.getJenkinsBuildKey(), e);
+    }
+
+    String message = "\n--- Jenkins artifact mirroring ---\n"
+        + "Registered artifacts: " + registered + "\n"
+        + "Failures: " + failures.size() + "\n";
+    if (!failures.isEmpty()) {
+      message += "Artifact mirroring is best-effort; the TeamCity build result still follows Jenkins.\n";
+    }
+
+    try {
+      teamCityBuildLogger.addBuildLog(teamCityBuildId, message);
+    } catch (Exception e) {
+      LOG.warn("Jenkins Bridge: failed to write artifact summary for "
+          + mirror.getJenkinsBuildKey(), e);
+      failures.add("Failed to write artifact summary: " + e.getClass().getSimpleName()
+          + (e.getMessage() == null ? "" : ": " + e.getMessage()));
+    }
+
+    mirror.setArtifactsSynced(true);
+    mirror.setArtifactSyncError(failures.isEmpty() ? null : joinFailures(failures));
+    if (failures.isEmpty()) {
+      mirror.setLastError(null);
+    }
+    try {
+      mirrorStore.saveMirror(mirror);
+    } catch (Exception e) {
+      LOG.warn("Jenkins Bridge: failed to persist artifact sync state for "
           + mirror.getJenkinsBuildKey(), e);
     }
   }
@@ -577,6 +636,7 @@ public class TeamCityBuildMirrorService {
     return new Date(finishMillis);
   }
 
+  @Deprecated
   static String teamCityArtifactPath(String jenkinsRelativePath) {
     if (jenkinsRelativePath == null) {
       return null;
