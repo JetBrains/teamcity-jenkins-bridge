@@ -17,6 +17,7 @@ import com.jetbrains.teamcity.jenkinsbridge.settings.JenkinsBridgeSettingsProvid
 import com.jetbrains.teamcity.jenkinsbridge.settings.MirroredJob;
 import com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityBuildMirrorService;
 
+import com.intellij.openapi.diagnostic.Logger;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -28,7 +29,6 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import com.intellij.openapi.diagnostic.Logger;
 
 public class JenkinsBridgePollingService {
   private static final Logger LOG = Logger.getInstance(JenkinsBridgePollingService.class.getName());
@@ -76,7 +76,6 @@ public class JenkinsBridgePollingService {
       }
     });
 
-    LOG.info("Starting Jenkins Bridge polling; state file: " + mirrorStore.getStateFile());
     LOG.info("[Jenkins Bridge DEBUG] Scheduling poller every " + settings.getPollSeconds() + " second(s)");
     executorService.scheduleWithFixedDelay(new Runnable() {
       public void run() {
@@ -195,10 +194,14 @@ public class JenkinsBridgePollingService {
       handled.add(build.getNumber());
     }
 
+    int prunedCount = mirrorStore.pruneFinishedMirrors().size();
+    LOG.info("[Jenkins Bridge DEBUG] " + mirroredJob.describeForLog() + ": " + prunedCount + " build(s) pruned");
+
     // Keep syncing builds that are still in progress but already past the watermark.
     List<BuildMirror> active = mirroredJob.isLegacy()
         ? mirrorStore.getActiveMirrors(job)
         : mirrorStore.getActiveMirrors(mirroredJob.getTeamCityBuildTypeExternalId(), job);
+
     for (BuildMirror mirror : active) {
       if (handled.contains(mirror.getJenkinsBuildNumber())) {
         continue;

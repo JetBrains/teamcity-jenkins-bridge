@@ -13,6 +13,9 @@ import com.jetbrains.teamcity.jenkinsbridge.persistence.BuildMirror;
 import com.jetbrains.teamcity.jenkinsbridge.persistence.BuildMirrorStore;
 import jetbrains.buildServer.messages.BuildMessage1;
 import jetbrains.buildServer.messages.DefaultMessagesInfo;
+import jetbrains.buildServer.serverSide.CustomDataStorage;
+import jetbrains.buildServer.serverSide.ProjectManager;
+import jetbrains.buildServer.serverSide.SProject;
 import org.junit.Test;
 
 import java.io.ByteArrayInputStream;
@@ -24,6 +27,8 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.Assert.*;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 public class TeamCityBuildMirrorServiceTest {
   private final JsonParser parser = new JsonParser();
@@ -374,9 +379,21 @@ public class TeamCityBuildMirrorServiceTest {
     }
   }
 
+  private static ProjectManager mockProjectManager() {
+    CustomDataStorage storage = mock(CustomDataStorage.class);
+    when(storage.getValues()).thenReturn(new LinkedHashMap<>());
+
+    SProject rootProject = mock(SProject.class);
+    when(rootProject.getCustomDataStorage(BuildMirrorStore.CUSTOM_DATA_STORAGE_NAME)).thenReturn(storage);
+
+    ProjectManager projectManager = mock(ProjectManager.class);
+    when(projectManager.getRootProject()).thenReturn(rootProject);
+    return projectManager;
+  }
+
   private static class NoopStore extends BuildMirrorStore {
     NoopStore() {
-      super(null, null);
+      super(null, null, mockProjectManager());
     }
 
     @Override
