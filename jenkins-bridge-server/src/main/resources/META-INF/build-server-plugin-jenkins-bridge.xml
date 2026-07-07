@@ -83,4 +83,25 @@
   <bean id="jenkinsBridgeServerLifecycle"
         class="com.jetbrains.teamcity.jenkinsbridge.polling.JenkinsBridgeServerLifecycle"
         destroy-method="dispose"/>
+
+  <bean id="jenkinsStorageType"
+        class="com.jetbrains.teamcity.jenkinsbridge.artifactstorage.JenkinsStorageType"/>
+
+  <bean id="jenkinsArtifactContentProvider"
+        class="com.jetbrains.teamcity.jenkinsbridge.artifactstorage.JenkinsArtifactContentProvider"/>
+
+  <bean id="jenkinsArtifactDownloadProcessor"
+        class="com.jetbrains.teamcity.jenkinsbridge.artifactstorage.JenkinsArtifactDownloadProcessor"/>
+
+  <bean id="jenkinsArtifactDownloadSigner"
+        class="com.jetbrains.teamcity.jenkinsbridge.artifactstorage.JenkinsArtifactDownloadSigner"/>
+
+  <bean id="jenkinsArtifactSignedDownloadController"
+        class="com.jetbrains.teamcity.jenkinsbridge.web.JenkinsArtifactSignedDownloadController"/>
+
+  <bean id="jenkinsArtifactInfoUtils"
+        class="com.jetbrains.teamcity.jenkinsbridge.artifactstorage.JenkinsArtifactInfoUtils"/>
+
+  <bean id="jenkinsStorageAutomaticActivator"
+        class="com.jetbrains.teamcity.jenkinsbridge.artifactstorage.JenkinsStorageAutomaticActivator"/>
 </beans>

@@ -18,6 +18,10 @@ public class BridgeHttpClient {
     void handle(InputStream inputStream) throws IOException;
   }
 
+  public BridgeHttpResponse head(String url, String user, String password, String accept) throws BridgeHttpException {
+    return request("HEAD", url, user, password, null, null, accept, null);
+  }
+
   public String get(String url, String user, String password, String accept) throws BridgeHttpException {
     return getResponse(url, user, password, accept).getBody();
   }

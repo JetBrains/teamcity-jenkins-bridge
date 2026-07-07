@@ -1,5 +1,6 @@
 package com.jetbrains.teamcity.jenkinsbridge.jenkins;
 
+import com.intellij.openapi.diagnostic.Logger;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -7,21 +8,7 @@ import com.google.gson.JsonParser;
 import com.jetbrains.teamcity.jenkinsbridge.http.BridgeHttpClient;
 import com.jetbrains.teamcity.jenkinsbridge.http.BridgeHttpException;
 import com.jetbrains.teamcity.jenkinsbridge.http.BridgeHttpResponse;
-import com.jetbrains.teamcity.jenkinsbridge.model.GraphConfidence;
-import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsArtifacts;
-import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsBuildInfo;
-import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsBuildParameters;
-import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsCrumb;
-import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsJobParameters;
-import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsLogChunk;
-import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsPipelineGraph;
-import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsPipelineGraphNode;
-import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsStage;
-import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsStageLog;
-import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsStageNodes;
-import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsStages;
-import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsWfapiNode;
-import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsTestReport;
+import com.jetbrains.teamcity.jenkinsbridge.model.*;
 import com.jetbrains.teamcity.jenkinsbridge.settings.JenkinsBridgeSettings;
 import com.jetbrains.teamcity.jenkinsbridge.settings.JenkinsBridgeSettingsProvider;
 
@@ -46,6 +33,7 @@ public class JenkinsClient {
   // so the (line-bounded) non-greedy match is safe; a note split across two progressive fetches is a
   // rare edge that can leak one partial note at the boundary.
   private static final Pattern CONSOLE_NOTE = Pattern.compile("\\[8m.*?\\[0m");
+  private static final Logger LOG = Logger.getInstance(JenkinsClient.class.getName());
 
   private final JenkinsBridgeSettingsProvider settingsProvider;
   private final BridgeHttpClient httpClient;
@@ -229,22 +217,52 @@ public class JenkinsClient {
   public JenkinsArtifacts getArtifacts(String jobName, int buildNumber) throws BridgeHttpException {
     JenkinsBridgeSettings settings = settingsProvider.load();
     String tree = "artifacts[fileName,relativePath]";
-    String url = settings.getJenkinsUrl()
+    String buildUrl = settings.getJenkinsUrl()
         + jenkinsJobPath(jobName)
         + "/"
-        + buildNumber
+        + buildNumber;
+    String url = buildUrl
         + "/api/json?tree="
         + encodeQueryValue(tree);
 
     try {
       String response = httpClient.get(url, settings.getJenkinsUser(), settings.getJenkinsToken(), "application/json");
-      return JenkinsArtifacts.fromJson(jsonParser.parse(response).getAsJsonObject());
+      JenkinsArtifacts artifacts = JenkinsArtifacts.fromJson(JsonParser.parseString(response).getAsJsonObject());
+      List<JenkinsArtifact> sizedArtifacts = new ArrayList<>();
+      for (JenkinsArtifact artifact : artifacts.getArtifacts()) {
+        String artifactUrl = buildUrl + "/artifact/" + artifact.getRelativePath();
+        // TODO: HEAD requests may be parallelized
+        // TODO: Alternatively, the /artifact HTML page can be scraped to get the sizes
+        int size = 0;
+        try {
+          String sizeString = httpClient.head(artifactUrl, settings.getJenkinsUser(), settings.getJenkinsToken(), "*/*").getHeader("Content-Length");
+          size = Integer.parseInt(sizeString);
+        } catch (BridgeHttpException e) {
+          LOG.warn("Failed to get artifact size for " + artifactUrl, e);
+        }
+        sizedArtifacts.add(new JenkinsArtifact(artifact.getFileName(), artifact.getRelativePath(), size));
+      }
+      return new JenkinsArtifacts(sizedArtifacts);
     } catch (BridgeHttpException e) {
       if (e.getStatusCode() == 404) {
         return JenkinsArtifacts.empty();
       }
       throw e;
     }
+  }
+
+  /**
+   * Builds the absolute Jenkins download URL for a single build artifact:
+   * {@code <jenkinsUrl>/job/<job>/<buildNumber>/artifact/<relativePath>}.
+   */
+  public String artifactUrl(String jobName, int buildNumber, String relativePath) {
+    JenkinsBridgeSettings settings = settingsProvider.load();
+    return settings.getJenkinsUrl()
+        + jenkinsJobPath(jobName)
+        + "/"
+        + buildNumber
+        + "/artifact/"
+        + encodeRelativePath(relativePath);
   }
 
   public void streamArtifact(
@@ -254,13 +272,7 @@ public class JenkinsClient {
       BridgeHttpClient.StreamHandler handler
   ) throws BridgeHttpException {
     JenkinsBridgeSettings settings = settingsProvider.load();
-    String url = settings.getJenkinsUrl()
-        + jenkinsJobPath(jobName)
-        + "/"
-        + buildNumber
-        + "/artifact/"
-        + encodeRelativePath(relativePath);
-
+    String url = artifactUrl(jobName, buildNumber, relativePath);
     httpClient.getStream(url, settings.getJenkinsUser(), settings.getJenkinsToken(), "*/*", handler);
   }
 
@@ -292,7 +304,9 @@ public class JenkinsClient {
     return result;
   }
 
-  /** Absolute Jenkins job page URL for {@code fullName}, derived from the global base URL. */
+  /**
+   * Absolute Jenkins job page URL for {@code fullName}, derived from the global base URL.
+   */
   public String jobUrl(String fullName) {
     return settingsProvider.load().getJenkinsUrl()
         + jenkinsJobPath(fullName == null ? "" : fullName)

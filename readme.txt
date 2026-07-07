@@ -12,7 +12,7 @@ For each Jenkins run, the plugin can:
   to the TeamCity build outcome;
 - import JUnit-style test results from Jenkins `testReport/api/json`;
 - copy Jenkins build parameters into TeamCity custom build parameters;
-- publish archived Jenkins artifacts under `jenkins-artifacts/`;
+- automatically use Jenkins as artifact storage and display all published artifacts;
 - persist mirror state in TeamCity plugin data for restart recovery.
 
 Pipeline support is also available for stage/log mirroring. Native TeamCity

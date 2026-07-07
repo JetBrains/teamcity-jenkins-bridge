@@ -388,7 +388,7 @@ public class JenkinsBridgePollingService {
         JenkinsArtifacts artifacts = jenkinsClient.getArtifacts(mirror.getJenkinsJob(), mirror.getJenkinsBuildNumber());
         LOG.info("[Jenkins Bridge DEBUG] Read " + artifacts.size()
             + " Jenkins artifact(s) for " + mirror.getJenkinsBuildKey());
-        mirrorService.syncArtifactsIfNeeded(mirror, teamCityBuildId, artifacts, jenkinsClient);
+        mirrorService.syncArtifactMetadataIfNeeded(mirror, teamCityBuildId, artifacts);
       } catch (Exception e) {
         LOG.warn("Jenkins Bridge: artifact mirroring failed for "
             + mirror.getJenkinsBuildKey() + "; finishing will continue", e);

@@ -11,7 +11,7 @@ import java.util.List;
 public class JenkinsArtifacts {
   private final List<JenkinsArtifact> artifacts;
 
-  private JenkinsArtifacts(List<JenkinsArtifact> artifacts) {
+  public JenkinsArtifacts(List<JenkinsArtifact> artifacts) {
     this.artifacts = artifacts;
   }
 

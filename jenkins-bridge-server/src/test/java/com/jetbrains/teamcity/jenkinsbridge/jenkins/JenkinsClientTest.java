@@ -266,6 +266,30 @@ public class JenkinsClientTest {
   }
 
   @Test
+  public void artifactUrlBuildsAbsoluteDownloadUrlFromGlobalBase() {
+    JenkinsClient client = new JenkinsClient(new StaticSettingsProvider(), new StubResponseHttpClient());
+
+    assertEquals("http://jenkins/job/job/7/artifact/target/app.jar",
+        client.artifactUrl("job", 7, "target/app.jar"));
+  }
+
+  @Test
+  public void artifactUrlBuildsUrlForFolderedJob() {
+    JenkinsClient client = new JenkinsClient(new StaticSettingsProvider(), new StubResponseHttpClient());
+
+    assertEquals("http://jenkins/job/folder/job/job/7/artifact/target/app.jar",
+        client.artifactUrl("folder/job", 7, "target/app.jar"));
+  }
+
+  @Test
+  public void artifactUrlEncodesEachPathSegment() {
+    JenkinsClient client = new JenkinsClient(new StaticSettingsProvider(), new StubResponseHttpClient());
+
+    assertEquals("http://jenkins/job/folder/job/job/7/artifact/dir%20with%20space/report%20%231.txt",
+        client.artifactUrl("folder/job", 7, "dir with space/report #1.txt"));
+  }
+
+  @Test
   public void getStagesBuildsWfapiUrlAndParsesStages() throws Exception {
     StubResponseHttpClient httpClient = new StubResponseHttpClient();
     httpClient.body = "{\"status\":\"IN_PROGRESS\",\"stages\":["

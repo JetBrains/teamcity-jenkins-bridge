@@ -27,8 +27,8 @@ import java.util.List;
 import java.util.Map;
 
 public class BuildMirrorStore {
-  public static final String CUSTOM_DATA_STORAGE_NAME = "jenkinsBridgeStateStorage";
   private static final Logger LOG = Logger.getInstance(BuildMirrorStore.class.getName());
+  public static final String CUSTOM_DATA_STORAGE_NAME = "jenkinsBridgeStateStorage";
 
   private final JenkinsBridgeSettingsProvider settingsProvider;
   private final ServerPaths serverPaths;
