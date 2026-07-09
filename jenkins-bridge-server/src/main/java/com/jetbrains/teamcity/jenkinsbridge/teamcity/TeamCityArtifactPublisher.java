@@ -72,8 +72,8 @@ public class TeamCityArtifactPublisher {
 
     List<ArtifactData> artifactDataList = new ArrayList<>();
     for (JenkinsArtifact artifact : artifacts) {
-      String path = artifact.getRelativePath();
-      artifactDataList.add(ArtifactDataInstance.create(path, artifact.getSize()));
+      String path = artifact.relativePath();
+      artifactDataList.add(ArtifactDataInstance.create(path, artifact.size()));
     }
 
     if (artifactDataList.isEmpty()) {

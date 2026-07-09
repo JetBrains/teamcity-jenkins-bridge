@@ -11,6 +11,7 @@ import com.jetbrains.teamcity.jenkinsbridge.http.BridgeHttpResponse;
 import com.jetbrains.teamcity.jenkinsbridge.model.*;
 import com.jetbrains.teamcity.jenkinsbridge.settings.JenkinsBridgeSettings;
 import com.jetbrains.teamcity.jenkinsbridge.settings.JenkinsBridgeSettingsProvider;
+import org.jetbrains.annotations.NotNull;
 
 import java.io.UnsupportedEncodingException;
 import java.net.URLEncoder;
@@ -25,6 +26,9 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
+
+import static com.jetbrains.teamcity.jenkinsbridge.util.Utilities.nullToEmpty;
+import static com.jetbrains.teamcity.jenkinsbridge.util.Utilities.stringValue;
 
 public class JenkinsClient {
   // Jenkins embeds invisible ConsoleNote annotations in the raw console as an ANSI "conceal" block:
@@ -146,6 +150,28 @@ public class JenkinsClient {
     return JenkinsBuildInfo.fromJson(jsonParser.parse(response).getAsJsonObject());
   }
 
+  @NotNull
+  public JenkinsVcsInfo getBuildVcs(String jobName, int buildNumber) throws BridgeHttpException {
+    JenkinsBridgeSettings settings = settingsProvider.load();
+    String tree = "actions[_class,lastBuiltRevision[SHA1,branch[name]],remoteUrls]";
+    String url = settings.getJenkinsUrl()
+        + jenkinsJobPath(jobName)
+        + "/"
+        + buildNumber
+        + "/api/json?tree="
+        + encodeQueryValue(tree);
+
+    try {
+      String response = httpClient.get(url, settings.getJenkinsUser(), settings.getJenkinsToken(), "application/json");
+      return JenkinsVcsInfo.fromJson(JsonParser.parseString(response).getAsJsonObject());
+    } catch (BridgeHttpException e) {
+      if (e.getStatusCode() == 404) {
+        return JenkinsVcsInfo.empty();
+      }
+      throw e;
+    }
+  }
+
   /**
    * Fetches only the console output produced since {@code start} (a byte offset) using Jenkins'
    * progressive log API, instead of re-downloading the whole console each poll.
@@ -230,7 +256,7 @@ public class JenkinsClient {
       JenkinsArtifacts artifacts = JenkinsArtifacts.fromJson(JsonParser.parseString(response).getAsJsonObject());
       List<JenkinsArtifact> sizedArtifacts = new ArrayList<>();
       for (JenkinsArtifact artifact : artifacts.getArtifacts()) {
-        String artifactUrl = buildUrl + "/artifact/" + artifact.getRelativePath();
+        String artifactUrl = buildUrl + "/artifact/" + artifact.relativePath();
         // TODO: HEAD requests may be parallelized
         // TODO: Alternatively, the /artifact HTML page can be scraped to get the sizes
         int size = 0;
@@ -240,7 +266,7 @@ public class JenkinsClient {
         } catch (BridgeHttpException e) {
           LOG.warn("Failed to get artifact size for " + artifactUrl, e);
         }
-        sizedArtifacts.add(new JenkinsArtifact(artifact.getFileName(), artifact.getRelativePath(), size));
+        sizedArtifacts.add(new JenkinsArtifact(artifact.fileName(), artifact.relativePath(), size));
       }
       return new JenkinsArtifacts(sizedArtifacts);
     } catch (BridgeHttpException e) {
@@ -611,18 +637,6 @@ public class JenkinsClient {
     }
   }
 
-  private String stringValue(JsonObject object, String key) {
-    JsonElement value = object.get(key);
-    if (value == null || value.isJsonNull()) {
-      return "";
-    }
-    try {
-      return value.getAsString();
-    } catch (RuntimeException e) {
-      return "";
-    }
-  }
-
   /**
    * Fetches the console text of one Pipeline stage. The stage node itself carries no log, so this
    * descends into the stage's {@code stageFlowNodes} (echo / sh / etc. steps) and concatenates each
@@ -848,10 +862,6 @@ public class JenkinsClient {
       }
     }
     return result.toString();
-  }
-
-  private String nullToEmpty(String value) {
-    return value == null ? "" : value;
   }
 
   private String encodePathSegment(String value) {

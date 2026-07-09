@@ -26,6 +26,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
+import static com.jetbrains.teamcity.jenkinsbridge.util.Utilities.nullToEmpty;
+
 public class BuildMirrorStore {
   private static final Logger LOG = Logger.getInstance(BuildMirrorStore.class.getName());
   public static final String CUSTOM_DATA_STORAGE_NAME = "jenkinsBridgeStateStorage";
@@ -335,7 +337,4 @@ public class BuildMirrorStore {
     return settingsProvider.load();
   }
 
-  private String nullToEmpty(String value) {
-    return value == null ? "" : value;
-  }
 }

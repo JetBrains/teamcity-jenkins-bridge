@@ -26,6 +26,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import static com.jetbrains.teamcity.jenkinsbridge.util.Utilities.findBuildType;
+import static com.jetbrains.teamcity.jenkinsbridge.util.Utilities.nullToEmpty;
+
 public class TeamCityPipelineChainService {
   private static final String TRIGGERED_BY = "Jenkins Bridge Pipeline Chain";
   private static final String AGENTLESS_PARAM = "teamcity.build.agentLess";
@@ -70,7 +73,7 @@ public class TeamCityPipelineChainService {
       return existing;
     }
 
-    SBuildType sourceBuildType = findBuildType(mirror.getTeamCityBuildTypeId());
+    SBuildType sourceBuildType = findBuildType(mirror.getTeamCityBuildTypeId(), projectManager);
     if (sourceBuildType == null) {
       throw new IllegalStateException("TeamCity build type " + mirror.getTeamCityBuildTypeId() + " was not found");
     }
@@ -302,25 +305,11 @@ public class TeamCityPipelineChainService {
     buildType.addConfigParameter(parameterFactory.createSimpleParameter(name, nullToEmpty(value)));
   }
 
-  private SBuildType findBuildType(String buildTypeId) {
-    if (buildTypeId == null || buildTypeId.trim().length() == 0) {
-      return null;
-    }
-    SBuildType buildType = projectManager.findBuildTypeByExternalId(buildTypeId);
-    if (buildType != null) {
-      return buildType;
-    }
-    return projectManager.findBuildTypeById(buildTypeId);
-  }
 
   private static String truncate(String value, int maxLength) {
     if (value == null) {
       return "";
     }
     return value.length() <= maxLength ? value : value.substring(0, maxLength);
-  }
-
-  private static String nullToEmpty(String value) {
-    return value == null ? "" : value;
   }
 }

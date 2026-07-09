@@ -6,6 +6,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import static com.jetbrains.teamcity.jenkinsbridge.util.Utilities.nullToEmpty;
+
 public class PipelineChainMirror {
   private String topologyHash;
   private String confidence;
@@ -104,7 +106,4 @@ public class PipelineChainMirror {
     return new ArrayList<Long>(values);
   }
 
-  private static String nullToEmpty(String value) {
-    return value == null ? "" : value;
-  }
 }

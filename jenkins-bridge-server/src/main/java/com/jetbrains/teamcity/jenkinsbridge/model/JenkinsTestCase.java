@@ -3,6 +3,8 @@ package com.jetbrains.teamcity.jenkinsbridge.model;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 
+import static com.jetbrains.teamcity.jenkinsbridge.util.Utilities.nullToEmpty;
+
 public class JenkinsTestCase {
   private static final String STATUS_SKIPPED = "SKIPPED";
   private static final String STATUS_PASSED = "PASSED";
@@ -132,7 +134,4 @@ public class JenkinsTestCase {
     return value != null && value.trim().length() > 0;
   }
 
-  private static String nullToEmpty(String value) {
-    return value == null ? "" : value;
-  }
 }

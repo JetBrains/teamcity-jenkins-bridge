@@ -19,7 +19,10 @@ import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsStage;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsStageLog;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsStages;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsTestReport;
+import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsVcsInfo;
 import com.jetbrains.teamcity.jenkinsbridge.settings.JenkinsBridgeSettingsProvider;
+import com.jetbrains.teamcity.jenkinsbridge.vcs.VcsBuildCustomization;
+import com.jetbrains.teamcity.jenkinsbridge.vcs.VcsSyncResult;
 import jetbrains.buildServer.messages.BuildMessage1;
 
 import java.io.IOException;
@@ -34,6 +37,9 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TimeZone;
 import com.intellij.openapi.diagnostic.Logger;
+
+import static com.jetbrains.teamcity.jenkinsbridge.util.Utilities.describeException;
+import static com.jetbrains.teamcity.jenkinsbridge.util.Utilities.nullToEmpty;
 
 public class TeamCityBuildMirrorService {
   private static final Logger LOG = Logger.getInstance(TeamCityBuildMirrorService.class.getName());
@@ -51,6 +57,7 @@ public class TeamCityBuildMirrorService {
   private final TeamCityTestReporter teamCityTestReporter;
   private final TeamCityStageReporter teamCityStageReporter;
   private final TeamCityArtifactPublisher teamCityArtifactPublisher;
+  private final TeamCityVcsPublisher teamCityVcsPublisher;
   private final TeamCityBuildFinisher teamCityBuildFinisher;
   private final TeamCityPipelineChainService teamCityPipelineChainService;
   private final BuildMirrorStore mirrorStore;
@@ -64,6 +71,7 @@ public class TeamCityBuildMirrorService {
       TeamCityTestReporter teamCityTestReporter,
       TeamCityStageReporter teamCityStageReporter,
       TeamCityArtifactPublisher teamCityArtifactPublisher,
+      TeamCityVcsPublisher teamCityVcsPublisher,
       TeamCityBuildFinisher teamCityBuildFinisher,
       TeamCityPipelineChainService teamCityPipelineChainService,
       BuildMirrorStore mirrorStore
@@ -76,6 +84,7 @@ public class TeamCityBuildMirrorService {
     this.teamCityTestReporter = teamCityTestReporter;
     this.teamCityStageReporter = teamCityStageReporter;
     this.teamCityArtifactPublisher = teamCityArtifactPublisher;
+    this.teamCityVcsPublisher = teamCityVcsPublisher;
     this.teamCityBuildFinisher = teamCityBuildFinisher;
     this.teamCityPipelineChainService = teamCityPipelineChainService;
     this.mirrorStore = mirrorStore;
@@ -85,10 +94,20 @@ public class TeamCityBuildMirrorService {
   // May need better naming
   public long ensureTeamCityBuild(BuildMirror mirror, JenkinsBuildInfo jenkinsInfo)
       throws BridgeHttpException, IOException {
-    return ensureTeamCityBuild(mirror, jenkinsInfo, null);
+    return ensureTeamCityBuild(mirror, jenkinsInfo, null, null);
   }
 
   public long ensureTeamCityBuild(BuildMirror mirror, JenkinsBuildInfo jenkinsInfo, JenkinsPipelineGraph graph)
+      throws BridgeHttpException, IOException {
+    return ensureTeamCityBuild(mirror, jenkinsInfo, graph, null);
+  }
+
+  public long ensureTeamCityBuild(
+      BuildMirror mirror,
+      JenkinsBuildInfo jenkinsInfo,
+      JenkinsPipelineGraph graph,
+      JenkinsVcsInfo vcsInfo
+  )
       throws BridgeHttpException, IOException {
     if (mirror.getTeamCityBuildId() != null) {
       return mirror.getTeamCityBuildId();
@@ -136,16 +155,31 @@ public class TeamCityBuildMirrorService {
 
 
     Map<String, String> properties = bridgeBuildParameters(mirror, jenkinsInfo);
+    VcsBuildCustomization vcsCustomization = prepareVcsForQueue(mirror, vcsInfo);
 
     long buildId = teamCityBuildQueuer.queueAgentlessBuild(
         mirror.getTeamCityBuildTypeId(),
         properties,
-        mirror.getJenkinsBuildParameters());
+        mirror.getJenkinsBuildParameters(),
+        vcsCustomization);
     mirror.setTeamCityBuildId(buildId);
     mirror.setSyncState(SyncState.TEAMCITY_CREATED);
     mirror.setLastError(null);
     mirrorStore.saveMirror(mirror);
     return buildId;
+  }
+
+  private VcsBuildCustomization prepareVcsForQueue(BuildMirror mirror, JenkinsVcsInfo vcsInfo) {
+    if (teamCityVcsPublisher == null || vcsInfo == null || vcsInfo.isEmpty()) {
+      return null;
+    }
+    try {
+      return teamCityVcsPublisher.prepareVcs(mirror, vcsInfo);
+    } catch (Exception e) {
+      LOG.warn("Failed to prepare VCS revisions before queueing "
+          + mirror.getJenkinsBuildKey(), e);
+      return null;
+    }
   }
 
   Map<String, String> bridgeBuildParameters(BuildMirror mirror, JenkinsBuildInfo jenkinsInfo) {
@@ -367,7 +401,7 @@ public class TeamCityBuildMirrorService {
    * Mirrors Jenkins Pipeline stages as TeamCity build-step blocks, live and idempotently. Stages are
    * processed in {@code describe} order; for each stage we open its block once, append only the
    * console text produced since the last poll, and close it once the stage reaches a terminal status.
-   *
+   * <p>
    * To keep blocks well-formed (non-overlapping) in the linear TeamCity log, we never open the next
    * stage's block until the current one is closed: a stage that is still running (or paused, or not
    * yet started) stops this poll. Parallel stages are therefore serialized in describe order — a
@@ -473,7 +507,7 @@ public class TeamCityBuildMirrorService {
 
     if (artifacts != null) {
       for (final JenkinsArtifact artifact : artifacts.getArtifacts()) {
-        final String relativePath = artifact.getRelativePath();
+        final String relativePath = artifact.relativePath();
         final String teamCityPath = teamCityArtifactPath(relativePath);
         if (teamCityPath == null) {
           skipped++;
@@ -591,6 +625,31 @@ public class TeamCityBuildMirrorService {
     }
   }
 
+  /**
+   * Mirrors the Jenkins build's VCS information into TeamCity after it finishes on the
+   * Jenkins side (since in TeamCity VCS roots must be known before build time,
+   * while in Jenkins they can be added dynamically through checkout steps).
+   */
+  public void syncVcsIfNeeded(BuildMirror mirror, JenkinsVcsInfo vcsInfo, boolean building)
+      throws IOException {
+    if (mirror.isVcsSynced() || building) {
+      return;
+    }
+
+    VcsSyncResult result = new VcsSyncResult();
+    if (vcsInfo != null && !vcsInfo.isEmpty()) {
+      try {
+        result = teamCityVcsPublisher.prepareVcs(mirror, vcsInfo).result();
+      } catch (Exception e) {
+        LOG.warn("VCS mirroring failed for " + mirror.getJenkinsBuildKey(), e);
+        result.addError(describeException(e));
+      }
+    }
+    mirror.setVcsSynced(true);
+    mirror.setVcsSyncErrors(result.getErrors());
+    mirrorStore.saveMirror(mirror);
+  }
+
   public void finishBuildIfNeeded(BuildMirror mirror, long teamCityBuildId, JenkinsBuildInfo jenkinsInfo)
       throws BridgeHttpException, IOException {
     if (mirror.getSyncState() == SyncState.TEAMCITY_FINISHED) {
@@ -684,7 +743,4 @@ public class TeamCityBuildMirrorService {
     return formatter.format(finishTime);
   }
 
-  private String nullToEmpty(String value) {
-    return value == null ? "" : value;
-  }
 }

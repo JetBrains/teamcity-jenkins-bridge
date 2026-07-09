@@ -14,6 +14,8 @@ import java.io.UnsupportedEncodingException;
 import java.net.URLEncoder;
 import java.util.Map;
 
+import static com.jetbrains.teamcity.jenkinsbridge.util.Utilities.nullToEmpty;
+
 public class TeamCityClient {
   private static final String APPLICATION_JSON = "application/json";
   private static final String TEXT_PLAIN = "text/plain";
@@ -143,10 +145,6 @@ public class TeamCityClient {
     property.addProperty("name", name);
     property.addProperty("value", nullToEmpty(value));
     properties.add(property);
-  }
-
-  private String nullToEmpty(String value) {
-    return value == null ? "" : value;
   }
 
   private static String encodeQueryValue(String value) {

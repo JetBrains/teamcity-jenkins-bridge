@@ -10,6 +10,8 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
+import static com.jetbrains.teamcity.jenkinsbridge.util.Utilities.nullToEmpty;
+
 public class JenkinsWfapiNode {
   private final String id;
   private final String name;
@@ -188,7 +190,4 @@ public class JenkinsWfapiNode {
     return first != null && first.trim().length() > 0 ? first : nullToEmpty(second);
   }
 
-  private static String nullToEmpty(String value) {
-    return value == null ? "" : value;
-  }
 }

@@ -3,7 +3,8 @@ package com.jetbrains.teamcity.jenkinsbridge.settings;
 import jetbrains.buildServer.parameters.ValueResolver;
 import jetbrains.buildServer.serverSide.ParametersSupport;
 import jetbrains.buildServer.serverSide.ProjectManager;
-import jetbrains.buildServer.serverSide.SBuildType;
+
+import static com.jetbrains.teamcity.jenkinsbridge.util.Utilities.findBuildType;
 
 public class JenkinsBridgeSettingsProvider {
   private final ProjectManager projectManager;
@@ -21,7 +22,7 @@ public class JenkinsBridgeSettingsProvider {
         "TestTc_JenkinsTcTest"
     );
 
-    ParametersSource buildTypeSettings = ParametersSource.from(findBuildType(teamCityBuildTypeId));
+    ParametersSource buildTypeSettings = ParametersSource.from(findBuildType(teamCityBuildTypeId, projectManager));
     return new JenkinsBridgeSettings(
         readBooleanSetting(buildTypeSettings, rootProjectSettings, "jenkins.bridge.enabled", "JENKINS_BRIDGE_ENABLED", true),
         readStringSetting(buildTypeSettings, rootProjectSettings, "jenkins.bridge.jenkinsUrl", "JENKINS_URL", "http://localhost:8080"),
@@ -37,17 +38,6 @@ public class JenkinsBridgeSettingsProvider {
         readStringSetting(buildTypeSettings, rootProjectSettings, "jenkins.bridge.timeZone", "TIMEZONE", "Europe/Berlin"),
         readStringSetting(buildTypeSettings, rootProjectSettings, "jenkins.bridge.stateFile", "BRIDGE_STATE_FILE", "")
     );
-  }
-
-  private SBuildType findBuildType(String buildTypeId) {
-    if (!JenkinsBridgeSettings.isNotBlank(buildTypeId)) {
-      return null;
-    }
-    SBuildType buildType = projectManager.findBuildTypeByExternalId(buildTypeId);
-    if (buildType != null) {
-      return buildType;
-    }
-    return projectManager.findBuildTypeById(buildTypeId);
   }
 
   private static String readRootProjectSetting(

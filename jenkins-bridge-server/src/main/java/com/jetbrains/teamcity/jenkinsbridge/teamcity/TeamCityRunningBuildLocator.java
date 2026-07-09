@@ -10,7 +10,7 @@ import jetbrains.buildServer.serverSide.SRunningBuild;
 /**
  * Resolves a TeamCity running build / promotion from the id the bridge stores as
  * {@code teamCityBuildId}.
- *
+ * <p>
  * That id can be either a build <b>promotion</b> id (the queue path stores
  * {@code SQueuedBuild.getBuildPromotion().getId()}) or a build id (the REST restore-by-key path
  * stores the REST {@code build(id)}). Promotion id and build id are not contractually the same
@@ -28,13 +28,13 @@ public class TeamCityRunningBuildLocator {
 
   /**
    * @return the running build for {@code id}, or {@code null} if the build exists but is already
-   *         finished / not in a runnable state.
+   * finished / not in a runnable state.
    * @throws IllegalStateException if no build or promotion can be found for {@code id} at all.
    */
   public RunningBuildEx findRunningBuild(long id) {
     SRunningBuild runningBuild = buildsManager.findRunningBuildById(id);
     if (runningBuild instanceof RunningBuildEx) {
-      return (RunningBuildEx)runningBuild;
+      return (RunningBuildEx) runningBuild;
     }
 
     SBuild build = buildsManager.findBuildInstanceById(id);
@@ -43,7 +43,7 @@ public class TeamCityRunningBuildLocator {
         return null;
       }
       if (build instanceof RunningBuildEx) {
-        return (RunningBuildEx)build;
+        return (RunningBuildEx) build;
       }
     }
 
@@ -55,7 +55,7 @@ public class TeamCityRunningBuildLocator {
       return null;
     }
     if (associatedBuild instanceof RunningBuildEx) {
-      return (RunningBuildEx)associatedBuild;
+      return (RunningBuildEx) associatedBuild;
     }
 
     throw new IllegalStateException("TeamCity build " + id + " is not a running build");
