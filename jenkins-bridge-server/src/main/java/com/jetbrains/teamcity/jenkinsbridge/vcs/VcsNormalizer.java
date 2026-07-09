@@ -16,7 +16,7 @@ public class VcsNormalizer {
    * Handles the common git URL shapes: https, ssh, and scp style (git@host:org/repo).
    * <p>
    * Returns null when the URL cannot be parsed into a host and a path.
-   * TODO: Handle SVN, Perforce, Mercurial, and Azure TFS.
+   * TODO: Handle SVN, Perforce, and Mercurial.
    */
   public String normalizeRepoUrl(String url) {
     if (url == null) {
@@ -72,7 +72,7 @@ public class VcsNormalizer {
 
   /**
    * Translates a raw Jenkins branch name into a TeamCity branch.
-   * TODO: Handle SVN, Perforce, Mercurial, and Azure TFS.
+   * TODO: Handle SVN, Perforce, and Mercurial.
    */
   public TeamCityBranch toTeamCityBranch(String rawBranch) {
     if (rawBranch == null) {

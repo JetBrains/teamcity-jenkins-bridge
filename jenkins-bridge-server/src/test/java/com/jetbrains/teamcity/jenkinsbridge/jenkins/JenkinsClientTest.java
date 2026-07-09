@@ -100,7 +100,7 @@ public class JenkinsClientTest {
         vcsInfo.getRepositories().get(1).remoteUrl());
   }
 
-  // TODO: SVN, Mercurial, Perforce, Azure TFS tests
+  // Note: Here is where tests for SVN, Mercurial, and Perforce can be added if they are implemented
 
   @Test
   public void getBuildVcsReturnsEmptyOn404() throws Exception {

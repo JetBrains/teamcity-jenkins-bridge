@@ -1,16 +1,23 @@
 package com.jetbrains.teamcity.jenkinsbridge.vcs;
 
+import com.jetbrains.teamcity.jenkinsbridge.vcs.constants.GenericVcsConstants;
+import com.jetbrains.teamcity.jenkinsbridge.vcs.constants.GitConstants;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * Maps a version control system between its Jenkins representation and its TeamCity representation.
+ * <p>
+ * Note: Only the Git Jenkins plugin exposes all the necessary information to create a VCS root. Mercurial does not give the repository URL,
+ * while Subversion only gives the action class and Perforce gives nothing. The TFS enum variant was removed because the Jenkins plugin for TFVC
+ * is deprecated and has security vulnerabilities.
  */
 public enum VcsProvider {
-  GIT("jetbrains.git", "hudson.plugins.git.util.BuildData", GitConstants.URL_PROP) {
+  GIT("jetbrains.git", "hudson.plugins.git.util.BuildData", GitConstants.URL_PROP, true) {
     @Override
     @NotNull
     public Map<String, String> buildRootParameters(String repoUrl, String branchRef) {
@@ -19,33 +26,31 @@ public enum VcsProvider {
       if (branchRef != null && !branchRef.isEmpty()) {
         params.put(GitConstants.BRANCH_PROP, branchRef);
       }
-      params.put(GitConstants.BRANCH_SPEC_PROP, GitConstants.BRANCH_SPEC_ALL_HEADS);
-      params.put(GitConstants.AUTH_METHOD_PROP, GitConstants.AUTH_METHOD_ANONYMOUS);
+      params.put(GenericVcsConstants.BRANCH_SPEC_PROP, GitConstants.BRANCH_SPEC_ALL_HEADS);
+      params.put(GenericVcsConstants.AUTH_METHOD_PROP, GenericVcsConstants.AUTH_METHOD_ANONYMOUS);
       return params;
     }
   },
-  SUBVERSION("svn", null, null),
-  MERCURIAL("mercurial", null, null),
-  PERFORCE("perforce", null, null),
-  TFS("tfs", null, null);
+  SUBVERSION("svn", "hudson.scm.SubversionTagAction", null, false),
+  MERCURIAL("mercurial", "hudson.plugins.mercurial.MercurialTagAction", null, false),
+  PERFORCE("perforce", null, null, false); // The plugin does not expose the action class in the API
 
   private final String teamCityVcsName;
-  private final String jenkinsActionClass; // The "_class" field value in the Jenkins API JSON which determines the VCS type
+  private final String jenkinsActionClass; // The "_class" field value in the Jenkins API JSON that determines the VCS type
   private final String urlPropertyKey;
+  private final boolean isSupported;
 
-  VcsProvider(String teamCityVcsName, String jenkinsActionClass, String urlPropertyKey) {
+  VcsProvider(String teamCityVcsName, String jenkinsActionClass, String urlPropertyKey, boolean isSupported) {
     this.teamCityVcsName = teamCityVcsName;
     this.jenkinsActionClass = jenkinsActionClass;
     this.urlPropertyKey = urlPropertyKey;
+    this.isSupported = isSupported;
   }
 
   @Nullable
   public static VcsProvider fromJenkinsClass(String jenkinsActionClass) {
-    if (jenkinsActionClass == null || jenkinsActionClass.isEmpty()) {
-      return null;
-    }
     for (VcsProvider provider : values()) {
-      if (jenkinsActionClass.equals(provider.jenkinsActionClass)) {
+      if (Objects.equals(jenkinsActionClass, provider.jenkinsActionClass) && provider.isSupported()) {
         return provider;
       }
     }
@@ -64,22 +69,15 @@ public enum VcsProvider {
     return urlPropertyKey;
   }
 
+  public boolean isSupported() {
+    return isSupported;
+  }
+
   /**
    * Builds the TeamCity VCS root property map for a repository. Implemented per provider.
    */
   public Map<String, String> buildRootParameters(String repoUrl, String branchRef) {
-    throw new UnsupportedOperationException("VCS provider " + name() + " is not implemented yet");
+    throw new UnsupportedOperationException("VCS provider " + name() + " is not implemented.");
   }
 
-  public static final class GitConstants {
-    public static final String URL_PROP = "url";
-    public static final String BRANCH_PROP = "branch";
-    public static final String BRANCH_SPEC_PROP = "teamcity:branchSpec";
-    public static final String BRANCH_SPEC_ALL_HEADS = "+:refs/heads/*";
-    public static final String AUTH_METHOD_PROP = "authMethod";
-    public static final String AUTH_METHOD_ANONYMOUS = "ANONYMOUS";
-
-    private GitConstants() {
-    }
-  }
 }

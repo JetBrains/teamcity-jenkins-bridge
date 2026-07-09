@@ -11,6 +11,8 @@ import com.jetbrains.teamcity.jenkinsbridge.http.BridgeHttpResponse;
 import com.jetbrains.teamcity.jenkinsbridge.model.*;
 import com.jetbrains.teamcity.jenkinsbridge.settings.JenkinsBridgeSettings;
 import com.jetbrains.teamcity.jenkinsbridge.settings.JenkinsBridgeSettingsProvider;
+import com.jetbrains.teamcity.jenkinsbridge.vcs.constants.GitConstants;
+import com.jetbrains.teamcity.jenkinsbridge.vcs.constants.MercurialConstants;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.UnsupportedEncodingException;
@@ -153,7 +155,11 @@ public class JenkinsClient {
   @NotNull
   public JenkinsVcsInfo getBuildVcs(String jobName, int buildNumber) throws BridgeHttpException {
     JenkinsBridgeSettings settings = settingsProvider.load();
-    String tree = "actions[_class,lastBuiltRevision[SHA1,branch[name]],remoteUrls]";
+    String tree = "actions[_class,"
+        + GitConstants.API_FIELDS
+//      + ','
+//      + MercurialConstants.API_FIELDS
+        + ']';
     String url = settings.getJenkinsUrl()
         + jenkinsJobPath(jobName)
         + "/"
