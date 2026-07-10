@@ -6,6 +6,7 @@ import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsPipelineGraph;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -40,6 +41,8 @@ public class BuildMirror {
   private boolean testsSynced;
   private boolean artifactsSynced;
   private String artifactSyncError;
+  private boolean vcsSynced;
+  private List<String> vcsSyncErrors;
   private boolean jenkinsBuildParametersLoaded;
   private Map<String, String> jenkinsBuildParameters;
   private String jenkinsResult;
@@ -68,6 +71,7 @@ public class BuildMirror {
     mirror.summaryLogSent = false;
     mirror.testsSynced = false;
     mirror.artifactsSynced = false;
+    mirror.vcsSynced = false;
     mirror.jenkinsBuildParametersLoaded = false;
     mirror.createdAt = now;
     mirror.updatedAt = now;
@@ -207,6 +211,22 @@ public class BuildMirror {
 
   public void setArtifactSyncError(String artifactSyncError) {
     this.artifactSyncError = artifactSyncError;
+  }
+
+  public boolean isVcsSynced() {
+    return vcsSynced;
+  }
+
+  public void setVcsSynced(boolean vcsSynced) {
+    this.vcsSynced = vcsSynced;
+  }
+
+  public List<String> getVcsSyncErrors() {
+    return vcsSyncErrors;
+  }
+
+  public void setVcsSyncErrors(List<String> vcsSyncErrors) {
+    this.vcsSyncErrors = vcsSyncErrors;
   }
 
   public boolean isJenkinsBuildParametersLoaded() {

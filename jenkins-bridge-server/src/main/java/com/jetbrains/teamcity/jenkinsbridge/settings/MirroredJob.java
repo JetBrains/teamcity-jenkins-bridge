@@ -1,5 +1,7 @@
 package com.jetbrains.teamcity.jenkinsbridge.settings;
 
+import static com.jetbrains.teamcity.jenkinsbridge.util.Utilities.nullToEmpty;
+
 /**
  * One Jenkins job mirrored into a TeamCity build configuration. One {@code MirroredJob} corresponds
  * to many {@code BuildMirror}s (one per Jenkins build).
@@ -24,9 +26,9 @@ public final class MirroredJob {
       int recentBuildLimitOverride,
       boolean legacy
   ) {
-    this.jenkinsJob = JenkinsBridgeSettings.nullToEmpty(jenkinsJob).trim();
-    this.teamCityBuildTypeExternalId = JenkinsBridgeSettings.nullToEmpty(teamCityBuildTypeExternalId).trim();
-    this.teamCityBuildTypeName = JenkinsBridgeSettings.nullToEmpty(teamCityBuildTypeName).trim();
+    this.jenkinsJob = nullToEmpty(jenkinsJob).trim();
+    this.teamCityBuildTypeExternalId = nullToEmpty(teamCityBuildTypeExternalId).trim();
+    this.teamCityBuildTypeName = nullToEmpty(teamCityBuildTypeName).trim();
     this.recentBuildLimitOverride = Math.max(0, recentBuildLimitOverride);
     this.legacy = legacy;
   }

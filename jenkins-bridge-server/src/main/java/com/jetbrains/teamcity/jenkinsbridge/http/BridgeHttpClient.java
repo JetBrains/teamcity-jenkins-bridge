@@ -13,6 +13,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import static com.jetbrains.teamcity.jenkinsbridge.util.Utilities.nullToEmpty;
+
 public class BridgeHttpClient {
   public interface StreamHandler {
     void handle(InputStream inputStream) throws IOException;
@@ -226,7 +228,4 @@ public class BridgeHttpClient {
     return value != null && value.trim().length() > 0;
   }
 
-  private String nullToEmpty(String value) {
-    return value == null ? "" : value;
-  }
 }

@@ -5,6 +5,8 @@ import java.nio.file.Paths;
 import java.time.DateTimeException;
 import java.time.ZoneId;
 
+import static com.jetbrains.teamcity.jenkinsbridge.util.Utilities.nullToEmpty;
+
 public class JenkinsBridgeSettings {
   private final boolean enabled;
   private final String jenkinsUrl;
@@ -221,10 +223,6 @@ public class JenkinsBridgeSettings {
       result = result.substring(0, result.length() - 1);
     }
     return result;
-  }
-
-  static String nullToEmpty(String value) {
-    return value == null ? "" : value;
   }
 
   private static String redact(String value) {

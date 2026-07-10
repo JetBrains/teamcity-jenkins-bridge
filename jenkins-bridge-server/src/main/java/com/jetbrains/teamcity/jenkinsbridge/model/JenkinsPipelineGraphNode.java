@@ -4,6 +4,8 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+import static com.jetbrains.teamcity.jenkinsbridge.util.Utilities.nullToEmpty;
+
 public class JenkinsPipelineGraphNode {
   private String id;
   private String flowId;
@@ -84,7 +86,4 @@ public class JenkinsPipelineGraphNode {
     return new ArrayList<String>(values);
   }
 
-  private static String nullToEmpty(String value) {
-    return value == null ? "" : value;
-  }
 }

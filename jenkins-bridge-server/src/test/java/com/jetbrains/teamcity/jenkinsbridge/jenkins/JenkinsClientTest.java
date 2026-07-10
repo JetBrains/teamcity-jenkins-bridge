@@ -15,6 +15,7 @@ import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsStageLog;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsStageNodes;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsStages;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsTestReport;
+import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsVcsInfo;
 import com.jetbrains.teamcity.jenkinsbridge.settings.JenkinsBridgeSettings;
 import com.jetbrains.teamcity.jenkinsbridge.settings.JenkinsBridgeSettingsProvider;
 import org.junit.Test;
@@ -56,8 +57,8 @@ public class JenkinsClientTest {
     assertEquals("http://jenkins/job/folder/job/job/7/api/json?tree=artifacts%5BfileName%2CrelativePath%5D",
         httpClient.url);
     assertEquals(2, artifacts.size());
-    assertEquals("app.jar", artifacts.getArtifacts().get(0).getFileName());
-    assertEquals("reports/unit/report.txt", artifacts.getArtifacts().get(1).getRelativePath());
+    assertEquals("app.jar", artifacts.getArtifacts().get(0).fileName());
+    assertEquals("reports/unit/report.txt", artifacts.getArtifacts().get(1).relativePath());
   }
 
   @Test
@@ -67,6 +68,46 @@ public class JenkinsClientTest {
     JenkinsClient client = new JenkinsClient(new StaticSettingsProvider(), httpClient);
 
     assertTrue(client.getArtifacts("job", 3).isEmpty());
+  }
+
+  @Test
+  public void getBuildVcsParsesGitRepositories() throws Exception {
+    StubResponseHttpClient httpClient = new StubResponseHttpClient();
+    httpClient.body = "{\"actions\":[{},"
+        + "{\"_class\":\"hudson.plugins.git.util.BuildData\","
+        + "\"lastBuiltRevision\":{\"SHA1\":\"8f2fd2f092c3b923e1c7b42c0d6b87aea49d2771\","
+        + "\"branch\":[{\"name\":\"refs/remotes/origin/main\"}]},"
+        + "\"remoteUrls\":[\"git@github.com:org/repo.git\"]},"
+        + "{\"_class\":\"hudson.tasks.junit.TestResultAction\"},"
+        + "{\"_class\":\"hudson.plugins.git.util.BuildData\","
+        + "\"lastBuiltRevision\":{\"SHA1\":\"15651bb594728915e9c6a0786e969bd532478640\","
+        + "\"branch\":[{\"name\":\"refs/remotes/origin/master\"}]},"
+        + "\"remoteUrls\":[\"https://github.com/org/other-repo.git\"]}"
+        + "]}";
+    JenkinsClient client = new JenkinsClient(new StaticSettingsProvider(), httpClient);
+
+    JenkinsVcsInfo vcsInfo = client.getBuildVcs("folder/job", 7);
+
+    assertEquals("http://jenkins/job/folder/job/job/7/api/json?tree="
+            + "actions%5B_class%2ClastBuiltRevision%5BSHA1%2Cbranch%5Bname%5D%5D%2CremoteUrls%5D",
+        httpClient.url);
+    assertEquals(2, vcsInfo.repositories().size());
+    assertEquals("8f2fd2f092c3b923e1c7b42c0d6b87aea49d2771", vcsInfo.repositories().get(0).sha1());
+    assertEquals("refs/remotes/origin/main", vcsInfo.repositories().get(0).rawBranchName());
+    assertEquals("git@github.com:org/repo.git",
+        vcsInfo.repositories().get(0).remoteUrl());
+    assertEquals("https://github.com/org/other-repo.git",
+        vcsInfo.repositories().get(1).remoteUrl());
+  }
+
+  // Note: Here is where tests for SVN, Mercurial, and Perforce can be added if they are implemented
+
+  @Test
+  public void getBuildVcsReturnsEmptyOn404() throws Exception {
+    NotFoundHttpClient httpClient = new NotFoundHttpClient();
+    JenkinsClient client = new JenkinsClient(new StaticSettingsProvider(), httpClient);
+
+    assertTrue(client.getBuildVcs("job", 5).repositories().isEmpty());
   }
 
   @Test

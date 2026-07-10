@@ -1,5 +1,7 @@
 package com.jetbrains.teamcity.jenkinsbridge.persistence;
 
+import static com.jetbrains.teamcity.jenkinsbridge.util.Utilities.nullToEmpty;
+
 public class PipelineChainNodeMirror {
   private String nodeId;
   private String flowId;
@@ -60,7 +62,4 @@ public class PipelineChainNodeMirror {
     this.finished = finished;
   }
 
-  private static String nullToEmpty(String value) {
-    return value == null ? "" : value;
-  }
 }

@@ -13,6 +13,8 @@ import java.util.Map;
 import java.util.Queue;
 import java.util.Set;
 
+import static com.jetbrains.teamcity.jenkinsbridge.util.Utilities.nullToEmpty;
+
 public class JenkinsPipelineGraph {
   public static final String SOURCE_WFAPI = "WFAPI";
   public static final String SOURCE_BLUE_OCEAN = "BLUE_OCEAN";
@@ -337,10 +339,6 @@ public class JenkinsPipelineGraph {
       return new ArrayList<String>();
     }
     return new ArrayList<String>(values);
-  }
-
-  private static String nullToEmpty(String value) {
-    return value == null ? "" : value;
   }
 
   private static class AncestorResult {

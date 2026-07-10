@@ -36,6 +36,9 @@
   <bean id="teamCityArtifactPublisher"
         class="com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityArtifactPublisher"/>
 
+  <bean id="teamCityVcsPublisher"
+        class="com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityVcsPublisher"/>
+
   <bean id="teamCityBuildFinisher"
         class="com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityBuildFinisher"/>
 
@@ -104,4 +107,5 @@
 
   <bean id="jenkinsStorageAutomaticActivator"
         class="com.jetbrains.teamcity.jenkinsbridge.artifactstorage.JenkinsStorageAutomaticActivator"/>
+
 </beans>

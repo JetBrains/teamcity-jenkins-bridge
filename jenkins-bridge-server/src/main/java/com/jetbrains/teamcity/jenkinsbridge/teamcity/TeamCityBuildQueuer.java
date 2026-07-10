@@ -1,6 +1,8 @@
 package com.jetbrains.teamcity.jenkinsbridge.teamcity;
 
+import com.jetbrains.teamcity.jenkinsbridge.vcs.VcsBuildCustomization;
 import jetbrains.buildServer.serverSide.BuildCustomizer;
+import jetbrains.buildServer.serverSide.BuildCustomizerEx;
 import jetbrains.buildServer.serverSide.BuildCustomizerFactory;
 import jetbrains.buildServer.serverSide.BuildPromotion;
 import jetbrains.buildServer.serverSide.ProjectManager;
@@ -10,6 +12,8 @@ import jetbrains.buildServer.serverSide.SQueuedBuild;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
+
+import static com.jetbrains.teamcity.jenkinsbridge.util.Utilities.findBuildType;
 
 public class TeamCityBuildQueuer {
   private static final String TRIGGERED_BY = "Jenkins Bridge";
@@ -31,7 +35,16 @@ public class TeamCityBuildQueuer {
       Map<String, String> properties,
       Map<String, String> jenkinsBuildParameters
   ) {
-    SBuildType buildType = findBuildType(buildTypeId);
+    return queueAgentlessBuild(buildTypeId, properties, jenkinsBuildParameters, null);
+  }
+
+  public long queueAgentlessBuild(
+      String buildTypeId,
+      Map<String, String> properties,
+      Map<String, String> jenkinsBuildParameters,
+      VcsBuildCustomization vcsCustomization
+  ) {
+    SBuildType buildType = findBuildType(buildTypeId, projectManager);
     if (buildType == null) {
       throw new IllegalStateException("TeamCity build type " + buildTypeId + " was not found");
     }
@@ -46,6 +59,7 @@ public class TeamCityBuildQueuer {
 
     BuildCustomizer customizer = buildCustomizerFactory.createBuildCustomizer(buildType, null);
     customizer.setParameters(parameters);
+    applyVcsCustomization(customizer, vcsCustomization);
 
     BuildPromotion promotion = customizer.createPromotion();
     SQueuedBuild queuedBuild = promotion.addToQueue(TRIGGERED_BY);
@@ -56,15 +70,17 @@ public class TeamCityBuildQueuer {
     return queuedBuild.getBuildPromotion().getId();
   }
 
-  private SBuildType findBuildType(String buildTypeId) {
-    if (buildTypeId == null || buildTypeId.trim().length() == 0) {
-      return null;
+  private void applyVcsCustomization(BuildCustomizer customizer, VcsBuildCustomization vcsCustomization) {
+    if (vcsCustomization == null || !vcsCustomization.hasRevisions()) {
+      return;
+    }
+    if (!(customizer instanceof BuildCustomizerEx customizerEx)) {
+      throw new IllegalStateException("TeamCity BuildCustomizer does not support the VCS revision customization");
     }
 
-    SBuildType buildType = projectManager.findBuildTypeByExternalId(buildTypeId);
-    if (buildType != null) {
-      return buildType;
+    if (vcsCustomization.desiredBranchName() != null) {
+      customizerEx.setDesiredBranchName(vcsCustomization.desiredBranchName(), false);
     }
-    return projectManager.findBuildTypeById(buildTypeId);
+    customizerEx.setProvidedUpperLimitRevisions(vcsCustomization.upperLimitRevisions());
   }
 }
