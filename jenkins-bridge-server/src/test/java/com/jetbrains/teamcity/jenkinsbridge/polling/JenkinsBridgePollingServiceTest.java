@@ -272,7 +272,7 @@ public class JenkinsBridgePollingServiceTest {
     Map<String, String> lastJenkinsParameters;
 
     CapturingMirrorService() {
-      super(null, null, null, null, null, null, null, null, null, null, null, null);
+      super(null, null, null, null, null, null, null, null, null, null, null, null, null);
     }
 
     @Override
@@ -314,6 +314,11 @@ public class JenkinsBridgePollingServiceTest {
 
     @Override
     public void finishBuildIfNeeded(BuildMirror mirror, long teamCityBuildId, JenkinsBuildInfo jenkinsInfo) {
+      // no-op
+    }
+
+    @Override
+    public void syncBuildNumber(BuildMirror mirror) {
       // no-op
     }
   }

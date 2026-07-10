@@ -58,6 +58,7 @@ public class TeamCityBuildMirrorService {
   private final TeamCityStageReporter teamCityStageReporter;
   private final TeamCityArtifactPublisher teamCityArtifactPublisher;
   private final TeamCityVcsPublisher teamCityVcsPublisher;
+  private final TeamCityBuildNumberPublisher teamCityBuildNumberPublisher;
   private final TeamCityBuildFinisher teamCityBuildFinisher;
   private final TeamCityPipelineChainService teamCityPipelineChainService;
   private final BuildMirrorStore mirrorStore;
@@ -72,6 +73,7 @@ public class TeamCityBuildMirrorService {
       TeamCityStageReporter teamCityStageReporter,
       TeamCityArtifactPublisher teamCityArtifactPublisher,
       TeamCityVcsPublisher teamCityVcsPublisher,
+      TeamCityBuildNumberPublisher teamCityBuildNumberPublisher,
       TeamCityBuildFinisher teamCityBuildFinisher,
       TeamCityPipelineChainService teamCityPipelineChainService,
       BuildMirrorStore mirrorStore
@@ -85,6 +87,7 @@ public class TeamCityBuildMirrorService {
     this.teamCityStageReporter = teamCityStageReporter;
     this.teamCityArtifactPublisher = teamCityArtifactPublisher;
     this.teamCityVcsPublisher = teamCityVcsPublisher;
+    this.teamCityBuildNumberPublisher = teamCityBuildNumberPublisher;
     this.teamCityBuildFinisher = teamCityBuildFinisher;
     this.teamCityPipelineChainService = teamCityPipelineChainService;
     this.mirrorStore = mirrorStore;
@@ -638,6 +641,16 @@ public class TeamCityBuildMirrorService {
     mirror.setVcsSynced(true);
     mirror.setVcsSyncErrors(result.getErrors());
     mirrorStore.saveMirror(mirror);
+  }
+
+  public void syncBuildNumber(BuildMirror mirror) {
+    boolean isPublished = teamCityBuildNumberPublisher.publishBuildNumber(
+        mirror.getTeamCityBuildId(),
+        mirror.getJenkinsBuildNumber()
+    );
+    if (!isPublished) {
+      LOG.warn("Could not synchronize the build number for " + mirror.getJenkinsBuildKey());
+    }
   }
 
   public void finishBuildIfNeeded(BuildMirror mirror, long teamCityBuildId, JenkinsBuildInfo jenkinsInfo)
