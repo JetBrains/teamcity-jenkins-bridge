@@ -12,7 +12,6 @@ import com.jetbrains.teamcity.jenkinsbridge.model.*;
 import com.jetbrains.teamcity.jenkinsbridge.settings.JenkinsBridgeSettings;
 import com.jetbrains.teamcity.jenkinsbridge.settings.JenkinsBridgeSettingsProvider;
 import com.jetbrains.teamcity.jenkinsbridge.vcs.constants.GitConstants;
-import com.jetbrains.teamcity.jenkinsbridge.vcs.constants.MercurialConstants;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.UnsupportedEncodingException;

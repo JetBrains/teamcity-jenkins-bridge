@@ -91,13 +91,13 @@ public class JenkinsClientTest {
     assertEquals("http://jenkins/job/folder/job/job/7/api/json?tree="
             + "actions%5B_class%2ClastBuiltRevision%5BSHA1%2Cbranch%5Bname%5D%5D%2CremoteUrls%5D",
         httpClient.url);
-    assertEquals(2, vcsInfo.size());
-    assertEquals("8f2fd2f092c3b923e1c7b42c0d6b87aea49d2771", vcsInfo.getRepositories().get(0).sha1());
-    assertEquals("refs/remotes/origin/main", vcsInfo.getRepositories().get(0).rawBranchName());
+    assertEquals(2, vcsInfo.repositories().size());
+    assertEquals("8f2fd2f092c3b923e1c7b42c0d6b87aea49d2771", vcsInfo.repositories().get(0).sha1());
+    assertEquals("refs/remotes/origin/main", vcsInfo.repositories().get(0).rawBranchName());
     assertEquals("git@github.com:org/repo.git",
-        vcsInfo.getRepositories().get(0).remoteUrl());
+        vcsInfo.repositories().get(0).remoteUrl());
     assertEquals("https://github.com/org/other-repo.git",
-        vcsInfo.getRepositories().get(1).remoteUrl());
+        vcsInfo.repositories().get(1).remoteUrl());
   }
 
   // Note: Here is where tests for SVN, Mercurial, and Perforce can be added if they are implemented
@@ -107,7 +107,7 @@ public class JenkinsClientTest {
     NotFoundHttpClient httpClient = new NotFoundHttpClient();
     JenkinsClient client = new JenkinsClient(new StaticSettingsProvider(), httpClient);
 
-    assertTrue(client.getBuildVcs("job", 5).isEmpty());
+    assertTrue(client.getBuildVcs("job", 5).repositories().isEmpty());
   }
 
   @Test

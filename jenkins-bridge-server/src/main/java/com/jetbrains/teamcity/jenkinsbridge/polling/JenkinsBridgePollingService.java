@@ -19,6 +19,7 @@ import com.jetbrains.teamcity.jenkinsbridge.settings.MirroredJob;
 import com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityBuildMirrorService;
 
 import com.intellij.openapi.diagnostic.Logger;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -321,7 +322,7 @@ public class JenkinsBridgePollingService {
     JenkinsVcsInfo vcsInfo = null;
     if (!mirror.isVcsSynced() || mirror.getTeamCityBuildId() == null) {
       vcsInfo = jenkinsClient.getBuildVcs(mirror.getJenkinsJob(), mirror.getJenkinsBuildNumber());
-      LOG.debug("Read " + vcsInfo.size() + " Jenkins VCS repository(ies) for " + mirror.getJenkinsBuildKey());
+      LOG.debug("Read " + vcsInfo.repositories().size() + " Jenkins VCS repository(ies) for " + mirror.getJenkinsBuildKey());
       if (!mirror.isVcsSynced()) {
         mirrorService.syncVcsIfNeeded(mirror, vcsInfo, buildInfo.isBuilding());
       }

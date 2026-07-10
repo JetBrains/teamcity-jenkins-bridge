@@ -13,7 +13,6 @@ import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsVcsInfo;
 import com.jetbrains.teamcity.jenkinsbridge.persistence.BuildMirror;
 import com.jetbrains.teamcity.jenkinsbridge.persistence.BuildMirrorStore;
 import com.jetbrains.teamcity.jenkinsbridge.vcs.VcsBuildCustomization;
-import com.jetbrains.teamcity.jenkinsbridge.vcs.VcsNormalizer;
 import com.jetbrains.teamcity.jenkinsbridge.vcs.VcsSyncResult;
 import jetbrains.buildServer.messages.BuildMessage1;
 import jetbrains.buildServer.messages.DefaultMessagesInfo;
@@ -508,7 +507,7 @@ public class TeamCityBuildMirrorServiceTest {
     VcsBuildCustomization customization;
 
     CapturingVcsPublisher() {
-      super(null, new VcsNormalizer());
+      super(null);
     }
 
     @Override

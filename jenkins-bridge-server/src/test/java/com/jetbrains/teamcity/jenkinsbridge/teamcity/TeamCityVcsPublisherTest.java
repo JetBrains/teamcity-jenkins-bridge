@@ -4,7 +4,6 @@ import com.google.gson.JsonParser;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsVcsInfo;
 import com.jetbrains.teamcity.jenkinsbridge.persistence.BuildMirror;
 import com.jetbrains.teamcity.jenkinsbridge.vcs.VcsBuildCustomization;
-import com.jetbrains.teamcity.jenkinsbridge.vcs.VcsNormalizer;
 import com.jetbrains.teamcity.jenkinsbridge.vcs.VcsSyncResult;
 import jetbrains.buildServer.serverSide.ProjectManager;
 import jetbrains.buildServer.serverSide.SBuildType;
@@ -38,7 +37,7 @@ public class TeamCityVcsPublisherTest {
   private final SProject project = mock(SProject.class);
   private final SBuildType buildType = mock(SBuildType.class);
 
-  private final TeamCityVcsPublisher publisher = new TeamCityVcsPublisher(projectManager, new VcsNormalizer());
+  private final TeamCityVcsPublisher publisher = new TeamCityVcsPublisher(projectManager);
 
   @Before
   public void setUp() {

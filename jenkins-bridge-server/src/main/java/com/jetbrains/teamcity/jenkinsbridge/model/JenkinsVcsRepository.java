@@ -7,8 +7,7 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.Optional;
 
-import static com.jetbrains.teamcity.jenkinsbridge.util.Utilities.nullToEmpty;
-import static com.jetbrains.teamcity.jenkinsbridge.util.Utilities.stringValue;
+import static com.jetbrains.teamcity.jenkinsbridge.util.Utilities.*;
 
 public record JenkinsVcsRepository(String vcsClass, String remoteUrl, String sha1, String rawBranchName) {
   public JenkinsVcsRepository {
@@ -72,4 +71,9 @@ public record JenkinsVcsRepository(String vcsClass, String remoteUrl, String sha
     return Optional.empty();
   }
 
+  @NotNull
+  public String identityKey() {
+    String normalized = normalizeRepositoryUrl(remoteUrl);
+    return normalized == null ? remoteUrl : normalized;
+  }
 }

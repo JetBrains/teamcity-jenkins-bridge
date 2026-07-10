@@ -1,14 +1,10 @@
 package com.jetbrains.teamcity.jenkinsbridge.teamcity;
 
-import static com.jetbrains.teamcity.jenkinsbridge.util.Utilities.describeException;
-import static com.jetbrains.teamcity.jenkinsbridge.util.Utilities.findBuildType;
-
 import com.intellij.openapi.diagnostic.Logger;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsVcsInfo;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsVcsRepository;
 import com.jetbrains.teamcity.jenkinsbridge.persistence.BuildMirror;
 import com.jetbrains.teamcity.jenkinsbridge.vcs.VcsBuildCustomization;
-import com.jetbrains.teamcity.jenkinsbridge.vcs.VcsNormalizer;
 import com.jetbrains.teamcity.jenkinsbridge.vcs.VcsProvider;
 import com.jetbrains.teamcity.jenkinsbridge.vcs.VcsSyncResult;
 import jetbrains.buildServer.serverSide.ProjectManager;
@@ -27,6 +23,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+import static com.jetbrains.teamcity.jenkinsbridge.util.Utilities.*;
+
 /**
  * Mirrors a Jenkins build's VCS information into TeamCity.
  * <p>
@@ -37,11 +35,9 @@ public class TeamCityVcsPublisher {
     private static final Logger LOG = Logger.getInstance(TeamCityVcsPublisher.class.getName());
 
     private final ProjectManager myProjectManager;
-    private final VcsNormalizer myVcsNormalizer;
 
-    public TeamCityVcsPublisher(ProjectManager projectManager, VcsNormalizer vcsNormalizer) {
+    public TeamCityVcsPublisher(ProjectManager projectManager) {
         myProjectManager = projectManager;
-        myVcsNormalizer = vcsNormalizer;
     }
 
     public VcsSyncResult publishVcs(BuildMirror mirror, JenkinsVcsInfo vcsInfo) {
@@ -50,7 +46,7 @@ public class TeamCityVcsPublisher {
 
     public VcsBuildCustomization prepareVcs(BuildMirror mirror, JenkinsVcsInfo vcsInfo) {
         VcsSyncResult result = new VcsSyncResult();
-        if (vcsInfo == null || vcsInfo.isEmpty()) {
+        if (vcsInfo == null || vcsInfo.repositories().isEmpty()) {
             return new VcsBuildCustomization(result, null, null);
         }
 
@@ -78,18 +74,18 @@ public class TeamCityVcsPublisher {
         List<AttachedRepository> attached = new ArrayList<>();
         boolean buildTypeChanged = false;
 
-        for (JenkinsVcsRepository repo : vcsInfo.getRepositories()) {
+        for (JenkinsVcsRepository repo : vcsInfo.repositories()) {
             VcsProvider provider = VcsProvider.fromJenkinsClass(repo.vcsClass());
             if (provider == null) {
                 // Unimplemented VCS type
                 continue;
             }
-            String normalized = myVcsNormalizer.normalizeRepoUrl(repo.remoteUrl());
+            String normalized = normalizeRepositoryUrl(repo.remoteUrl());
             if (normalized == null) {
                 result.addError("Could not parse repository URL: " + repo.remoteUrl());
                 continue;
             }
-            TeamCityBranch branch = myVcsNormalizer.toTeamCityBranch(repo.rawBranchName());
+            TeamCityBranch branch = TeamCityBranch.fromJenkinsGit(repo.rawBranchName());
 
             try {
                 SVcsRoot root = findOrCreateRoot(project, provider, repo, normalized, branch);
@@ -153,7 +149,7 @@ public class TeamCityVcsPublisher {
             if (urlProperty == null) {
                 continue;
             }
-            if (normalized.equals(myVcsNormalizer.normalizeRepoUrl(urlProperty))) {
+            if (normalized.equals(normalizeRepositoryUrl(urlProperty))) {
                 return Optional.of(root);
             }
         }

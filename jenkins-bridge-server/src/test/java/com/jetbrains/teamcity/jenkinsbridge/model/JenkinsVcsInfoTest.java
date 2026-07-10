@@ -18,12 +18,12 @@ public class JenkinsVcsInfoTest {
         + "\"remoteUrls\":[\"https://github.com/org/second.git\"]}"
         + "]}");
 
-    assertEquals(2, info.size());
-    assertEquals("aaa", info.getRepositories().getFirst().sha1());
-    assertEquals("git@github.com:org/first.git", info.getRepositories().get(0).remoteUrl());
-    assertEquals("refs/remotes/origin/main", info.getRepositories().get(0).rawBranchName());
-    assertEquals("bbb", info.getRepositories().get(1).sha1());
-    assertEquals("https://github.com/org/second.git", info.getRepositories().get(1).remoteUrl());
+    assertEquals(2, info.repositories().size());
+    assertEquals("aaa", info.repositories().getFirst().sha1());
+    assertEquals("git@github.com:org/first.git", info.repositories().get(0).remoteUrl());
+    assertEquals("refs/remotes/origin/main", info.repositories().get(0).rawBranchName());
+    assertEquals("bbb", info.repositories().get(1).sha1());
+    assertEquals("https://github.com/org/second.git", info.repositories().get(1).remoteUrl());
   }
 
   @Test
@@ -33,7 +33,7 @@ public class JenkinsVcsInfoTest {
         + "{\"_class\":\"hudson.tasks.junit.TestResultAction\"}"
         + "]}");
 
-    assertTrue(info.isEmpty());
+    assertTrue(info.repositories().isEmpty());
   }
 
   @Test
@@ -47,7 +47,7 @@ public class JenkinsVcsInfoTest {
         + "\"remoteUrls\":[]}"
         + "]}");
 
-    assertTrue(info.isEmpty());
+    assertTrue(info.repositories().isEmpty());
   }
 
   @Test
@@ -61,14 +61,14 @@ public class JenkinsVcsInfoTest {
         + "\"remoteUrls\":[\"https://github.com/org/repo.git\"]}"
         + "]}");
 
-    assertEquals(1, info.size());
+    assertEquals(1, info.repositories().size());
   }
 
   @Test
   public void returnsEmptyWhenActionsMissing() {
-    assertTrue(parse("{}").isEmpty());
-    assertTrue(parse("{\"actions\":[]}").isEmpty());
-    assertTrue(JenkinsVcsInfo.empty().isEmpty());
+    assertTrue(parse("{}").repositories().isEmpty());
+    assertTrue(parse("{\"actions\":[]}").repositories().isEmpty());
+    assertTrue(JenkinsVcsInfo.empty().repositories().isEmpty());
   }
 
   private JenkinsVcsInfo parse(String json) {

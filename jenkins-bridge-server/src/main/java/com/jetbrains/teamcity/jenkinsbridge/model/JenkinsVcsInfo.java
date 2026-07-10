@@ -3,23 +3,16 @@ package com.jetbrains.teamcity.jenkinsbridge.model;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import com.jetbrains.teamcity.jenkinsbridge.vcs.VcsNormalizer;
 import com.jetbrains.teamcity.jenkinsbridge.vcs.VcsProvider;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 
 import static com.jetbrains.teamcity.jenkinsbridge.util.Utilities.stringValue;
 
-public class JenkinsVcsInfo {
-  private static final VcsNormalizer NORMALIZER = new VcsNormalizer(); // TODO: Replace with dependency injection
-  private final List<JenkinsVcsRepository> myRepositories;
+public record JenkinsVcsInfo(List<JenkinsVcsRepository> repositories) {
 
-  private JenkinsVcsInfo(List<JenkinsVcsRepository> repositories) {
-    myRepositories = repositories;
+  public JenkinsVcsInfo {
+    repositories = List.copyOf(repositories);
   }
 
   public static JenkinsVcsInfo empty() {
@@ -51,7 +44,7 @@ public class JenkinsVcsInfo {
       if (repository == null) {
         continue;
       }
-      if (seen.add(identityKey(repository))) {
+      if (seen.add(repository.identityKey())) {
         result.add(repository);
       }
     }
@@ -59,23 +52,6 @@ public class JenkinsVcsInfo {
     if (result.isEmpty()) {
       return empty();
     }
-    return new JenkinsVcsInfo(Collections.unmodifiableList(result));
-  }
-
-  public List<JenkinsVcsRepository> getRepositories() {
-    return Collections.unmodifiableList(myRepositories);
-  }
-
-  public boolean isEmpty() {
-    return myRepositories.isEmpty();
-  }
-
-  public int size() {
-    return myRepositories.size();
-  }
-
-  private static String identityKey(JenkinsVcsRepository repository) {
-    String normalized = NORMALIZER.normalizeRepoUrl(repository.remoteUrl());
-    return normalized == null ? repository.remoteUrl() : normalized;
+    return new JenkinsVcsInfo(result);
   }
 }

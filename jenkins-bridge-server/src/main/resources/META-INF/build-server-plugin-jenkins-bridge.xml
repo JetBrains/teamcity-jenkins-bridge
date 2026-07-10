@@ -108,7 +108,4 @@
   <bean id="jenkinsStorageAutomaticActivator"
         class="com.jetbrains.teamcity.jenkinsbridge.artifactstorage.JenkinsStorageAutomaticActivator"/>
 
-  <bean id="vcsNormalizer"
-        class="com.jetbrains.teamcity.jenkinsbridge.vcs.VcsNormalizer"/>
-
 </beans>

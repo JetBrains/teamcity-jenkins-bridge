@@ -170,7 +170,7 @@ public class TeamCityBuildMirrorService {
   }
 
   private VcsBuildCustomization prepareVcsForQueue(BuildMirror mirror, JenkinsVcsInfo vcsInfo) {
-    if (teamCityVcsPublisher == null || vcsInfo == null || vcsInfo.isEmpty()) {
+    if (teamCityVcsPublisher == null || vcsInfo == null || vcsInfo.repositories().isEmpty()) {
       return null;
     }
     try {
@@ -637,7 +637,7 @@ public class TeamCityBuildMirrorService {
     }
 
     VcsSyncResult result = new VcsSyncResult();
-    if (vcsInfo != null && !vcsInfo.isEmpty()) {
+    if (vcsInfo != null && !vcsInfo.repositories().isEmpty()) {
       try {
         result = teamCityVcsPublisher.prepareVcs(mirror, vcsInfo).result();
       } catch (Exception e) {
