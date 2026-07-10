@@ -370,6 +370,7 @@ public class JenkinsBridgePollingService {
     long teamCityBuildId = mirrorService.ensureTeamCityBuild(mirror, buildInfo, graph, vcsInfo);
     mirrorService.ensureRunningDataSent(mirror, teamCityBuildId);
     mirrorService.ensureMetadataLogSent(mirror, teamCityBuildId);
+    mirrorService.syncBuildNumber(mirror);
 
     if (pipelineMode) {
       if (stages == null) {

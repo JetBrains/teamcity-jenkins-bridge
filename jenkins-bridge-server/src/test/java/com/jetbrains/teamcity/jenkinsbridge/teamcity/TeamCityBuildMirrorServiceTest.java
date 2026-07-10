@@ -42,7 +42,7 @@ public class TeamCityBuildMirrorServiceTest {
     CapturingStageReporter reporter = new CapturingStageReporter();
     FakeStageLogClient client = new FakeStageLogClient();
     TeamCityBuildMirrorService service = new TeamCityBuildMirrorService(
-        null, null, null, null, null, null, reporter, null, null, null, null, new NoopStore());
+        null, null, null, null, null, null, reporter, null, null, null, null, null, new NoopStore());
 
     BuildMirror mirror = new BuildMirror();
 
@@ -82,7 +82,7 @@ public class TeamCityBuildMirrorServiceTest {
   public void ensureTeamCityBuildPassesSavedJenkinsParametersToQueuer() throws Exception {
     CapturingQueuer queuer = new CapturingQueuer();
     TeamCityBuildMirrorService service = new TeamCityBuildMirrorService(
-        null, new NoExistingBuildClient(), queuer, null, null, null, null, null, null, null, null, new NoopStore());
+        null, new NoExistingBuildClient(), queuer, null, null, null, null, null, null, null, null, null, new NoopStore());
 
     BuildMirror mirror = BuildMirror.create("job#4@1710000000004", "job", buildInfo(4), "buildType", "now");
     Map<String, String> parameters = new LinkedHashMap<String, String>();
@@ -105,7 +105,7 @@ public class TeamCityBuildMirrorServiceTest {
     revisions.put(42L, new RepositoryVersion("abc123", "abc123", "refs/heads/main"));
     vcsPublisher.customization = new VcsBuildCustomization(new VcsSyncResult(), revisions, "main");
     TeamCityBuildMirrorService service = new TeamCityBuildMirrorService(
-        null, new NoExistingBuildClient(), queuer, null, null, null, null, null, vcsPublisher, null, null, new NoopStore());
+        null, new NoExistingBuildClient(), queuer, null, null, null, null, null, vcsPublisher, null, null, null, new NoopStore());
 
     BuildMirror mirror = BuildMirror.create("job#4@1710000000004", "job", buildInfo(4), "buildType", "now");
 
@@ -121,7 +121,7 @@ public class TeamCityBuildMirrorServiceTest {
     CapturingArtifactPublisher publisher = new CapturingArtifactPublisher();
     CapturingLogger logger = new CapturingLogger();
     TeamCityBuildMirrorService service = new TeamCityBuildMirrorService(
-        null, null, null, null, logger, null, null, publisher, null, null, null, new NoopStore());
+        null, null, null, null, logger, null, null, publisher, null, null, null, null, new NoopStore());
 
     BuildMirror mirror = BuildMirror.create("job#4@1710000000004", "job", buildInfo(4), "buildType", "now");
     FakeArtifactClient client = new FakeArtifactClient();
@@ -145,7 +145,7 @@ public class TeamCityBuildMirrorServiceTest {
     CapturingArtifactPublisher publisher = new CapturingArtifactPublisher();
     CapturingLogger logger = new CapturingLogger();
     TeamCityBuildMirrorService service = new TeamCityBuildMirrorService(
-        null, null, null, null, logger, null, null, publisher, null, null, null, new NoopStore());
+        null, null, null, null, logger, null, null, publisher, null, null, null, null, new NoopStore());
 
     BuildMirror mirror = BuildMirror.create("job#5@1710000000005", "job", buildInfo(5), "buildType", "now");
 
@@ -162,7 +162,7 @@ public class TeamCityBuildMirrorServiceTest {
     CapturingArtifactPublisher publisher = new CapturingArtifactPublisher();
     publisher.failPath = "jenkins-artifacts/bad.bin";
     TeamCityBuildMirrorService service = new TeamCityBuildMirrorService(
-        null, null, null, null, new CapturingLogger(), null, null, publisher, null, null, null, new NoopStore());
+        null, null, null, null, new CapturingLogger(), null, null, publisher, null, null, null, null, new NoopStore());
 
     BuildMirror mirror = BuildMirror.create("job#6@1710000000006", "job", buildInfo(6), "buildType", "now");
     FakeArtifactClient client = new FakeArtifactClient();
@@ -187,7 +187,7 @@ public class TeamCityBuildMirrorServiceTest {
   public void syncArtifactsSkipsUnsafePaths() throws Exception {
     CapturingArtifactPublisher publisher = new CapturingArtifactPublisher();
     TeamCityBuildMirrorService service = new TeamCityBuildMirrorService(
-        null, null, null, null, new CapturingLogger(), null, null, publisher, null, null, null, new NoopStore());
+        null, null, null, null, new CapturingLogger(), null, null, publisher, null, null, null, null, new NoopStore());
 
     BuildMirror mirror = BuildMirror.create("job#7@1710000000007", "job", buildInfo(7), "buildType", "now");
 
@@ -211,7 +211,7 @@ public class TeamCityBuildMirrorServiceTest {
     CapturingArtifactListPublisher publisher = new CapturingArtifactListPublisher();
     CapturingLogger logger = new CapturingLogger();
     TeamCityBuildMirrorService service = new TeamCityBuildMirrorService(
-        null, null, null, null, logger, null, null, publisher, null, null, null, new NoopStore());
+        null, null, null, null, logger, null, null, publisher, null, null, null, null, new NoopStore());
 
     BuildMirror mirror = BuildMirror.create("job#8@1710000000008", "job", buildInfo(8), "buildType", "now");
 
@@ -234,7 +234,7 @@ public class TeamCityBuildMirrorServiceTest {
     CapturingArtifactListPublisher publisher = new CapturingArtifactListPublisher();
     CapturingLogger logger = new CapturingLogger();
     TeamCityBuildMirrorService service = new TeamCityBuildMirrorService(
-        null, null, null, null, logger, null, null, publisher, null, null, null, new NoopStore());
+        null, null, null, null, logger, null, null, publisher, null, null, null, null, new NoopStore());
 
     BuildMirror mirror = BuildMirror.create("job#9@1710000000009", "job", buildInfo(9), "buildType", "now");
 
@@ -249,7 +249,7 @@ public class TeamCityBuildMirrorServiceTest {
   public void syncArtifactMetadataIsIdempotentOnceSynced() throws Exception {
     CapturingArtifactListPublisher publisher = new CapturingArtifactListPublisher();
     TeamCityBuildMirrorService service = new TeamCityBuildMirrorService(
-        null, null, null, null, new CapturingLogger(), null, null, publisher, null, null, null, new NoopStore());
+        null, null, null, null, new CapturingLogger(), null, null, publisher, null, null, null, null, new NoopStore());
 
     BuildMirror mirror = BuildMirror.create("job#10@1710000000010", "job", buildInfo(10), "buildType", "now");
 
@@ -267,7 +267,7 @@ public class TeamCityBuildMirrorServiceTest {
     publisher.fail = true;
     CapturingLogger logger = new CapturingLogger();
     TeamCityBuildMirrorService service = new TeamCityBuildMirrorService(
-        null, null, null, null, logger, null, null, publisher, null, null, null, new NoopStore());
+        null, null, null, null, logger, null, null, publisher, null, null, null, null, new NoopStore());
 
     BuildMirror mirror = BuildMirror.create("job#11@1710000000011", "job", buildInfo(11), "buildType", "now");
 
@@ -280,10 +280,26 @@ public class TeamCityBuildMirrorServiceTest {
   }
 
   @Test
+  public void syncBuildNumberUpdatesRunningBuild() throws Exception {
+    CapturingBuildNumberPublisher publisher = new CapturingBuildNumberPublisher();
+    TeamCityBuildMirrorService service = new TeamCityBuildMirrorService(
+        null, null, null, null, null, null, null, null, null, publisher, null, null, new NoopStore());
+
+    BuildMirror mirror = BuildMirror.create("job#4@1710000000004", "job", buildInfo(4), "buildType", "now");
+    mirror.setTeamCityBuildId(99L);
+
+    service.syncBuildNumber(mirror);
+
+    assertEquals(1, publisher.calls);
+    assertEquals(Long.valueOf(99L), publisher.lastBuildId);
+    assertEquals(4, publisher.lastJenkinsBuildNumber);
+  }
+
+  @Test
   public void syncVcsShortCircuitsWhenAlreadySynced() throws Exception {
     CapturingVcsPublisher publisher = new CapturingVcsPublisher();
     TeamCityBuildMirrorService service = new TeamCityBuildMirrorService(
-        null, null, null, null, new CapturingLogger(), null, null, null, publisher, null, null, new NoopStore());
+        null, null, null, null, new CapturingLogger(), null, null, null, publisher, null, null, null, new NoopStore());
 
     BuildMirror mirror = BuildMirror.create("job#1@1", "job", buildInfo(1), "buildType", "now");
     mirror.setVcsSynced(true);
@@ -297,7 +313,7 @@ public class TeamCityBuildMirrorServiceTest {
   public void syncVcsEmptyWhileBuildingDoesNotMarkSynced() throws Exception {
     CapturingVcsPublisher publisher = new CapturingVcsPublisher();
     TeamCityBuildMirrorService service = new TeamCityBuildMirrorService(
-        null, null, null, null, new CapturingLogger(), null, null, null, publisher, null, null, new NoopStore());
+        null, null, null, null, new CapturingLogger(), null, null, null, publisher, null, null, null, new NoopStore());
 
     BuildMirror mirror = BuildMirror.create("job#1@1", "job", buildInfo(1), "buildType", "now");
 
@@ -311,7 +327,7 @@ public class TeamCityBuildMirrorServiceTest {
   public void syncVcsEmptyWhenFinishedMarksSynced() throws Exception {
     CapturingVcsPublisher publisher = new CapturingVcsPublisher();
     TeamCityBuildMirrorService service = new TeamCityBuildMirrorService(
-        null, null, null, null, new CapturingLogger(), null, null, null, publisher, null, null, new NoopStore());
+        null, null, null, null, new CapturingLogger(), null, null, null, publisher, null, null, null, new NoopStore());
 
     BuildMirror mirror = BuildMirror.create("job#1@1", "job", buildInfo(1), "buildType", "now");
 
@@ -328,7 +344,7 @@ public class TeamCityBuildMirrorServiceTest {
     publisher.result.incrementAttached();
     CapturingLogger logger = new CapturingLogger();
     TeamCityBuildMirrorService service = new TeamCityBuildMirrorService(
-        null, null, null, null, logger, null, null, null, publisher, null, null, new NoopStore());
+        null, null, null, null, logger, null, null, null, publisher, null, null, null, new NoopStore());
 
     BuildMirror mirror = BuildMirror.create("job#1@1", "job", buildInfo(1), "buildType", "now");
 
@@ -347,7 +363,7 @@ public class TeamCityBuildMirrorServiceTest {
     publisher.result.addError("git@host:org/repo.git: auth failed");
     CapturingLogger logger = new CapturingLogger();
     TeamCityBuildMirrorService service = new TeamCityBuildMirrorService(
-        null, null, null, null, logger, null, null, null, publisher, null, null, new NoopStore());
+        null, null, null, null, logger, null, null, null, publisher, null, null, null, new NoopStore());
 
     BuildMirror mirror = BuildMirror.create("job#1@1", "job", buildInfo(1), "buildType", "now");
 
@@ -363,7 +379,7 @@ public class TeamCityBuildMirrorServiceTest {
     CapturingVcsPublisher publisher = new CapturingVcsPublisher();
     publisher.throwError = true;
     TeamCityBuildMirrorService service = new TeamCityBuildMirrorService(
-        null, null, null, null, new CapturingLogger(), null, null, null, publisher, null, null, new NoopStore());
+        null, null, null, null, new CapturingLogger(), null, null, null, publisher, null, null, null, new NoopStore());
 
     BuildMirror mirror = BuildMirror.create("job#1@1", "job", buildInfo(1), "buildType", "now");
 
@@ -520,6 +536,24 @@ public class TeamCityBuildMirrorServiceTest {
         return customization;
       }
       return new VcsBuildCustomization(result, null, null);
+    }
+  }
+
+  private static class CapturingBuildNumberPublisher extends TeamCityBuildNumberPublisher {
+    int calls;
+    Long lastBuildId;
+    int lastJenkinsBuildNumber;
+
+    CapturingBuildNumberPublisher() {
+      super(null);
+    }
+
+    @Override
+    public boolean publishBuildNumber(long buildId, int jenkinsBuildNumber) {
+      calls++;
+      lastBuildId = buildId;
+      lastJenkinsBuildNumber = jenkinsBuildNumber;
+      return true;
     }
   }
 

@@ -45,6 +45,9 @@
   <bean id="teamCityPipelineChainService"
         class="com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityPipelineChainService"/>
 
+  <bean id="teamCityBuildNumberPublisher"
+        class="com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityBuildNumberPublisher"/>
+
   <bean id="buildMirrorStore"
         class="com.jetbrains.teamcity.jenkinsbridge.persistence.BuildMirrorStore"/>
 
