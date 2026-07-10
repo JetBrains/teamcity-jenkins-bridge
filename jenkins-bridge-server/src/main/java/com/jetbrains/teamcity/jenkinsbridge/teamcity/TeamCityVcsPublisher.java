@@ -40,10 +40,6 @@ public class TeamCityVcsPublisher {
         myProjectManager = projectManager;
     }
 
-    public VcsSyncResult publishVcs(BuildMirror mirror, JenkinsVcsInfo vcsInfo) {
-        return prepareVcs(mirror, vcsInfo).result();
-    }
-
     public VcsBuildCustomization prepareVcs(BuildMirror mirror, JenkinsVcsInfo vcsInfo) {
         VcsSyncResult result = new VcsSyncResult();
         if (vcsInfo == null || vcsInfo.repositories().isEmpty()) {

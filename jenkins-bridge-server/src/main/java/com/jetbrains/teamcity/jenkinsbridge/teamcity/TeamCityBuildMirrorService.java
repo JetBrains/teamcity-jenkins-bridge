@@ -92,16 +92,6 @@ public class TeamCityBuildMirrorService {
 
 
   // May need better naming
-  public long ensureTeamCityBuild(BuildMirror mirror, JenkinsBuildInfo jenkinsInfo)
-      throws BridgeHttpException, IOException {
-    return ensureTeamCityBuild(mirror, jenkinsInfo, null, null);
-  }
-
-  public long ensureTeamCityBuild(BuildMirror mirror, JenkinsBuildInfo jenkinsInfo, JenkinsPipelineGraph graph)
-      throws BridgeHttpException, IOException {
-    return ensureTeamCityBuild(mirror, jenkinsInfo, graph, null);
-  }
-
   public long ensureTeamCityBuild(
       BuildMirror mirror,
       JenkinsBuildInfo jenkinsInfo,

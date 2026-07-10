@@ -89,7 +89,7 @@ public class TeamCityBuildMirrorServiceTest {
     parameters.put("BRANCH", "feature/x");
     mirror.setJenkinsBuildParameters(parameters);
 
-    service.ensureTeamCityBuild(mirror, buildInfo(4), null);
+    service.ensureTeamCityBuild(mirror, buildInfo(4), null, null);
 
     assertEquals("job", queuer.bridgeParameters.get("jenkins.job"));
     assertEquals("job#4@1710000000004", queuer.bridgeParameters.get("jenkins.build.key"));

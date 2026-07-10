@@ -6,9 +6,13 @@ import jetbrains.buildServer.serverSide.SBuildType;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.net.URI;
 import java.util.Locale;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public final class Utilities {
+  private static final Pattern SCP_REPOSITORY_URL = Pattern.compile("^(?:[^@/]+@)?([^:/]+):/?(.+)$");
 
   private Utilities() {
   }
@@ -60,36 +64,25 @@ public final class Utilities {
       return null;
     }
 
-    boolean hasScheme = value.contains("://");
-    String rest = hasScheme ? value.substring(value.indexOf("://") + 3) : value;
-
-    // Drop user info (anything before '@')
-    int firstSlash = rest.indexOf('/');
-    int at = rest.indexOf('@');
-    if (at >= 0 && (firstSlash < 0 || at < firstSlash)) {
-      rest = rest.substring(at + 1);
-      firstSlash = rest.indexOf('/');
+    Matcher scpUrl = SCP_REPOSITORY_URL.matcher(value);
+    if (!value.contains("://") && scpUrl.matches()) {
+      return normalizedRepositoryKey(scpUrl.group(1), scpUrl.group(2));
     }
 
-    String host;
-    String path;
-    int firstColon = rest.indexOf(':');
-    if (!hasScheme && firstColon >= 0 && (firstSlash < 0 || firstColon < firstSlash)) {
-      // SCP style (host:path)
-      host = rest.substring(0, firstColon);
-      path = rest.substring(firstColon + 1);
-    } else if (firstSlash < 0) {
-      host = rest;
-      path = "";
-    } else {
-      host = rest.substring(0, firstSlash);
-      path = rest.substring(firstSlash + 1);
-      int hostColon = host.indexOf(':');
-      if (hostColon >= 0) {
-        host = host.substring(0, hostColon);
-      }
+    URI uri;
+    try {
+      uri = URI.create(value.contains("://") ? value : "https://" + value);
+    } catch (IllegalArgumentException e) {
+      return null;
     }
 
+    return normalizedRepositoryKey(uri.getHost(), uri.getPath());
+  }
+
+  private static String normalizedRepositoryKey(String host, String path) {
+    if (host == null || path == null) {
+      return null;
+    }
     host = host.toLowerCase(Locale.ROOT);
     path = stripSlashes(path);
     if (path.endsWith(".git")) {

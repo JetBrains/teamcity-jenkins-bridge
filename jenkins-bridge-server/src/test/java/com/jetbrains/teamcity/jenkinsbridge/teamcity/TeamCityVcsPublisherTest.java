@@ -94,7 +94,7 @@ public class TeamCityVcsPublisherTest {
     when(project.getVcsRoots()).thenReturn(Collections.singletonList(existing));
     when(buildType.getVcsRootInstanceEntryForParent(existing)).thenReturn(entry);
 
-    publisher.publishVcs(mirror(), gitInfo("https://github.com/org/repo.git", "abc123", "refs/remotes/origin/main"));
+    publisher.prepareVcs(mirror(), gitInfo("https://github.com/org/repo.git", "abc123", "refs/remotes/origin/main"));
 
     verify(project, never()).createVcsRoot(anyString(), anyString(), anyMap());
   }
@@ -143,7 +143,7 @@ public class TeamCityVcsPublisherTest {
     when(buildType.getVcsRootInstanceEntryForParent(created)).thenReturn(null);
     when(buildType.addVcsRoot(created)).thenThrow(new RuntimeException("read only"));
 
-    VcsSyncResult result = publisher.publishVcs(mirror(), gitInfo("https://github.com/org/repo.git", "abc123", "refs/remotes/origin/main"));
+    VcsSyncResult result = publisher.prepareVcs(mirror(), gitInfo("https://github.com/org/repo.git", "abc123", "refs/remotes/origin/main")).result();
 
     verify(created).persist();
     assertTrue(result.hasErrors());

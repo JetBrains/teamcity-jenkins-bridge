@@ -276,20 +276,10 @@ public class JenkinsBridgePollingServiceTest {
     }
 
     @Override
-    public long ensureTeamCityBuild(BuildMirror mirror, JenkinsBuildInfo jenkinsInfo, JenkinsPipelineGraph graph) {
+    public long ensureTeamCityBuild(BuildMirror mirror, JenkinsBuildInfo jenkinsInfo, JenkinsPipelineGraph graph, JenkinsVcsInfo vcsInfo) {
       lastJenkinsParameters = mirror.getJenkinsBuildParameters();
       mirror.setTeamCityBuildId(100L);
       return 100L;
-    }
-
-    @Override
-    public long ensureTeamCityBuild(
-        BuildMirror mirror,
-        JenkinsBuildInfo jenkinsInfo,
-        JenkinsPipelineGraph graph,
-        JenkinsVcsInfo vcsInfo
-    ) {
-      return ensureTeamCityBuild(mirror, jenkinsInfo, graph);
     }
 
     @Override
