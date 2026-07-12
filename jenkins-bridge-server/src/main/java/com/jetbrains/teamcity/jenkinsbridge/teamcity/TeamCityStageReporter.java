@@ -65,6 +65,15 @@ public class TeamCityStageReporter {
     return messages;
   }
 
+  /**
+   * A progress message sets the running build's short status text (TeamCity {@code MSG_PROGRESS_STAGE}).
+   * Used to surface the current Jenkins stage ("Jenkins stage N/M: name") so a long build's position is
+   * visible at a glance without reading the log.
+   */
+  public BuildMessage1 progressMessage(String text) {
+    return serverMessage(DefaultMessagesInfo.createProgressMessage(text));
+  }
+
   public void report(long buildId, List<BuildMessage1> messages) {
     if (messages == null || messages.isEmpty()) {
       return;

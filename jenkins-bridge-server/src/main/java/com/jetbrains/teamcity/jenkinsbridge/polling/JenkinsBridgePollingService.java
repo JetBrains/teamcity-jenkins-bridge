@@ -350,7 +350,11 @@ public class JenkinsBridgePollingService {
           + " has source " + graph.getSource()
           + ", confidence " + graph.getConfidence()
           + ", " + graph.getNodes().size() + " node(s), topologyHash=" + graph.getTopologyHash());
-      if (buildInfo.isBuilding() && mirror.getTeamCityBuildId() == null) {
+      // Mirror Pipeline builds LIVE as a single running TeamCity build: the top build shows RUNNING for
+      // the whole Jenkins run and streams stage blocks + current-stage status as they arrive. Persist the
+      // Blue Ocean graph so the pipeline graph tab can render it. Native TeamCity build-chain creation is
+      // a separate track and is intentionally not run on this branch.
+      if (graph != null) {
         mirror.setPipelineGraph(graph);
         mirrorStore.saveMirror(mirror);
         LOG.info("[Jenkins Bridge DEBUG] Delaying native Pipeline chain creation for "

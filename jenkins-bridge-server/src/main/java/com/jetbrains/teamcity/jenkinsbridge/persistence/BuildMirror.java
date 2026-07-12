@@ -36,6 +36,8 @@ public class BuildMirror {
   // Native TeamCity build-chain mirror for the latest eligible Pipeline graph snapshot.
   private PipelineChainMirror pipelineChain;
   private String pipelineChainMessageKey;
+  // Last "current stage N/M" progress text sent to the running build; deduped so we don't re-send it every poll.
+  private String lastStageProgress;
   private boolean metadataLogSent;
   private boolean summaryLogSent;
   private boolean testsSynced;
@@ -171,6 +173,14 @@ public class BuildMirror {
 
   public void setPipelineChainMessageKey(String pipelineChainMessageKey) {
     this.pipelineChainMessageKey = pipelineChainMessageKey;
+  }
+
+  public String getLastStageProgress() {
+    return lastStageProgress;
+  }
+
+  public void setLastStageProgress(String lastStageProgress) {
+    this.lastStageProgress = lastStageProgress;
   }
 
   public boolean isMetadataLogSent() {

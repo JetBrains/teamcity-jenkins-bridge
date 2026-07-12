@@ -19,6 +19,7 @@ import java.net.URLEncoder;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Date;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -592,25 +593,11 @@ public class JenkinsClient {
   }
 
   private String blueOceanStatus(JsonObject node) {
-    String result = stringValue(node, "result");
-    if (result.length() > 0 && !"UNKNOWN".equalsIgnoreCase(result)) {
-      if ("NOT_BUILT".equalsIgnoreCase(result)) {
-        return "NOT_EXECUTED";
-      }
-      if ("FAILED".equalsIgnoreCase(result)) {
-        return "FAILURE";
-      }
-      return result.toUpperCase();
-    }
-
-    String state = stringValue(node, "state");
-    if ("RUNNING".equalsIgnoreCase(state)) {
-      return "IN_PROGRESS";
-    }
-    if ("QUEUED".equalsIgnoreCase(state) || "PAUSED".equalsIgnoreCase(state)) {
-      return state.toUpperCase();
-    }
-    return "";
+    // Normalize Blue Ocean result/state into the shared node-status vocabulary. Notably fixes
+    // state=SKIPPED (was "" -> generated build stuck queued forever) and state=PAUSED (was "PAUSED";
+    // now PAUSED_PENDING_INPUT); unrecognized -> UNKNOWN instead of blank.
+    return JenkinsPipelineNodeStatus.fromBlueOcean(
+        stringValue(node, "result"), stringValue(node, "state")).name();
   }
 
   private long blueOceanStartTimeMillis(JsonObject node) {
@@ -658,6 +645,82 @@ public class JenkinsClient {
       text.append(getNodeLog(jobName, buildNumber, nodeId).getText());
     }
     return JenkinsStageLog.of(text.toString());
+  }
+
+  /**
+   * Fetches the steps of a stage with per-step name/status/duration and console log (G3b). Descends the
+   * stage's {@code stageFlowNodes}; for each step that carries a log link, fetches its node log (Console
+   * annotations stripped). Steps without a log (e.g. structural nodes) are still returned with empty log
+   * so they show name/status/timing. A {@code 404} (stage not materialized) yields no steps.
+   */
+  public List<JenkinsStageStep> getStageSteps(String jobName, int buildNumber, String stageId)
+      throws BridgeHttpException {
+    JsonObject describe = getStageNodeDescribe(jobName, buildNumber, stageId, null);
+    if (describe == null) {
+      return Collections.emptyList();
+    }
+    List<JenkinsStageStep> steps = new ArrayList<JenkinsStageStep>();
+    for (JenkinsWfapiNode node : JenkinsWfapiNode.stageFlowNodesFromJson(describe)) {
+      String log = node.isLogNode() ? getNodeLog(jobName, buildNumber, node.getId()).getText() : "";
+      steps.add(new JenkinsStageStep(node.getId(), node.getName(), node.getStatus(), node.getDurationMillis(), log));
+    }
+    return steps;
+  }
+
+  /**
+   * Steps for a graph node, resolving the Blue-Ocean-vs-WFAPI id mismatch on parallel branches. A Blue
+   * Ocean parallel-branch node (e.g. "Linux Tests", id 21) is a container whose WFAPI describe has no
+   * steps; the actual steps live under a nested WFAPI stage (e.g. "Linux", id 26) whose id Blue Ocean
+   * does not expose. So: try the node id directly (works for linear stages, ids match); if that yields no
+   * steps, fall back to the WFAPI stage whose name matches the clicked node's name.
+   */
+  public List<JenkinsStageStep> getStageStepsForNode(String jobName, int buildNumber, String nodeId, String nodeName)
+      throws BridgeHttpException {
+    List<JenkinsStageStep> direct = getStageSteps(jobName, buildNumber, nodeId);
+    if (!direct.isEmpty()) {
+      return direct;
+    }
+    String matchedId = matchWfapiStageIdByName(jobName, buildNumber, nodeId, nodeName);
+    if (matchedId != null && !matchedId.equals(nodeId)) {
+      return getStageSteps(jobName, buildNumber, matchedId);
+    }
+    return direct;
+  }
+
+  /**
+   * Finds the WFAPI stage id whose name corresponds to a Blue Ocean node name. Prefers an exact name
+   * match, then a stage name that the node name starts with (branch "Linux Tests" -> stage "Linux"),
+   * then containment. Returns null if nothing matches.
+   */
+  private String matchWfapiStageIdByName(String jobName, int buildNumber, String excludeId, String nodeName)
+      throws BridgeHttpException {
+    if (nodeName == null || nodeName.trim().length() == 0) {
+      return null;
+    }
+    JenkinsStages stages = getStages(jobName, buildNumber);
+    String exact = null;
+    String prefix = null;
+    String contains = null;
+    for (JenkinsStage stage : stages.getStages()) {
+      if (stage.getId().equals(excludeId)) {
+        continue;
+      }
+      String stageName = stage.getName();
+      if (stageName.length() == 0) {
+        continue;
+      }
+      if (nodeName.equals(stageName)) {
+        exact = stage.getId();
+        break;
+      }
+      if (prefix == null && nodeName.startsWith(stageName)) {
+        prefix = stage.getId();
+      }
+      if (contains == null && nodeName.contains(stageName)) {
+        contains = stage.getId();
+      }
+    }
+    return exact != null ? exact : (prefix != null ? prefix : contains);
   }
 
   /**

@@ -13,6 +13,7 @@ import com.jetbrains.teamcity.jenkinsbridge.model.GraphConfidence;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsPipelineGraph;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsStageLog;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsStageNodes;
+import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsStageStep;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsStages;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsTestReport;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsVcsInfo;
@@ -699,6 +700,31 @@ public class JenkinsClientTest {
   }
 
   // Routes each GET to a canned body by matching a URL substring; unmatched URLs 404.
+  @Test
+  public void getStageStepsReturnsPerStepNameStatusDurationAndLog() throws Exception {
+    RoutingHttpClient httpClient = new RoutingHttpClient();
+    httpClient.responses.put("/execution/node/6/wfapi/describe",
+        "{\"id\":\"6\",\"stageFlowNodes\":["
+            + "{\"id\":\"7\",\"name\":\"Preparing demo\",\"status\":\"SUCCESS\",\"durationMillis\":27,"
+            + "\"_links\":{\"log\":{\"href\":\"/x\"}}},"
+            + "{\"id\":\"8\",\"name\":\"Write file\",\"status\":\"SUCCESS\",\"durationMillis\":49,"
+            + "\"_links\":{\"log\":{\"href\":\"/y\"}}}"
+            + "]}");
+    httpClient.responses.put("/execution/node/7/wfapi/log", "{\"text\":\"line A\"}");
+    httpClient.responses.put("/execution/node/8/wfapi/log", "{\"text\":\"line B\"}");
+    JenkinsClient client = new JenkinsClient(new StaticSettingsProvider(), httpClient);
+
+    List<JenkinsStageStep> steps = client.getStageSteps("job", 42, "6");
+
+    assertEquals(2, steps.size());
+    assertEquals("Preparing demo", steps.get(0).getName());
+    assertEquals("SUCCESS", steps.get(0).getStatus());
+    assertEquals(27L, steps.get(0).getDurationMillis());
+    assertEquals("line A", steps.get(0).getLog());
+    assertEquals("Write file", steps.get(1).getName());
+    assertEquals("line B", steps.get(1).getLog());
+  }
+
   private static class RoutingHttpClient extends BridgeHttpClient {
     private final Map<String, String> responses = new LinkedHashMap<String, String>();
     private String url;
