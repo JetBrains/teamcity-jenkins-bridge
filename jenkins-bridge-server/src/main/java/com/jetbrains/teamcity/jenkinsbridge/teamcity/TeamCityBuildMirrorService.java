@@ -15,6 +15,7 @@ import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsBuildInfo;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsLogChunk;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsPipelineGraph;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsPipelineGraphNode;
+import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsPipelineNodeStatus;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsStage;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsStageLog;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsStages;
@@ -43,6 +44,8 @@ import static com.jetbrains.teamcity.jenkinsbridge.util.Utilities.nullToEmpty;
 
 public class TeamCityBuildMirrorService {
   private static final Logger LOG = Logger.getInstance(TeamCityBuildMirrorService.class.getName());
+  /** ensureTeamCityBuild returns this when native-chain creation is deferred until the run stabilizes. */
+  public static final long DEFER_BUILD_CREATION = -1L;
   private static final Set<SyncState> RUNNING_DATA_ALREADY_SENT_STATES = EnumSet.of(
       SyncState.RUNNING_SENT,
       SyncState.LOG_SYNCING,
@@ -107,6 +110,13 @@ public class TeamCityBuildMirrorService {
     }
 
     if (graph != null && teamCityPipelineChainService != null) {
+      // Native snapshot-dependency chain is created only AFTER the Jenkins run stabilizes (topology
+      // final), not during. While still building, defer so the graph settles first. The live single
+      // build + Pipeline Graph tab cover the running phase in the default (non-chain) mode.
+      if (jenkinsInfo.isBuilding()
+          && teamCityPipelineChainService.isChainEnabled(mirror.getTeamCityBuildTypeId())) {
+        return DEFER_BUILD_CREATION;
+      }
       try {
         PipelineChainMirror chain = teamCityPipelineChainService.ensureChain(mirror, graph);
         if (chain != null && chain.getTopPromotionId() != null) {
@@ -351,34 +361,19 @@ public class TeamCityBuildMirrorService {
   }
 
   private boolean shouldStartPipelineChainNode(String status) {
-    return status.length() > 0;
+    // Do not start a generated build for a QUEUED (not-yet-running) or unclassifiable node.
+    return JenkinsPipelineNodeStatus.from(status).isStarted();
   }
 
   private boolean isTerminalPipelineNodeStatus(String status) {
-    return "SUCCESS".equals(status)
-        || "FAILED".equals(status)
-        || "FAILURE".equals(status)
-        || "UNSTABLE".equals(status)
-        || "ABORTED".equals(status)
-        || "NOT_EXECUTED".equals(status);
+    return JenkinsPipelineNodeStatus.from(status).isTerminal();
   }
 
   static String jenkinsResultForPipelineNodeStatus(String status) {
-    if ("FAILED".equals(status) || "FAILURE".equals(status)) {
-      return "FAILURE";
-    }
-    if ("NOT_EXECUTED".equals(status)) {
-      // A skipped Jenkins stage should be visible as a red graph node, but not as a canceled
-      // dependency. FAILURE gives the node a failed TeamCity result; dependency continuation mode
-      // decides whether downstream nodes inherit a dependency problem.
-      return "FAILURE";
-    }
-    if ("SUCCESS".equals(status)
-        || "UNSTABLE".equals(status)
-        || "ABORTED".equals(status)) {
-      return status;
-    }
-    return "UNKNOWN";
+    // Single source of truth in JenkinsPipelineNodeStatus. Note: NOT_EXECUTED (skipped) -> SUCCESS
+    // (green, not red) for parity with how Jenkins shows a skipped stage; continuation mode RUN keeps
+    // downstream nodes independent of this node's result.
+    return JenkinsPipelineNodeStatus.from(status).toTeamCityResult();
   }
 
   private Date pipelineNodeFinishTime(JenkinsPipelineGraphNode node) {
@@ -461,6 +456,14 @@ public class TeamCityBuildMirrorService {
       }
     }
 
+    // Surface the current stage as the running build's status text ("Jenkins stage N/M: name") so a
+    // long build's position is visible at a glance. Deduped: only sent when it changes.
+    String progress = currentStageProgress(stages);
+    if (progress != null && !progress.equals(mirror.getLastStageProgress())) {
+      messages.add(teamCityStageReporter.progressMessage(progress));
+      mirror.setLastStageProgress(progress);
+    }
+
     if (!messages.isEmpty()) {
       teamCityStageReporter.report(teamCityBuildId, messages);
     }
@@ -468,6 +471,30 @@ public class TeamCityBuildMirrorService {
     mirror.setSyncState(SyncState.LOG_SYNCING);
     mirror.setLastError(null);
     mirrorStore.saveMirror(mirror);
+  }
+
+  /**
+   * "Jenkins stage N/M: name" for the first non-terminal stage (the one in progress), or a completion
+   * marker when all stages are terminal. Null when there are no stages. Describe order; parallel stages
+   * are serialized in v1, so N is an approximate position hint, not an exact parallel index.
+   */
+  private String currentStageProgress(JenkinsStages stages) {
+    List<JenkinsStage> list = stages.getStages();
+    int total = list.size();
+    if (total == 0) {
+      return null;
+    }
+    int currentIndex = -1;
+    for (int i = 0; i < total; i++) {
+      if (!list.get(i).isTerminal()) {
+        currentIndex = i;
+        break;
+      }
+    }
+    if (currentIndex < 0) {
+      return "Jenkins stages complete (" + total + "/" + total + ")";
+    }
+    return "Jenkins stage " + (currentIndex + 1) + "/" + total + ": " + list.get(currentIndex).getName();
   }
 
   public void syncTestsIfNeeded(BuildMirror mirror, long teamCityBuildId, JenkinsTestReport testReport)

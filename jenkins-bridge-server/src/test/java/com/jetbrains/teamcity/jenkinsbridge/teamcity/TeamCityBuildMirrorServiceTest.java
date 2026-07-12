@@ -52,9 +52,12 @@ public class TeamCityBuildMirrorServiceTest {
 
     assertEquals(1, reporter.reports.size());
     List<BuildMessage1> first = reporter.reports.get(0);
-    assertEquals(2, first.size());
+    assertEquals(3, first.size());
     assertEquals(DefaultMessagesInfo.MSG_BLOCK_START, first.get(0).getTypeId());
     assertEquals("+ mvn compile", first.get(1).getValue().toString());
+    // Current-stage status line for the running build (glanceable "where are we").
+    assertEquals(DefaultMessagesInfo.MSG_PROGRESS_STAGE, first.get(2).getTypeId());
+    assertEquals("Jenkins stage 1/1: Build", first.get(2).getValue().toString());
     assertTrue(mirror.getStages().get("6").isBlockOpened());
 
     // Poll 2: stage finished, log grew. Only the delta is appended, then the block closes.
@@ -64,7 +67,10 @@ public class TeamCityBuildMirrorServiceTest {
     assertEquals(2, reporter.reports.size());
     List<BuildMessage1> second = reporter.reports.get(1);
     assertEquals("BUILD OK", second.get(0).getValue().toString());
-    assertEquals(DefaultMessagesInfo.MSG_BLOCK_END, second.get(second.size() - 1).getTypeId());
+    assertEquals(DefaultMessagesInfo.MSG_BLOCK_END, second.get(1).getTypeId());
+    // Progress flips to the completion marker once every stage is terminal.
+    assertEquals(DefaultMessagesInfo.MSG_PROGRESS_STAGE, second.get(2).getTypeId());
+    assertEquals("Jenkins stages complete (1/1)", second.get(2).getValue().toString());
     assertTrue(mirror.getStages().get("6").isBlockClosed());
 
     // Poll 3: nothing changed. No messages emitted at all (idempotent).
@@ -74,8 +80,12 @@ public class TeamCityBuildMirrorServiceTest {
   }
 
   @Test
-  public void skippedPipelineNodeFinishesRedWithoutBeingCanceled() {
-    assertEquals("FAILURE", TeamCityBuildMirrorService.jenkinsResultForPipelineNodeStatus("NOT_EXECUTED"));
+  public void skippedPipelineNodeFinishesGreenNotRed() {
+    // Parity: Jenkins shows a skipped stage as neutral, so NOT_EXECUTED maps to SUCCESS (green), not red.
+    assertEquals("SUCCESS", TeamCityBuildMirrorService.jenkinsResultForPipelineNodeStatus("NOT_EXECUTED"));
+    // Real failures still map to a failed (red) result.
+    assertEquals("FAILURE", TeamCityBuildMirrorService.jenkinsResultForPipelineNodeStatus("FAILED"));
+    assertEquals("UNSTABLE", TeamCityBuildMirrorService.jenkinsResultForPipelineNodeStatus("UNSTABLE"));
   }
 
   @Test

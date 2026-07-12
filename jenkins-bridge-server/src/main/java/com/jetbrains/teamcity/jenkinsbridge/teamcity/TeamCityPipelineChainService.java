@@ -34,6 +34,8 @@ public class TeamCityPipelineChainService {
   private static final String AGENTLESS_PARAM = "teamcity.build.agentLess";
   private static final String GENERATED_PARAM = "jenkins.bridge.generated.chain";
   private static final String GENERATED_PROJECT_SUFFIX = "_JenkinsBridgeGenerated_virtual";
+  /** Per-build-config toggle: create the native TeamCity chain for this job instead of a single build. */
+  private static final String CHAIN_ENABLED_PARAM = "jenkins.bridge.pipelineChain.enabled";
 
   private final ProjectManager projectManager;
   private final ParameterFactory parameterFactory;
@@ -65,17 +67,19 @@ public class TeamCityPipelineChainService {
   }
 
   public PipelineChainMirror ensureChain(BuildMirror mirror, JenkinsPipelineGraph graph) throws Exception {
+    // Per-build-config toggle. When off (default), return null -> the caller mirrors a single live build
+    // (+ the Pipeline Graph tab). When on, we build the native TeamCity chain live and update node
+    // statuses each poll. Lets one job demo the chain while another demos the single-build + tab.
+    SBuildType sourceBuildType = findBuildType(mirror.getTeamCityBuildTypeId(), projectManager);
+    if (sourceBuildType == null || !isChainEnabled(sourceBuildType)) {
+      return null;
+    }
     if (!planner.canCreateNativeChain(graph)) {
       return null;
     }
     PipelineChainMirror existing = mirror.getPipelineChain();
     if (existing != null && existing.matchesQueuedTopology(graph.getTopologyHash())) {
       return existing;
-    }
-
-    SBuildType sourceBuildType = findBuildType(mirror.getTeamCityBuildTypeId(), projectManager);
-    if (sourceBuildType == null) {
-      throw new IllegalStateException("TeamCity build type " + mirror.getTeamCityBuildTypeId() + " was not found");
     }
 
     PipelineChainPlan plan = planner.plan(mirror, sourceBuildType.getExternalId(), graph);
@@ -305,6 +309,15 @@ public class TeamCityPipelineChainService {
     buildType.addConfigParameter(parameterFactory.createSimpleParameter(name, nullToEmpty(value)));
   }
 
+  /** True if the given build config opts into the native chain via the per-build-config toggle. */
+  public boolean isChainEnabled(String buildTypeId) {
+    SBuildType buildType = findBuildType(buildTypeId, projectManager);
+    return buildType != null && isChainEnabled(buildType);
+  }
+
+  private boolean isChainEnabled(SBuildType buildType) {
+    return "true".equalsIgnoreCase(buildType.getParametersProvider().get(CHAIN_ENABLED_PARAM));
+  }
 
   private static String truncate(String value, int maxLength) {
     if (value == null) {

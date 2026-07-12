@@ -8,12 +8,8 @@ import com.google.gson.JsonObject;
  * block in the mirrored log.
  */
 public class JenkinsStage {
-  // Non-terminal statuses: the stage is still active and may produce more log / change status.
-  private static final String STATUS_IN_PROGRESS = "IN_PROGRESS";
-  private static final String STATUS_QUEUED = "QUEUED";
-  private static final String STATUS_PAUSED = "PAUSED_PENDING_INPUT";
-  // Terminal status for a stage that was skipped (e.g. an unmet declarative `when`); it has no node log.
-  private static final String STATUS_NOT_EXECUTED = "NOT_EXECUTED";
+  // Status classification (active/terminal/skipped) lives in JenkinsPipelineNodeStatus so the rules
+  // cannot drift between the log-block path and the chain path.
 
   private String id;
   private String name;
@@ -53,13 +49,16 @@ public class JenkinsStage {
 
   /** A stage Jenkins skipped (no node, no log); terminal but emitted as an empty block. */
   public boolean isSkipped() {
-    return STATUS_NOT_EXECUTED.equals(getStatus());
+    return JenkinsPipelineNodeStatus.from(getStatus()).isSkipped();
   }
 
-  /** True once the stage can no longer change: its block can be closed and never reopened. */
+  /**
+   * True once the stage can no longer change: its block can be closed and never reopened. Terminal for
+   * log-block purposes means "no longer active" (not queued/running/paused), so a blank or unknown
+   * status still counts as terminal and closes the block.
+   */
   public boolean isTerminal() {
-    String s = getStatus();
-    return !STATUS_IN_PROGRESS.equals(s) && !STATUS_QUEUED.equals(s) && !STATUS_PAUSED.equals(s);
+    return !JenkinsPipelineNodeStatus.from(getStatus()).isActive();
   }
 
   /** True before the stage has actually started running (queued / not yet scheduled). */

@@ -80,6 +80,12 @@
         class="com.jetbrains.teamcity.jenkinsbridge.web.JenkinsBuildSummaryExtension"
         destroy-method="dispose"/>
 
+  <bean id="jenkinsPipelineGraphController"
+        class="com.jetbrains.teamcity.jenkinsbridge.web.JenkinsPipelineGraphController"/>
+
+  <bean id="jenkinsPipelineGraphTab"
+        class="com.jetbrains.teamcity.jenkinsbridge.web.JenkinsPipelineGraphTab"/>
+
   <bean id="teamCityBuildMirrorService"
         class="com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityBuildMirrorService"/>
 

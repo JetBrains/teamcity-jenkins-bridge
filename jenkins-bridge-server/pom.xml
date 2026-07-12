@@ -41,6 +41,13 @@
 
     <dependency>
       <groupId>org.jetbrains.teamcity</groupId>
+      <artifactId>common-impl</artifactId>
+      <version>${teamcity-version}</version>
+      <scope>provided</scope>
+    </dependency>
+
+    <dependency>
+      <groupId>org.jetbrains.teamcity</groupId>
       <artifactId>tests-support</artifactId>
       <version>${teamcity-version}</version>
       <scope>test</scope>
