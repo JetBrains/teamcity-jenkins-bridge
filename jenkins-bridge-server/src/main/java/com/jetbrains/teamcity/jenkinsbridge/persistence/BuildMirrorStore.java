@@ -12,6 +12,7 @@ import jetbrains.buildServer.serverSide.ServerPaths;
 
 import com.intellij.openapi.diagnostic.Logger;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 import java.io.Reader;
@@ -34,19 +35,38 @@ public class BuildMirrorStore {
 
   private final JenkinsBridgeSettingsProvider settingsProvider;
   private final ServerPaths serverPaths;
+  private final ProjectManager projectManager;
   private final Gson gson = new GsonBuilder().setPrettyPrinting().create();
-  private final CustomDataStorage myStorage;
   @Deprecated
   private Path loadedStateFile;
 
-  @NotNull
+  @Nullable
+  private CustomDataStorage myStorage;
   private BridgeState state;
 
   public BuildMirrorStore(ServerPaths serverPaths, JenkinsBridgeSettingsProvider settingsProvider, ProjectManager projectManager) {
     this.serverPaths = serverPaths;
     this.settingsProvider = settingsProvider;
+    this.projectManager = projectManager;
+  }
+
+  private void initializeCustomDataStorage() {
     myStorage = projectManager.getRootProject().getCustomDataStorage(CUSTOM_DATA_STORAGE_NAME);
     state = new BridgeState(myStorage);
+  }
+
+  /**
+   * Must be initialized lazily (not in the constructor) because the root project is not available
+   * when the Spring context is initialized.
+   * <p>
+   * Should be used instead of the normal {@code myStorage} field.
+   */
+  @NotNull
+  private CustomDataStorage getCustomDataStorage() {
+    if (myStorage == null) {
+      initializeCustomDataStorage();
+    }
+    return myStorage;
   }
 
   public synchronized BuildMirror getOrCreateMirror(String mirrorKey, String jobName,
@@ -236,7 +256,7 @@ public class BuildMirrorStore {
     }
 
     if (!Files.exists(stateFile)) {
-      state = new BridgeState(myStorage);
+      state = new BridgeState(getCustomDataStorage());
       state.setVersion(1);
       loadedStateFile = stateFile;
       return;
@@ -255,14 +275,14 @@ public class BuildMirrorStore {
       LOG.warn("Jenkins Bridge state file " + stateFile + " is corrupt; quarantining it and starting with empty state",
           parseError);
       quarantineCorruptStateFile(stateFile);
-      state = new BridgeState(myStorage);
+      state = new BridgeState(getCustomDataStorage());
       state.setVersion(1);
       loadedStateFile = stateFile;
       return;
     }
 
     if (state == null) {
-      state = new BridgeState(myStorage);
+      state = new BridgeState(getCustomDataStorage());
     }
     state.setVersion(1);
     state.getBuilds();
@@ -270,6 +290,8 @@ public class BuildMirrorStore {
   }
 
   private void ensureStateIsLoaded() throws IOException {
+    initializeCustomDataStorage();
+
     Exception parseError = null;
     try { // Deserialize all fields from custom data storage and check if there are any errors
       state.getVersion();
@@ -285,9 +307,9 @@ public class BuildMirrorStore {
       // A corrupt/truncated storage entry must not brick the bridge (R7). It's better to start fresh.
       // Mirrors re-bind to existing TeamCity builds via restore-by-key on the next sync.
       // The quarantine logic was removed since the log works for observability, and polluting the TeamCity DB is a bigger problem.
-      LOG.warn("Jenkins Bridge state is corrupt and will be reset. Removed state: " + myStorage.getValues(),
+      LOG.warn("Jenkins Bridge state is corrupt and will be reset. Removed state: " + getCustomDataStorage().getValues(),
           parseError);
-      myStorage.clear();
+      getCustomDataStorage().clear();
     }
   }
 
