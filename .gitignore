@@ -6,9 +6,9 @@ target/
 .junie/
 
 # Local agent handoff files
-/AGENTS.md
 /PROGRESS.md
 /PLAN.md
 /RELIABILITY_AND_PERFORMANCE.md
 /docs
 /.github
+.claude/
