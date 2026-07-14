@@ -3,19 +3,23 @@ package com.jetbrains.teamcity.jenkinsbridge.teamcity;
 import com.google.gson.JsonParser;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsVcsInfo;
 import com.jetbrains.teamcity.jenkinsbridge.persistence.BuildMirror;
-import com.jetbrains.teamcity.jenkinsbridge.vcs.VcsBuildCustomization;
 import com.jetbrains.teamcity.jenkinsbridge.vcs.VcsSyncResult;
+import jetbrains.buildServer.serverSide.BuildPromotionEx;
 import jetbrains.buildServer.serverSide.ProjectManager;
+import jetbrains.buildServer.serverSide.RepositoryVersion;
 import jetbrains.buildServer.serverSide.SBuildType;
 import jetbrains.buildServer.serverSide.SProject;
+import jetbrains.buildServer.serverSide.impl.CancelableTaskHolder;
 import jetbrains.buildServer.vcs.CheckoutRules;
 import jetbrains.buildServer.vcs.SVcsRoot;
 import jetbrains.buildServer.vcs.VcsRootInstance;
 import jetbrains.buildServer.vcs.VcsRootInstanceEntry;
+import jetbrains.buildServer.vcs.impl.BuildChainChangesCollector;
 import org.junit.Before;
 import org.junit.Test;
 
 import java.util.Collections;
+import java.util.Map;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -36,14 +40,19 @@ public class TeamCityVcsPublisherTest {
   private final ProjectManager projectManager = mock(ProjectManager.class);
   private final SProject project = mock(SProject.class);
   private final SBuildType buildType = mock(SBuildType.class);
+  private final TeamCityRunningBuildLocator buildLocator = mock(TeamCityRunningBuildLocator.class);
+  private final BuildChainChangesCollector changesCollector = mock(BuildChainChangesCollector.class);
+  private final BuildPromotionEx promotion = mock(BuildPromotionEx.class);
 
-  private final TeamCityVcsPublisher publisher = new TeamCityVcsPublisher(projectManager);
+  private final TeamCityVcsPublisher publisher =
+      new TeamCityVcsPublisher(projectManager, buildLocator, changesCollector);
 
   @Before
   public void setUp() {
     when(projectManager.findBuildTypeByExternalId(BUILD_TYPE_ID)).thenReturn(buildType);
     when(buildType.getProject()).thenReturn(project);
     when(project.getVcsRoots()).thenReturn(Collections.emptyList());
+    when(buildLocator.findPromotion(PROMOTION_ID)).thenReturn(promotion);
   }
 
   @Test
@@ -53,20 +62,39 @@ public class TeamCityVcsPublisherTest {
     VcsRootInstanceEntry entry = entry(11L);
     when(buildType.getVcsRootInstanceEntryForParent(created)).thenReturn(null, entry);
 
-    VcsBuildCustomization customization =
-        publisher.prepareVcs(mirror(), gitInfo("https://github.com/org/repo.git", "abc123def456", "refs/remotes/origin/main"));
-    VcsSyncResult result = customization.result();
+    VcsSyncResult result = publisher.applyVcsToBuild(
+        mirror(), gitInfo("https://github.com/org/repo.git", "abc123def456", "refs/remotes/origin/main"));
 
     verify(project).createVcsRoot(eq("jetbrains.git"), anyString(), anyMap());
     verify(created).persist();
     verify(buildType).addVcsRoot(created);
     verify(buildType).setCheckoutRules(created, CheckoutRules.DEFAULT);
     verify(buildType).persist();
-    assertEquals("main", customization.desiredBranchName());
-    assertEquals(1, customization.upperLimitRevisions().size());
-    assertEquals("abc123def456", customization.upperLimitRevisions().get(11L).getVersion());
+    verify(promotion).resetBuildRevisions();
+    verify(promotion).setDesiredBranchName("main");
+    verify(promotion).setProvidedUpperLimitRevisions(anyMap());
+    verify(changesCollector).scheduleCheckingForChangesAndWait(eq(promotion), any(CancelableTaskHolder.class));
     assertEquals(1, result.getNumberOfAttachedRepositories());
     assertFalse(result.hasErrors());
+  }
+
+  @Test
+  public void pinsRevisionsForRepositoryUsingCapturedRevisionMap() {
+    SVcsRoot created = gitRoot("https://github.com/org/repo.git");
+    when(project.createVcsRoot(eq("jetbrains.git"), anyString(), anyMap())).thenReturn(created);
+    VcsRootInstanceEntry entry = entry(11L);
+    when(buildType.getVcsRootInstanceEntryForParent(created)).thenReturn(null, entry);
+
+    org.mockito.ArgumentCaptor<Map<Long, RepositoryVersion>> captor =
+        org.mockito.ArgumentCaptor.forClass(Map.class);
+
+    publisher.applyVcsToBuild(
+        mirror(), gitInfo("https://github.com/org/repo.git", "abc123def456", "refs/remotes/origin/main"));
+
+    verify(promotion).setProvidedUpperLimitRevisions(captor.capture());
+    Map<Long, RepositoryVersion> revisions = captor.getValue();
+    assertEquals(1, revisions.size());
+    assertEquals("abc123def456", revisions.get(11L).getVersion());
   }
 
   @Test
@@ -76,14 +104,13 @@ public class TeamCityVcsPublisherTest {
     VcsRootInstanceEntry entry = entry(12L);
     when(buildType.getVcsRootInstanceEntryForParent(existing)).thenReturn(entry);
 
-    VcsBuildCustomization customization =
-        publisher.prepareVcs(mirror(), gitInfo("https://github.com/org/repo.git", "abc123", "refs/remotes/origin/main"));
-    VcsSyncResult result = customization.result();
+    VcsSyncResult result = publisher.applyVcsToBuild(
+        mirror(), gitInfo("https://github.com/org/repo.git", "abc123", "refs/remotes/origin/main"));
 
     verify(project, never()).createVcsRoot(anyString(), anyString(), anyMap());
     verify(buildType, never()).addVcsRoot(any(SVcsRoot.class));
     verify(buildType, never()).persist();
-    assertEquals(1, customization.upperLimitRevisions().size());
+    verify(promotion).setProvidedUpperLimitRevisions(anyMap());
     assertEquals(1, result.getNumberOfAttachedRepositories());
   }
 
@@ -94,7 +121,8 @@ public class TeamCityVcsPublisherTest {
     when(project.getVcsRoots()).thenReturn(Collections.singletonList(existing));
     when(buildType.getVcsRootInstanceEntryForParent(existing)).thenReturn(entry);
 
-    publisher.prepareVcs(mirror(), gitInfo("https://github.com/org/repo.git", "abc123", "refs/remotes/origin/main"));
+    publisher.applyVcsToBuild(
+        mirror(), gitInfo("https://github.com/org/repo.git", "abc123", "refs/remotes/origin/main"));
 
     verify(project, never()).createVcsRoot(anyString(), anyString(), anyMap());
   }
@@ -118,10 +146,8 @@ public class TeamCityVcsPublisherTest {
         + "\"remoteUrls\":[\"https://github.com/org/second.git\"]}"
         + "]}";
 
-    VcsBuildCustomization customization = publisher.prepareVcs(mirror(), vcsInfo(json));
-    VcsSyncResult result = customization.result();
+    VcsSyncResult result = publisher.applyVcsToBuild(mirror(), vcsInfo(json));
 
-    assertEquals(2, customization.upperLimitRevisions().size());
     assertEquals(2, result.getNumberOfAttachedRepositories());
   }
 
@@ -130,8 +156,8 @@ public class TeamCityVcsPublisherTest {
     when(projectManager.findBuildTypeByExternalId(BUILD_TYPE_ID)).thenReturn(null);
     when(projectManager.findBuildTypeById(BUILD_TYPE_ID)).thenReturn(null);
 
-    VcsSyncResult result =
-        publisher.prepareVcs(mirror(), gitInfo("https://github.com/org/repo.git", "abc123", "refs/remotes/origin/main")).result();
+    VcsSyncResult result = publisher.applyVcsToBuild(
+        mirror(), gitInfo("https://github.com/org/repo.git", "abc123", "refs/remotes/origin/main"));
 
     assertTrue(result.hasErrors());
   }
@@ -143,7 +169,8 @@ public class TeamCityVcsPublisherTest {
     when(buildType.getVcsRootInstanceEntryForParent(created)).thenReturn(null);
     when(buildType.addVcsRoot(created)).thenThrow(new RuntimeException("read only"));
 
-    VcsSyncResult result = publisher.prepareVcs(mirror(), gitInfo("https://github.com/org/repo.git", "abc123", "refs/remotes/origin/main")).result();
+    VcsSyncResult result = publisher.applyVcsToBuild(
+        mirror(), gitInfo("https://github.com/org/repo.git", "abc123", "refs/remotes/origin/main"));
 
     verify(created).persist();
     assertTrue(result.hasErrors());

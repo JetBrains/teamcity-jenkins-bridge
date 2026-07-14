@@ -319,15 +319,6 @@ public class JenkinsBridgePollingService {
   }
 
   private void syncBuild(BuildMirror mirror, JenkinsBuildInfo buildInfo) throws Exception {
-    JenkinsVcsInfo vcsInfo = null;
-    if (!mirror.isVcsSynced() || mirror.getTeamCityBuildId() == null) {
-      vcsInfo = jenkinsClient.getBuildVcs(mirror.getJenkinsJob(), mirror.getJenkinsBuildNumber());
-      LOG.debug("Read " + vcsInfo.repositories().size() + " Jenkins VCS repository(ies) for " + mirror.getJenkinsBuildKey());
-      if (!mirror.isVcsSynced()) {
-        mirrorService.syncVcsIfNeeded(mirror, vcsInfo, buildInfo.isBuilding());
-      }
-    }
-
     // Decide once whether this build is a Jenkins Pipeline (mirror stages as build steps) or a
     // freestyle build (mirror the flat progressive console log). The decision is sticky per build.
     Boolean pipelineMode = mirror.getPipelineMode();
@@ -363,15 +354,9 @@ public class JenkinsBridgePollingService {
       }
     }
 
-    // Wait for the latest data to be published by Jenkins before registering the build.
-    // Needed for VCS and the pipeline graph.
-    if (buildInfo.isBuilding()) {
-      return;
-    }
-
     ensureJenkinsBuildParametersLoaded(mirror);
 
-    long teamCityBuildId = mirrorService.ensureTeamCityBuild(mirror, buildInfo, graph, vcsInfo);
+    long teamCityBuildId = mirrorService.ensureTeamCityBuild(mirror, buildInfo, graph);
     mirrorService.ensureRunningDataSent(mirror, teamCityBuildId);
     mirrorService.ensureMetadataLogSent(mirror, teamCityBuildId);
     mirrorService.syncBuildNumber(mirror);
@@ -423,6 +408,13 @@ public class JenkinsBridgePollingService {
               + mirror.getJenkinsBuildKey(), saveError);
         }
       }
+    }
+    if (!buildInfo.isBuilding()
+        && !mirror.isVcsSynced()
+        && mirror.getSyncState() != SyncState.TEAMCITY_FINISHED) {
+      JenkinsVcsInfo vcsInfo = jenkinsClient.getBuildVcs(mirror.getJenkinsJob(), mirror.getJenkinsBuildNumber());
+      LOG.debug("Read " + vcsInfo.repositories().size() + " Jenkins VCS repository(ies) for " + mirror.getJenkinsBuildKey());
+      mirrorService.syncVcsIfNeeded(mirror, vcsInfo);
     }
     mirrorService.finishBuildIfNeeded(mirror, teamCityBuildId, buildInfo);
   }

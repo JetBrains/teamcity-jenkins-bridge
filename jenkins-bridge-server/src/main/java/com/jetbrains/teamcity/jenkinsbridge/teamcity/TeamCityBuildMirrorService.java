@@ -22,7 +22,6 @@ import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsStages;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsTestReport;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsVcsInfo;
 import com.jetbrains.teamcity.jenkinsbridge.settings.JenkinsBridgeSettingsProvider;
-import com.jetbrains.teamcity.jenkinsbridge.vcs.VcsBuildCustomization;
 import com.jetbrains.teamcity.jenkinsbridge.vcs.VcsSyncResult;
 import jetbrains.buildServer.messages.BuildMessage1;
 
@@ -101,8 +100,7 @@ public class TeamCityBuildMirrorService {
   public long ensureTeamCityBuild(
       BuildMirror mirror,
       JenkinsBuildInfo jenkinsInfo,
-      JenkinsPipelineGraph graph,
-      JenkinsVcsInfo vcsInfo
+      JenkinsPipelineGraph graph
   )
       throws BridgeHttpException, IOException {
     if (mirror.getTeamCityBuildId() != null) {
@@ -158,31 +156,16 @@ public class TeamCityBuildMirrorService {
 
 
     Map<String, String> properties = bridgeBuildParameters(mirror, jenkinsInfo);
-    VcsBuildCustomization vcsCustomization = prepareVcsForQueue(mirror, vcsInfo);
 
     long buildId = teamCityBuildQueuer.queueAgentlessBuild(
         mirror.getTeamCityBuildTypeId(),
         properties,
-        mirror.getJenkinsBuildParameters(),
-        vcsCustomization);
+        mirror.getJenkinsBuildParameters());
     mirror.setTeamCityBuildId(buildId);
     mirror.setSyncState(SyncState.TEAMCITY_CREATED);
     mirror.setLastError(null);
     mirrorStore.saveMirror(mirror);
     return buildId;
-  }
-
-  private VcsBuildCustomization prepareVcsForQueue(BuildMirror mirror, JenkinsVcsInfo vcsInfo) {
-    if (teamCityVcsPublisher == null || vcsInfo == null || vcsInfo.repositories().isEmpty()) {
-      return null;
-    }
-    try {
-      return teamCityVcsPublisher.prepareVcs(mirror, vcsInfo);
-    } catch (Exception e) {
-      LOG.warn("Failed to prepare VCS revisions before queueing "
-          + mirror.getJenkinsBuildKey(), e);
-      return null;
-    }
   }
 
   Map<String, String> bridgeBuildParameters(BuildMirror mirror, JenkinsBuildInfo jenkinsInfo) {
@@ -650,16 +633,16 @@ public class TeamCityBuildMirrorService {
    * Jenkins side (since in TeamCity VCS roots must be known before build time,
    * while in Jenkins they can be added dynamically through checkout steps).
    */
-  public void syncVcsIfNeeded(BuildMirror mirror, JenkinsVcsInfo vcsInfo, boolean building)
+  public void syncVcsIfNeeded(BuildMirror mirror, JenkinsVcsInfo vcsInfo)
       throws IOException {
-    if (mirror.isVcsSynced() || building) {
+    if (mirror.isVcsSynced()) {
       return;
     }
 
     VcsSyncResult result = new VcsSyncResult();
     if (vcsInfo != null && !vcsInfo.repositories().isEmpty()) {
       try {
-        result = teamCityVcsPublisher.prepareVcs(mirror, vcsInfo).result();
+        result = teamCityVcsPublisher.applyVcsToBuild(mirror, vcsInfo);
       } catch (Exception e) {
         LOG.warn("VCS mirroring failed for " + mirror.getJenkinsBuildKey(), e);
         result.addError(describeException(e));

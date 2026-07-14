@@ -276,7 +276,7 @@ public class JenkinsBridgePollingServiceTest {
     }
 
     @Override
-    public long ensureTeamCityBuild(BuildMirror mirror, JenkinsBuildInfo jenkinsInfo, JenkinsPipelineGraph graph, JenkinsVcsInfo vcsInfo) {
+    public long ensureTeamCityBuild(BuildMirror mirror, JenkinsBuildInfo jenkinsInfo, JenkinsPipelineGraph graph) {
       lastJenkinsParameters = mirror.getJenkinsBuildParameters();
       mirror.setTeamCityBuildId(100L);
       return 100L;
@@ -308,7 +308,7 @@ public class JenkinsBridgePollingServiceTest {
     }
 
     @Override
-    public void syncVcsIfNeeded(BuildMirror mirror, JenkinsVcsInfo vcsInfo, boolean building) {
+    public void syncVcsIfNeeded(BuildMirror mirror, JenkinsVcsInfo vcsInfo) {
       // no-op
     }
 
