@@ -76,7 +76,7 @@ Run from the repository root:
 mvn package
 ```
 
-The build uses local TeamCity 2026.2-SNAPSHOT EAP Maven artifacts. They must be
+The build uses local TeamCity 2026.3-SNAPSHOT EAP Maven artifacts. They must be
 available under `${user.home}/.m2/repository/TeamCity`.
 
 The latest plugin archive is written to:

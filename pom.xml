@@ -6,7 +6,7 @@
   <version>1.0-SNAPSHOT</version>
   <packaging>pom</packaging>
   <properties>
-      <teamcity-version>2026.2-SNAPSHOT</teamcity-version>
+      <teamcity-version>2026.3-SNAPSHOT</teamcity-version>
       <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
   </properties>
   <repositories>
@@ -54,7 +54,7 @@
       <id>local-teamcity-eap</id>
       <!--
         Active by default so the local EAP repository id is always defined.
-        The TeamCity 2026.2-SNAPSHOT artifacts are cached under this repository id;
+        The TeamCity 2026.3-SNAPSHOT artifacts are cached under this repository id;
         if the profile is not active (e.g. a default IntelliJ reimport), Maven treats
         the cached artifacts as coming from an "unavailable repository id" and fails to
         resolve server-api/common-api. Keeping it active everywhere fixes both the CLI
