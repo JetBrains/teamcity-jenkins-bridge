@@ -7,8 +7,10 @@ target/
 
 # Local agent handoff files
 /AGENTS.md
+/CLAUDE.md
 /PROGRESS.md
 /PLAN.md
 /RELIABILITY_AND_PERFORMANCE.md
 /docs
 /.github
+.claude/
