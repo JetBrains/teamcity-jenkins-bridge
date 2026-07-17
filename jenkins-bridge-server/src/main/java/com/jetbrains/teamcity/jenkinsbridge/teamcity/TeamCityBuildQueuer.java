@@ -39,6 +39,10 @@ public class TeamCityBuildQueuer {
     }
 
     Map<String, String> parameters = new LinkedHashMap<String, String>();
+
+    // TODO: Replace the line below with parameters.put(BuildPromotionImpl.ALLOW_RESETTING_ACTIVE_REVISIONS, "true"); once merged in core
+    parameters.put("teamcity.internal.build.resetRevisions.allow", "true");
+
     parameters.put(TeamCityBuildParameters.AGENTLESS_BUILD_PROPERTY, "true");
     parameters.putAll(TeamCityBuildParameters.mergeWithJenkinsParameters(
         properties,

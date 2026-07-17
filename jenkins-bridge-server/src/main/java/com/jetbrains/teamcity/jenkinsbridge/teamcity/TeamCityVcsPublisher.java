@@ -63,7 +63,6 @@ public class TeamCityVcsPublisher {
         List<AttachedRepository> attached = ensureVcsRootsAttached(project, buildType, vcsInfo, result);
 
         Map<Long, RepositoryVersion> revisions = new LinkedHashMap<>();
-        String desiredBranch = null;
         for (AttachedRepository repo : attached) {
             VcsRootInstanceEntry entry = buildType.getVcsRootInstanceEntryForParent(repo.root);
             if (entry == null) {
@@ -76,10 +75,6 @@ public class TeamCityVcsPublisher {
                     repo.repository.sha1(),
                     branchRef);
             revisions.put(entry.getVcsRoot().getId(), version);
-
-            if (desiredBranch == null && !repo.branch.isDefault()) {
-                desiredBranch = repo.branch.displayName();
-            }
         }
 
         BuildPromotion promotion = myBuildLocator.findPromotion(mirror.getTeamCityBuildId());
@@ -91,9 +86,6 @@ public class TeamCityVcsPublisher {
 
         promotionEx.resetBuildRevisions();
         promotionEx.setProvidedUpperLimitRevisions(revisions);
-        if (desiredBranch != null) {
-            promotionEx.setDesiredBranchName(desiredBranch);
-        }
         myChangesCollector.scheduleCheckingForChangesAndWait(promotionEx, new CancelableTaskHolder());
 
         return result;

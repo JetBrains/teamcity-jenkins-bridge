@@ -17,6 +17,7 @@ import jetbrains.buildServer.vcs.VcsRootInstanceEntry;
 import jetbrains.buildServer.vcs.impl.BuildChainChangesCollector;
 import org.junit.Before;
 import org.junit.Test;
+import org.mockito.ArgumentCaptor;
 
 import java.util.Collections;
 import java.util.Map;
@@ -71,7 +72,6 @@ public class TeamCityVcsPublisherTest {
     verify(buildType).setCheckoutRules(created, CheckoutRules.DEFAULT);
     verify(buildType).persist();
     verify(promotion).resetBuildRevisions();
-    verify(promotion).setDesiredBranchName("main");
     verify(promotion).setProvidedUpperLimitRevisions(anyMap());
     verify(changesCollector).scheduleCheckingForChangesAndWait(eq(promotion), any(CancelableTaskHolder.class));
     assertEquals(1, result.getNumberOfAttachedRepositories());
@@ -85,8 +85,7 @@ public class TeamCityVcsPublisherTest {
     VcsRootInstanceEntry entry = entry(11L);
     when(buildType.getVcsRootInstanceEntryForParent(created)).thenReturn(null, entry);
 
-    org.mockito.ArgumentCaptor<Map<Long, RepositoryVersion>> captor =
-        org.mockito.ArgumentCaptor.forClass(Map.class);
+    ArgumentCaptor<Map<Long, RepositoryVersion>> captor = ArgumentCaptor.captor();
 
     publisher.applyVcsToBuild(
         mirror(), gitInfo("https://github.com/org/repo.git", "abc123def456", "refs/remotes/origin/main"));
