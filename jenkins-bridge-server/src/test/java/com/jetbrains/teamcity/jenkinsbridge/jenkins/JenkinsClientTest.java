@@ -3,6 +3,21 @@ package com.jetbrains.teamcity.jenkinsbridge.jenkins;
 import com.jetbrains.teamcity.jenkinsbridge.http.BridgeHttpClient;
 import com.jetbrains.teamcity.jenkinsbridge.http.BridgeHttpException;
 import com.jetbrains.teamcity.jenkinsbridge.http.BridgeHttpResponse;
+import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsArtifacts;
+import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsBuildInfo;
+import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsCrumb;
+import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsBuildParameters;
+import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsJobParameters;
+import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsLogChunk;
+import com.jetbrains.teamcity.jenkinsbridge.model.GraphConfidence;
+import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsPipelineGraph;
+import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsQueueBuildResolution;
+import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsStageLog;
+import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsStageNodes;
+import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsStageStep;
+import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsStages;
+import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsTestReport;
+import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsVcsInfo;
 import com.jetbrains.teamcity.jenkinsbridge.model.*;
 import com.jetbrains.teamcity.jenkinsbridge.settings.JenkinsBridgeSettings;
 import com.jetbrains.teamcity.jenkinsbridge.settings.JenkinsBridgeSettingsProvider;
@@ -668,6 +683,45 @@ public class JenkinsClientTest {
     client.triggerBuild("job", new LinkedHashMap<String, String>());
 
     assertTrue(httpClient.postHeaders.isEmpty());
+  }
+
+  @Test
+  public void resolveQueuedBuildNumberReturnsExecutableNumber() throws Exception {
+    StubResponseHttpClient httpClient = new StubResponseHttpClient();
+    httpClient.body = "{\"executable\":{\"number\":42}}";
+    JenkinsClient client = new JenkinsClient(new StaticSettingsProvider(), httpClient);
+
+    JenkinsQueueBuildResolution resolution =
+        client.resolveQueuedBuildNumber("http://jenkins/queue/item/99/");
+
+    assertEquals("http://jenkins/queue/item/99/api/json", httpClient.url);
+    assertTrue(resolution.isResolved());
+    assertEquals(42, resolution.getBuildNumber());
+  }
+
+  @Test
+  public void resolveQueuedBuildNumberReturnsPendingWhenExecutableIsMissing() throws Exception {
+    StubResponseHttpClient httpClient = new StubResponseHttpClient();
+    httpClient.body = "{\"why\":\"Waiting for next available executor\"}";
+    JenkinsClient client = new JenkinsClient(new StaticSettingsProvider(), httpClient);
+
+    JenkinsQueueBuildResolution resolution =
+        client.resolveQueuedBuildNumber("http://jenkins/queue/item/99");
+
+    assertEquals("http://jenkins/queue/item/99/api/json", httpClient.url);
+    assertTrue(resolution.isPending());
+  }
+
+  @Test
+  public void resolveQueuedBuildNumberReturnsCancelled() throws Exception {
+    StubResponseHttpClient httpClient = new StubResponseHttpClient();
+    httpClient.body = "{\"cancelled\":true}";
+    JenkinsClient client = new JenkinsClient(new StaticSettingsProvider(), httpClient);
+
+    JenkinsQueueBuildResolution resolution =
+        client.resolveQueuedBuildNumber("http://jenkins/queue/item/99/");
+
+    assertTrue(resolution.isCancelled());
   }
 
   private static class StubResponseHttpClient extends BridgeHttpClient {

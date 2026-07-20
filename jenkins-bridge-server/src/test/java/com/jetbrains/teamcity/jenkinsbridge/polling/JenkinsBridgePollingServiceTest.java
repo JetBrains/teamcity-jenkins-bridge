@@ -92,7 +92,7 @@ public class JenkinsBridgePollingServiceTest {
 
     pollPipeline(service, new MirroredJob("job", "buildType", "Build", 0, false, false), provider.load());
 
-    assertNull(store.findMirror("buildType::otherJob#1@1710000000001"));
+    assertNotNull(store.findMirror("buildType::otherJob#1@1710000000001"));
   }
 
   @Test
@@ -111,20 +111,41 @@ public class JenkinsBridgePollingServiceTest {
         store,
         new MirroredJobProvider(null, provider));
 
-    Method syncBuild = JenkinsBridgePollingService.class.getDeclaredMethod(
-        "syncBuild", BuildMirror.class, JenkinsBuildInfo.class);
-    syncBuild.setAccessible(true);
-
-    syncBuild.invoke(service, mirror, finishedBuild);
+    syncBuild(service, mirror, finishedBuild);
 
     assertEquals(1, jenkinsClient.getBuildParametersCalls);
     assertEquals("feature/x", mirror.getJenkinsBuildParameters().get("BRANCH"));
     assertTrue(mirror.isJenkinsBuildParametersLoaded());
     assertEquals("feature/x", mirrorService.lastJenkinsParameters.get("BRANCH"));
 
-    syncBuild.invoke(service, mirror, finishedBuild);
+    syncBuild(service, mirror, finishedBuild);
 
     assertEquals(1, jenkinsClient.getBuildParametersCalls);
+  }
+
+  @Test
+  public void runningBoundTeamCityFirstBuildIsUpdatedLiveWithoutFinalSync() throws Exception {
+    JenkinsBridgeSettingsProvider provider = providerWithTempStateFile();
+    BuildMirrorStore store = new BuildMirrorStore(null, provider, buildMockProjectManager());
+    JenkinsBuildInfo runningBuild = buildInfo(1, 1710000000001L, true);
+    BuildMirror mirror = store.getOrCreateMirror("job#1", "job", "buildType", runningBuild);
+    mirror.setTeamCityBuildId(77L);
+    mirror.setPipelineMode(false);
+
+    FakeJenkinsClient jenkinsClient = new FakeJenkinsClient();
+    CapturingMirrorService mirrorService = new CapturingMirrorService();
+    JenkinsBridgePollingService service = newService(provider, jenkinsClient, mirrorService, store);
+
+    syncBuild(service, mirror, runningBuild);
+
+    assertEquals(0, jenkinsClient.getBuildParametersCalls);
+    assertEquals(1, mirrorService.ensureBuildCalls);
+    assertEquals(1, mirrorService.runningDataCalls);
+    assertEquals(1, mirrorService.metadataLogCalls);
+    assertEquals(1, mirrorService.logSyncCalls);
+    assertEquals(0, mirrorService.testSyncCalls);
+    assertEquals(0, mirrorService.artifactSyncCalls);
+    assertEquals(0, mirrorService.finishCalls);
   }
 
   private static JenkinsBuildInfo buildInfo() {
@@ -174,6 +195,17 @@ public class JenkinsBridgePollingServiceTest {
         "pollPipeline", MirroredJob.class, JenkinsBridgeSettings.class);
     pollPipeline.setAccessible(true);
     pollPipeline.invoke(service, mirroredJob, settings);
+  }
+
+  private static void syncBuild(
+      JenkinsBridgePollingService service,
+      BuildMirror mirror,
+      JenkinsBuildInfo buildInfo
+  ) throws Exception {
+    Method syncBuild = JenkinsBridgePollingService.class.getDeclaredMethod(
+        "syncBuild", BuildMirror.class, JenkinsBuildInfo.class);
+    syncBuild.setAccessible(true);
+    syncBuild.invoke(service, mirror, buildInfo);
   }
 
   private static JenkinsBridgeSettingsProvider providerWithTempStateFile() throws Exception {
@@ -270,41 +302,53 @@ public class JenkinsBridgePollingServiceTest {
 
   private static class CapturingMirrorService extends TeamCityBuildMirrorService {
     Map<String, String> lastJenkinsParameters;
+    int ensureBuildCalls;
+    int runningDataCalls;
+    int metadataLogCalls;
+    int logSyncCalls;
+    int testSyncCalls;
+    int artifactSyncCalls;
+    int finishCalls;
 
     CapturingMirrorService() {
       super(null, null, null, null, null, null, null, null, null, null, null, null, null);
     }
 
     @Override
-    public long ensureTeamCityBuild(BuildMirror mirror, JenkinsBuildInfo jenkinsInfo, JenkinsPipelineGraph graph,
-                                    com.jetbrains.teamcity.jenkinsbridge.model.JenkinsVcsInfo vcsInfo) {
+    public long ensureTeamCityBuild(BuildMirror mirror, JenkinsBuildInfo jenkinsInfo, JenkinsPipelineGraph graph, JenkinsVcsInfo vcsInfo) {
+      ensureBuildCalls++;
       lastJenkinsParameters = mirror.getJenkinsBuildParameters();
+      if (mirror.getTeamCityBuildId() != null) {
+        return mirror.getTeamCityBuildId();
+      }
       mirror.setTeamCityBuildId(100L);
       return 100L;
     }
 
     @Override
     public void ensureRunningDataSent(BuildMirror mirror, long teamCityBuildId) {
-      // no-op
+      runningDataCalls++;
     }
 
     @Override
     public void ensureMetadataLogSent(BuildMirror mirror, long teamCityBuildId) {
-      // no-op
+      metadataLogCalls++;
     }
 
     @Override
     public void syncLogs(BuildMirror mirror, long teamCityBuildId, JenkinsLogChunk logChunk) {
-      // no-op
+      logSyncCalls++;
     }
 
     @Override
     public void syncTestsIfNeeded(BuildMirror mirror, long teamCityBuildId, JenkinsTestReport testReport) {
+      testSyncCalls++;
       mirror.setTestsSynced(true);
     }
 
     @Override
     public void syncArtifactMetadataIfNeeded(BuildMirror mirror, long teamCityBuildId, JenkinsArtifacts artifacts) {
+      artifactSyncCalls++;
       mirror.setArtifactsSynced(true);
     }
 
@@ -315,7 +359,7 @@ public class JenkinsBridgePollingServiceTest {
 
     @Override
     public void finishBuildIfNeeded(BuildMirror mirror, long teamCityBuildId, JenkinsBuildInfo jenkinsInfo) {
-      // no-op
+      finishCalls++;
     }
 
     @Override

@@ -989,6 +989,37 @@ public class JenkinsClient {
     return location == null ? "" : location;
   }
 
+  public JenkinsQueueBuildResolution resolveQueuedBuildNumber(String queueItemUrl) throws BridgeHttpException {
+    if (queueItemUrl == null || queueItemUrl.trim().isEmpty()) {
+      return JenkinsQueueBuildResolution.pending();
+    }
+
+    JenkinsBridgeSettings settings = settingsProvider.load();
+    String url = appendApiJson(queueItemUrl.trim());
+    String response = httpClient.get(url, settings.getJenkinsUser(), settings.getJenkinsToken(), "application/json");
+    JsonObject root = jsonParser.parse(response).getAsJsonObject();
+
+    JsonElement executable = root.get("executable");
+    if (executable != null && executable.isJsonObject()) {
+      JsonElement number = executable.getAsJsonObject().get("number");
+      if (number != null && !number.isJsonNull()) {
+        return JenkinsQueueBuildResolution.resolved(number.getAsInt());
+      }
+    }
+
+    JsonElement cancelled = root.get("cancelled");
+    if (cancelled != null && !cancelled.isJsonNull() && cancelled.getAsBoolean()) {
+      return JenkinsQueueBuildResolution.cancelled();
+    }
+
+    return JenkinsQueueBuildResolution.pending();
+  }
+
+  private static String appendApiJson(String queueItemUrl) {
+    String normalized = queueItemUrl.endsWith("/") ? queueItemUrl : queueItemUrl + "/";
+    return normalized + "api/json";
+  }
+
   private static String encodeForm(Map<String, String> parameters) {
     StringBuilder body = new StringBuilder();
     for (Map.Entry<String, String> entry : parameters.entrySet()) {

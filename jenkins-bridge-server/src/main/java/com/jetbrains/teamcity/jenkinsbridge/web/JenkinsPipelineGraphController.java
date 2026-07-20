@@ -7,7 +7,7 @@ import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsPipelineGraphNode;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsStageLog;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsStageStep;
 import com.jetbrains.teamcity.jenkinsbridge.persistence.BuildMirror;
-import com.jetbrains.teamcity.jenkinsbridge.persistence.BuildMirrorStore;
+import com.jetbrains.teamcity.jenkinsbridge.persistence.BuildMirrorResolver;
 import jetbrains.buildServer.controllers.BaseController;
 import jetbrains.buildServer.serverSide.BuildsManager;
 import jetbrains.buildServer.serverSide.SBuild;
@@ -26,27 +26,26 @@ import java.util.List;
 
 /**
  * AJAX endpoint backing the "Pipeline Graph" build-results tab. Given a TeamCity build id, resolves the
- * mirrored Jenkins build (via the build's {@code jenkins.build.key} parameter) and returns its
- * normalized Blue Ocean pipeline graph as JSON for the tab's renderer. Read-only; requires VIEW_PROJECT
+ * mirrored Jenkins build (via {@link BuildMirrorResolver}, which covers both creation flows) and returns
+ * its normalized Blue Ocean pipeline graph as JSON for the tab's renderer. Read-only; requires VIEW_PROJECT
  * on the build's project. Returns {@code {"pipeline": false}} for non-mirror / non-pipeline builds.
  */
 public class JenkinsPipelineGraphController extends BaseController {
   static final String PATH = "/jenkinsBridgePipelineGraph.html";
-  static final String JENKINS_BUILD_KEY_PARAM = "jenkins.build.key";
   private static final Gson GSON = new Gson();
 
   private final BuildsManager buildsManager;
-  private final BuildMirrorStore mirrorStore;
+  private final BuildMirrorResolver mirrorResolver;
   private final JenkinsClient jenkinsClient;
 
   public JenkinsPipelineGraphController(
       WebControllerManager webControllerManager,
       BuildsManager buildsManager,
-      BuildMirrorStore mirrorStore,
+      BuildMirrorResolver mirrorResolver,
       JenkinsClient jenkinsClient
   ) {
     this.buildsManager = buildsManager;
-    this.mirrorStore = mirrorStore;
+    this.mirrorResolver = mirrorResolver;
     this.jenkinsClient = jenkinsClient;
     webControllerManager.registerController(PATH, this);
   }
@@ -86,11 +85,7 @@ public class JenkinsPipelineGraphController extends BaseController {
 
   /** Package-private so it can be unit-tested without a servlet request. */
   GraphView graphViewForBuild(SBuild build) throws IOException {
-    String key = build.getParametersProvider().get(JENKINS_BUILD_KEY_PARAM);
-    if (key == null || key.trim().length() == 0) {
-      return GraphView.notPipeline();
-    }
-    BuildMirror mirror = mirrorStore.findMirror(key);
+    BuildMirror mirror = mirrorResolver.resolve(build);
     JenkinsPipelineGraph graph = mirror == null ? null : mirror.getPipelineGraph();
     if (graph == null || !graph.isPipeline() || graph.getNodes().isEmpty()) {
       return GraphView.notPipeline();
@@ -108,8 +103,7 @@ public class JenkinsPipelineGraphController extends BaseController {
     if (nodeId == null || nodeId.trim().length() == 0) {
       return new StageLogView("", "");
     }
-    String key = build.getParametersProvider().get(JENKINS_BUILD_KEY_PARAM);
-    BuildMirror mirror = key == null ? null : mirrorStore.findMirror(key);
+    BuildMirror mirror = mirrorResolver.resolve(build);
     if (mirror == null) {
       return new StageLogView(nodeId, "");
     }
@@ -133,8 +127,7 @@ public class JenkinsPipelineGraphController extends BaseController {
     if (nodeId == null || nodeId.trim().length() == 0) {
       return view;
     }
-    String key = build.getParametersProvider().get(JENKINS_BUILD_KEY_PARAM);
-    BuildMirror mirror = key == null ? null : mirrorStore.findMirror(key);
+    BuildMirror mirror = mirrorResolver.resolve(build);
     if (mirror == null) {
       return view;
     }

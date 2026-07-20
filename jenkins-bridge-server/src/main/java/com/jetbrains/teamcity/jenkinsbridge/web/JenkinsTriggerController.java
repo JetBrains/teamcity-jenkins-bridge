@@ -2,6 +2,7 @@ package com.jetbrains.teamcity.jenkinsbridge.web;
 
 import com.google.gson.Gson;
 import com.jetbrains.teamcity.jenkinsbridge.feature.BridgeBuildFeatureConstants;
+import com.jetbrains.teamcity.jenkinsbridge.feature.JenkinsParameterPayloadBuilder;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClient;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsJobParameters;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsParameterDefinition;
@@ -97,11 +98,14 @@ public class JenkinsTriggerController extends BaseController {
       throws Exception {
     // Re-read the definitions so we only forward declared parameters, falling back to each default.
     JenkinsJobParameters parameters = jenkinsClient.getJobParameters(job);
-    Map<String, String> values = new LinkedHashMap<String, String>();
+    Map<String, String> submittedValues = new LinkedHashMap<String, String>();
     for (JenkinsParameterDefinition def : parameters.getParameters()) {
       String submitted = request.getParameter(VALUE_PREFIX + def.getName());
-      values.put(def.getName(), submitted != null ? submitted : def.getDefaultValue());
+      if (submitted != null) {
+        submittedValues.put(def.getName(), submitted);
+      }
     }
+    Map<String, String> values = JenkinsParameterPayloadBuilder.build(parameters, submittedValues);
 
     String queueItemUrl = jenkinsClient.triggerBuild(job, values);
 

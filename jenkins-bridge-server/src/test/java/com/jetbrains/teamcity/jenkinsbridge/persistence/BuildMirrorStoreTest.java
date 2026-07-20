@@ -123,6 +123,27 @@ public class BuildMirrorStoreTest {
   }
 
   @Test
+  public void findMirrorByTcBuildIdReturnsMirrorWhenStored() throws Exception {
+    BuildMirrorStore store = new BuildMirrorStore(null, providerWithTempStateFile(), buildMockProjectManager());
+    BuildMirror mirror = store.getOrCreateMirror(BuildMirrorStore.buildKey("job", 1), "job", "buildType", buildInfo(1));
+    mirror.setTeamCityBuildId(4242L);
+    store.saveMirror(mirror);
+
+    BuildMirror found = store.findMirrorByTcBuildId(4242L);
+    assertNotNull(found);
+    assertEquals(1, found.getJenkinsBuildNumber());
+  }
+
+  @Test
+  public void findMirrorByTcBuildIdReturnsNullWhenAbsentOrUnbound() throws Exception {
+    BuildMirrorStore store = new BuildMirrorStore(null, providerWithTempStateFile(), buildMockProjectManager());
+    // Mirror with no teamCityBuildId set (null) must never match a real id.
+    store.getOrCreateMirror(BuildMirrorStore.buildKey("job", 1), "job", "buildType", buildInfo(1));
+
+    assertNull(store.findMirrorByTcBuildId(999L));
+  }
+
+  @Test
   @Ignore
   public void corruptStateFileIsQuarantinedAndBridgeStartsFresh() throws Exception {
     Map<String, String> corruptValues = new LinkedHashMap<String, String>();
