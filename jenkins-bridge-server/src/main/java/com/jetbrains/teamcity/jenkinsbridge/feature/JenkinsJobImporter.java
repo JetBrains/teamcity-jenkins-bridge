@@ -66,11 +66,7 @@ public class JenkinsJobImporter {
       try {
         // TODO: Check if this API call is needed, or if we can fetch the class from elsewhere
         boolean isMultiBranch = JenkinsJob.isMultibranchClass(jenkinsClient.getJobClass(fullName));
-        if (isMultiBranch) {
-          importMultibranchPipeline(project, fullName, alreadyMirrored, result);
-        } else {
-          importSingleJob(project, fullName, alreadyMirrored, result);
-        }
+        importJob(project, fullName, isMultiBranch, alreadyMirrored, result);
       } catch (Exception e) {
         result.addFailed(fullName, describeException(e));
       }
@@ -79,64 +75,15 @@ public class JenkinsJobImporter {
     return result;
   }
 
-  private void importSingleJob(SProject project, String fullName, Set<String> alreadyMirrored,
-                               ImportResult result) {
+  private void importJob(SProject project, String fullName, boolean isMultibranch,
+                         Set<String> alreadyMirrored, ImportResult result) {
     if (alreadyMirrored.contains(fullName)) {
       result.addSkipped(fullName, "already imported");
       return;
     }
-    String externalId = createMirrorConfig(project, fullName, false);
+    String externalId = createMirrorConfig(project, fullName, isMultibranch);
     alreadyMirrored.add(fullName);
     result.addCreated(fullName, externalId);
-  }
-
-  /**
-   * Expands a multibranch pipeline into a subproject with one configuration per branch job. The
-   * subproject is created only when there is at least one new branch to import, and an existing
-   * subproject for the same pipeline is reused.
-   */
-  private void importMultibranchPipeline(SProject targetProject, String pipelineFullName,
-                                         Set<String> alreadyMirrored, ImportResult result)
-      throws Exception {
-    List<JenkinsJob> branchJobs = jenkinsClient.listJobs(pipelineFullName);
-    SProject pipelineProject = null;
-    boolean createdAny = false;
-
-    for (JenkinsJob branchJob : branchJobs) {
-      String branchFullName = branchJob.getFullName();
-      if (!branchJob.isImportable()) {
-        continue;
-      }
-      if (alreadyMirrored.contains(branchFullName)) {
-        result.addSkipped(branchFullName, "already imported");
-        continue;
-      }
-      if (pipelineProject == null) {
-        pipelineProject = findOrCreatePipelineProject(targetProject, pipelineFullName);
-      }
-      String externalId = createMirrorConfig(pipelineProject, branchFullName, true);
-      alreadyMirrored.add(branchFullName);
-      result.addCreated(branchFullName, externalId);
-      createdAny = true;
-    }
-
-    if (!createdAny) {
-      result.addSkipped(pipelineFullName, "no new branches to import");
-    }
-  }
-
-  private SProject findOrCreatePipelineProject(SProject targetProject, String pipelineFullName) {
-    String base = ExternalIdGenerator.baseExternalId(targetProject.getExternalId(), pipelineFullName);
-    for (SProject existing : targetProject.getOwnProjects()) {
-      if (existing.getExternalId().equals(base)) {
-        return existing;
-      }
-    }
-    String externalId = ExternalIdGenerator.resolveUnique(
-        base, candidate -> projectManager.findProjectByExternalId(candidate) != null);
-    SProject created = targetProject.createProject(externalId, lastPathSegment(pipelineFullName));
-    created.persist();
-    return created;
   }
 
   // Creates a mirror configuration for a single Jenkins job and returns its external id.

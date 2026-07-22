@@ -10,11 +10,12 @@ import jetbrains.buildServer.serverSide.SBuildType;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * Discovers the jobs to mirror by scanning every active build configuration for the
- * {@link BridgeBuildFeature}. When no configuration carries the feature, falls back to a single
- * mirrored job synthesized from the global settings so the legacy single-job setup keeps working.
+ * {@link BridgeBuildFeature}. When no configuration carries the feature, it falls back to a single
+ * mirrored job synthesized from the global settings, so the legacy single-job setup keeps working.
  */
 public class MirroredJobProvider {
   private final ProjectManager projectManager;
@@ -29,7 +30,7 @@ public class MirroredJobProvider {
   }
 
   public List<MirroredJob> discoverMirroredJobs() {
-    List<MirroredJob> jobs = new ArrayList<MirroredJob>();
+    List<MirroredJob> jobs = new ArrayList<>();
     for (SBuildType buildType : projectManager.getActiveBuildTypes()) {
       // isMultipleFeaturesPerBuildTypeAllowed()==false is UI-advisory only; iterate defensively.
       for (SBuildFeatureDescriptor descriptor
@@ -51,7 +52,8 @@ public class MirroredJobProvider {
     Map<String, String> params = descriptor.getParameters();
     String job = params.get(BridgeBuildFeatureConstants.PARAM_JENKINS_JOB);
     int limit = parsePositiveInt(params.get(BridgeBuildFeatureConstants.PARAM_RECENT_LIMIT));
-    return new MirroredJob(job, buildType.getExternalId(), buildType.getFullName(), limit, false);
+    boolean multibranch = Objects.equals("true", params.get(BridgeBuildFeatureConstants.PARAM_IN_MULTIBRANCH));
+    return new MirroredJob(job, buildType.getExternalId(), buildType.getFullName(), limit, false, multibranch);
   }
 
   private MirroredJob legacyJobOrNull() {
@@ -68,7 +70,7 @@ public class MirroredJobProvider {
     }
     try {
       int parsed = Integer.parseInt(value.trim());
-      return parsed > 0 ? parsed : 0;
+      return Math.max(parsed, 0);
     } catch (NumberFormatException e) {
       return 0;
     }

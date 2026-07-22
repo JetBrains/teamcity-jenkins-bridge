@@ -55,7 +55,7 @@ public class TeamCityBuildQueuer {
 
     BuildCustomizer customizer = buildCustomizerFactory.createBuildCustomizer(buildType, null);
     customizer.setParameters(parameters);
-    pinBranch(customizer, buildType, vcsInfo);
+    pinBranch(customizer, buildType, properties, vcsInfo);
 
     BuildPromotion promotion = customizer.createPromotion();
     SQueuedBuild queuedBuild = promotion.addToQueue(TRIGGERED_BY);
@@ -69,11 +69,16 @@ public class TeamCityBuildQueuer {
   /**
    * Registers the build branch before the promotion is queued, so TeamCity finalizes the immutable branch name correctly.
    */
-  private void pinBranch(BuildCustomizer customizer, SBuildType buildType, @Nullable JenkinsVcsInfo vcsInfo) {
+  private void pinBranch(BuildCustomizer customizer, SBuildType buildType, Map<String, String> properties,
+                         @Nullable JenkinsVcsInfo vcsInfo) {
     String branchName = null;
     SBuildFeatureDescriptor feature = buildType.getBuildFeaturesOfType(BridgeBuildFeatureConstants.TYPE).stream().findFirst().orElse(null);
     if (feature != null && Objects.equals("true", feature.getParameters().get(BridgeBuildFeatureConstants.PARAM_IN_MULTIBRANCH))) {
-      String job = feature.getParameters().get(BridgeBuildFeatureConstants.PARAM_JENKINS_JOB);
+      // Check the name of the nested branch job for the branch name
+      String job = properties.get("jenkins.job");
+      if (job == null || job.trim().isEmpty()) {
+        job = feature.getParameters().get(BridgeBuildFeatureConstants.PARAM_JENKINS_JOB);
+      }
       if (job != null && !job.trim().isEmpty()) {
         branchName = lastPathSegment(job.trim());
       }

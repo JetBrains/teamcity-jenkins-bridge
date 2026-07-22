@@ -38,7 +38,7 @@ import static org.junit.Assert.assertTrue;
 
 public class JenkinsBridgePollingServiceTest {
   @Test
-  public void pollJobProcessesBuildNumberResetByTimestampedIdentity() throws Exception {
+  public void pollPipelineProcessesBuildNumberResetByTimestampedIdentity() throws Exception {
     JenkinsBridgeSettingsProvider provider = providerWithTempStateFile();
     BuildMirrorStore store = new BuildMirrorStore(null, provider, buildMockProjectManager());
     store.setLastSeenBuildNumber("buildType::job", 500);
@@ -48,7 +48,7 @@ public class JenkinsBridgePollingServiceTest {
 
     JenkinsBridgePollingService service = newService(provider, jenkinsClient, new CapturingMirrorService(), store);
 
-    pollJob(service, new MirroredJob("job", "buildType", "Build", 0, false), provider.load());
+    pollPipeline(service, new MirroredJob("job", "buildType", "Build", 0, false, false), provider.load());
 
     assertNotNull(store.findMirror("buildType::job#1@1710000000001"));
     assertEquals(500, store.getLastSeenBuildNumber("buildType::job"));
@@ -67,7 +67,7 @@ public class JenkinsBridgePollingServiceTest {
 
     JenkinsBridgePollingService service = newService(provider, jenkinsClient, new CapturingMirrorService(), store);
 
-    pollJob(service, new MirroredJob("job", "buildType", "Build", 0, false), provider.load());
+    pollPipeline(service, new MirroredJob("job", "buildType", "Build", 0, false, false), provider.load());
 
     assertNotNull(store.findMirror("buildType::job#3@1710000000003"));
     assertNull(store.findMirror("buildType::job#2@1710000000002"));
@@ -76,7 +76,7 @@ public class JenkinsBridgePollingServiceTest {
   }
 
   @Test
-  public void pollJobPrunesFinishedMirrors() throws Exception {
+  public void pollPipelinePrunesFinishedMirrors() throws Exception {
     JenkinsBridgeSettingsProvider provider = providerWithTempStateFile();
     BuildMirrorStore store = new BuildMirrorStore(null, provider, buildMockProjectManager());
 
@@ -90,7 +90,7 @@ public class JenkinsBridgePollingServiceTest {
 
     JenkinsBridgePollingService service = newService(provider, jenkinsClient, new CapturingMirrorService(), store);
 
-    pollJob(service, new MirroredJob("job", "buildType", "Build", 0, false), provider.load());
+    pollPipeline(service, new MirroredJob("job", "buildType", "Build", 0, false, false), provider.load());
 
     assertNull(store.findMirror("buildType::otherJob#1@1710000000001"));
   }
@@ -165,15 +165,15 @@ public class JenkinsBridgePollingServiceTest {
         new MirroredJobProvider(null, provider));
   }
 
-  private static void pollJob(
+  private static void pollPipeline(
       JenkinsBridgePollingService service,
       MirroredJob mirroredJob,
       JenkinsBridgeSettings settings
   ) throws Exception {
-    Method pollJob = JenkinsBridgePollingService.class.getDeclaredMethod(
-        "pollJob", MirroredJob.class, JenkinsBridgeSettings.class);
-    pollJob.setAccessible(true);
-    pollJob.invoke(service, mirroredJob, settings);
+    Method pollPipeline = JenkinsBridgePollingService.class.getDeclaredMethod(
+        "pollPipeline", MirroredJob.class, JenkinsBridgeSettings.class);
+    pollPipeline.setAccessible(true);
+    pollPipeline.invoke(service, mirroredJob, settings);
   }
 
   private static JenkinsBridgeSettingsProvider providerWithTempStateFile() throws Exception {

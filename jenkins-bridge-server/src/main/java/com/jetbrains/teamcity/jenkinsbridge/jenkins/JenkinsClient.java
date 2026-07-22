@@ -322,7 +322,7 @@ public class JenkinsClient {
         + encodeQueryValue(tree);
 
     String response = httpClient.get(url, settings.getJenkinsUser(), settings.getJenkinsToken(), "application/json");
-    JsonObject root = jsonParser.parse(response).getAsJsonObject();
+    JsonObject root = JsonParser.parseString(response).getAsJsonObject();
     JsonArray jobs = root.getAsJsonArray("jobs");
     List<JenkinsJob> result = new ArrayList<JenkinsJob>();
     if (jobs == null) {
@@ -332,6 +332,48 @@ public class JenkinsClient {
       if (element != null && element.isJsonObject()) {
         result.add(JenkinsJob.fromJson(element.getAsJsonObject()));
       }
+    }
+    return result;
+  }
+
+  /**
+   * Lists the branch jobs of a multibranch pipeline together with their recent builds.
+   * Maps each branch job's {@code fullName} to its builds.
+   */
+  public Map<String, List<JenkinsBuildInfo>> listBranchBuilds(String pipelinePath) throws BridgeHttpException {
+    JenkinsBridgeSettings settings = settingsProvider.load();
+    String tree = "jobs[fullName,builds[number,timestamp,url]]";
+    String url = settings.getJenkinsUrl()
+        + jenkinsJobPath(pipelinePath == null ? "" : pipelinePath)
+        + "/api/json?tree="
+        + encodeQueryValue(tree);
+
+    String response = httpClient.get(url, settings.getJenkinsUser(), settings.getJenkinsToken(), "application/json");
+    JsonObject root = JsonParser.parseString(response).getAsJsonObject();
+    JsonArray jobs = root.getAsJsonArray("jobs");
+    Map<String, List<JenkinsBuildInfo>> result = new LinkedHashMap<>();
+    if (jobs == null) {
+      return result;
+    }
+    for (JsonElement jobElement : jobs) {
+      if (jobElement == null || !jobElement.isJsonObject()) {
+        continue;
+      }
+      JsonObject job = jobElement.getAsJsonObject();
+      String fullName = stringValue(job, "fullName");
+      if (fullName.isEmpty()) {
+        continue;
+      }
+      List<JenkinsBuildInfo> builds = new ArrayList<>();
+      JsonArray buildArray = job.getAsJsonArray("builds");
+      if (buildArray != null) {
+        for (JsonElement build : buildArray) {
+          if (build != null && build.isJsonObject()) {
+            builds.add(JenkinsBuildInfo.fromJson(build.getAsJsonObject()));
+          }
+        }
+      }
+      result.put(fullName, builds);
     }
     return result;
   }
