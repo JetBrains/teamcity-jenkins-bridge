@@ -20,6 +20,11 @@ public final class BridgeBuildFeatureConstants {
   /** Optional. Per-config cold-start backfill depth; blank falls back to the global default. */
   public static final String PARAM_RECENT_LIMIT = "recentBuildLimit";
 
+  /**
+   * Optional, {@code "true"} when set. Marks the configuration as mirroring a multibranch pipeline.
+   */
+  public static final String PARAM_IN_MULTIBRANCH = "inMultibranchPipeline";
+
   private BridgeBuildFeatureConstants() {
   }
 }

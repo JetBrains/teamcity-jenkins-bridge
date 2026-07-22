@@ -18,19 +18,23 @@ public final class MirroredJob {
   // 0 means "no per-job override; use the global recentBuildLimit".
   private final int recentBuildLimitOverride;
   private final boolean legacy;
+  // When true, jenkinsJob is a multibranch pipeline path and the poller polls each branch job under it.
+  private final boolean isMultibranch;
 
   public MirroredJob(
       String jenkinsJob,
       String teamCityBuildTypeExternalId,
       String teamCityBuildTypeName,
       int recentBuildLimitOverride,
-      boolean legacy
+      boolean legacy,
+      boolean isMultibranch
   ) {
     this.jenkinsJob = nullToEmpty(jenkinsJob).trim();
     this.teamCityBuildTypeExternalId = nullToEmpty(teamCityBuildTypeExternalId).trim();
     this.teamCityBuildTypeName = nullToEmpty(teamCityBuildTypeName).trim();
     this.recentBuildLimitOverride = Math.max(0, recentBuildLimitOverride);
     this.legacy = legacy;
+    this.isMultibranch = isMultibranch;
   }
 
   /** The single legacy mirrored job derived from global settings (used when no build feature exists). */
@@ -40,7 +44,8 @@ public final class MirroredJob {
         settings.getTeamCityBuildTypeId(),
         settings.getTeamCityBuildTypeId(),
         0,
-        true
+        true,
+        false
     );
   }
 
@@ -59,6 +64,10 @@ public final class MirroredJob {
 
   public boolean isLegacy() {
     return legacy;
+  }
+
+  public boolean isMultibranch() {
+    return isMultibranch;
   }
 
   /**

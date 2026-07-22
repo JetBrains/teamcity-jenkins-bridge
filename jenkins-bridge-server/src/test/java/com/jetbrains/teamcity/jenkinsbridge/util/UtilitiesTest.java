@@ -102,6 +102,18 @@ public class UtilitiesTest {
   }
 
   @Test
+  public void lastPathSegmentReturnsBranchNameOfMultibranchJobPath() {
+    assertEquals("main", Utilities.lastPathSegment("pipeline/main"));
+    assertEquals("main", Utilities.lastPathSegment("team/pipeline/main"));
+  }
+
+  @Test
+  public void lastPathSegmentReturnsWholeValueWithoutSlashOrTrailingSlash() {
+    assertEquals("job", Utilities.lastPathSegment("job"));
+    assertEquals("team/pipeline/", Utilities.lastPathSegment("team/pipeline/"));
+  }
+
+  @Test
   public void describeExceptionIncludesClassNameAndMessage() {
     assertEquals("IllegalArgumentException: bad input",
         Utilities.describeException(new IllegalArgumentException("bad input")));

@@ -4,17 +4,20 @@ import com.intellij.openapi.diagnostic.Logger;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsVcsInfo;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsVcsRepository;
 import com.jetbrains.teamcity.jenkinsbridge.persistence.BuildMirror;
-import com.jetbrains.teamcity.jenkinsbridge.vcs.VcsBuildCustomization;
 import com.jetbrains.teamcity.jenkinsbridge.vcs.VcsProvider;
 import com.jetbrains.teamcity.jenkinsbridge.vcs.VcsSyncResult;
+import jetbrains.buildServer.serverSide.BuildPromotion;
+import jetbrains.buildServer.serverSide.BuildPromotionEx;
 import jetbrains.buildServer.serverSide.ProjectManager;
 import jetbrains.buildServer.serverSide.RepositoryVersion;
 import jetbrains.buildServer.serverSide.SBuildType;
 import jetbrains.buildServer.serverSide.SProject;
+import jetbrains.buildServer.serverSide.impl.CancelableTaskHolder;
 import jetbrains.buildServer.vcs.CheckoutRules;
 import jetbrains.buildServer.vcs.DuplicateVcsRootNameException;
 import jetbrains.buildServer.vcs.SVcsRoot;
 import jetbrains.buildServer.vcs.VcsRootInstanceEntry;
+import jetbrains.buildServer.vcs.impl.BuildChainChangesCollector;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
@@ -35,26 +38,57 @@ public class TeamCityVcsPublisher {
     private static final Logger LOG = Logger.getInstance(TeamCityVcsPublisher.class.getName());
 
     private final ProjectManager myProjectManager;
+    private final TeamCityRunningBuildLocator myBuildLocator;
+    private final BuildChainChangesCollector myChangesCollector;
 
-    public TeamCityVcsPublisher(ProjectManager projectManager) {
+    public TeamCityVcsPublisher(ProjectManager projectManager, TeamCityRunningBuildLocator buildLocator, BuildChainChangesCollector changesCollector) {
         myProjectManager = projectManager;
+        myBuildLocator = buildLocator;
+        myChangesCollector = changesCollector;
     }
 
-    public VcsBuildCustomization prepareVcs(BuildMirror mirror, JenkinsVcsInfo vcsInfo) {
+    public VcsSyncResult applyVcsToBuild(BuildMirror mirror, JenkinsVcsInfo vcsInfo) {
         VcsSyncResult result = new VcsSyncResult();
         if (vcsInfo == null || vcsInfo.repositories().isEmpty()) {
-            return new VcsBuildCustomization(result, null, null);
+            return result;
         }
 
         SBuildType buildType = findBuildType(mirror.getTeamCityBuildTypeId(), myProjectManager);
         if (buildType == null) {
             result.addError("TeamCity build type " + mirror.getTeamCityBuildTypeId() + " was not found");
-            return new VcsBuildCustomization(result, null, null);
+            return result;
         }
         SProject project = buildType.getProject();
 
         List<AttachedRepository> attached = ensureVcsRootsAttached(project, buildType, vcsInfo, result);
-        return buildCustomization(buildType, attached, result);
+
+        Map<Long, RepositoryVersion> revisions = new LinkedHashMap<>();
+        for (AttachedRepository repo : attached) {
+            VcsRootInstanceEntry entry = buildType.getVcsRootInstanceEntryForParent(repo.root);
+            if (entry == null) {
+                result.addError("No VCS root instance resolved for " + repo.repository.remoteUrl());
+                continue;
+            }
+            String branchRef = repo.branch.isDefault() ? null : repo.branch.ref();
+            RepositoryVersion version = new RepositoryVersion(
+                    repo.repository.sha1(),
+                    repo.repository.sha1(),
+                    branchRef);
+            revisions.put(entry.getVcsRoot().getId(), version);
+        }
+
+        BuildPromotion promotion = myBuildLocator.findPromotion(mirror.getTeamCityBuildId());
+        if (!(promotion instanceof BuildPromotionEx promotionEx)) {
+            result.addError("TeamCity build " + mirror.getTeamCityBuildId()
+                    + " is not an instance of BuildPromotionEx");
+            return result;
+        }
+
+        promotionEx.resetBuildRevisions();
+        promotionEx.setProvidedUpperLimitRevisions(revisions);
+        myChangesCollector.scheduleCheckingForChangesAndWait(promotionEx, new CancelableTaskHolder());
+
+        return result;
     }
 
     /**
@@ -150,35 +184,6 @@ public class TeamCityVcsPublisher {
             }
         }
         return Optional.empty();
-    }
-
-    private VcsBuildCustomization buildCustomization(
-            SBuildType buildType,
-            List<AttachedRepository> attached,
-            VcsSyncResult result
-    ) {
-        Map<Long, RepositoryVersion> revisions = new LinkedHashMap<>();
-        String desiredBranch = null;
-
-        for (AttachedRepository repo : attached) {
-            VcsRootInstanceEntry entry = buildType.getVcsRootInstanceEntryForParent(repo.root);
-            if (entry == null) {
-                result.addError("No VCS root instance resolved for " + repo.repository.remoteUrl());
-                continue;
-            }
-            String branchRef = repo.branch.isDefault() ? null : repo.branch.ref();
-            RepositoryVersion version = new RepositoryVersion(
-                    repo.repository.sha1(),
-                    repo.repository.sha1(),
-                    branchRef);
-            revisions.put(entry.getVcsRoot().getId(), version);
-
-            if (desiredBranch == null && !repo.branch.isDefault()) {
-                desiredBranch = repo.branch.displayName();
-            }
-        }
-
-        return new VcsBuildCustomization(result, revisions, desiredBranch);
     }
 
     private record AttachedRepository(JenkinsVcsRepository repository, SVcsRoot root,

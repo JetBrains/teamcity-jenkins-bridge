@@ -27,7 +27,7 @@ public class JenkinsJob {
   public static JenkinsJob fromJson(JsonObject json) {
     String name = getString(json, "name");
     String fullName = getString(json, "fullName");
-    if (fullName.length() == 0) {
+    if (fullName.isEmpty()) {
       fullName = name;
     }
     String url = getString(json, "url");
@@ -37,10 +37,10 @@ public class JenkinsJob {
 
   /**
    * A listing entry is importable unless it is a container (folder / multibranch / organization
-   * folder). Unknown classes default to importable so new buildable job plugins still work.
+   * folder). Unknown classes default to importable, so new buildable job plugins still work.
    */
   static boolean isImportableClass(String jenkinsClass) {
-    if (jenkinsClass == null || jenkinsClass.length() == 0) {
+    if (jenkinsClass == null || jenkinsClass.isEmpty()) {
       return true;
     }
     return !(jenkinsClass.contains("Folder")
@@ -66,6 +66,14 @@ public class JenkinsJob {
 
   public boolean isImportable() {
     return importable;
+  }
+
+  public boolean isMultibranch() {
+    return isMultibranchClass(type);
+  }
+
+  public static boolean isMultibranchClass(String jenkinsClass) {
+    return jenkinsClass != null && jenkinsClass.contains("MultiBranch");
   }
 
   private static String getString(JsonObject json, String key) {

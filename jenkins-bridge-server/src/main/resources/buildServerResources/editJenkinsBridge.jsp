@@ -28,3 +28,10 @@
     <span class="smallNote">Optional. Cold-start backfill depth; leave blank to use the global default.</span>
   </td>
 </tr>
+<tr>
+  <td><label for="<%=BridgeBuildFeatureConstants.PARAM_IN_MULTIBRANCH%>">Multibranch pipeline job:</label></td>
+  <td>
+    <props:checkboxProperty name="<%=BridgeBuildFeatureConstants.PARAM_IN_MULTIBRANCH%>"/>
+    <span class="smallNote">Whether this configuration mirrors a Jenkins multibranch pipeline.</span>
+  </td>
+</tr>

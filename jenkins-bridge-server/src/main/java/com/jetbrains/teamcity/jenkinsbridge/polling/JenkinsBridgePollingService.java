@@ -25,6 +25,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -119,7 +120,7 @@ public class JenkinsBridgePollingService {
 
     for (MirroredJob mirroredJob : mirroredJobs) {
       try {
-        pollJob(mirroredJob, settings);
+        pollPipeline(mirroredJob, settings);
       } catch (Exception e) {
         // Isolate per-job failures so one broken job does not abort the rest of the cycle.
         LOG.warn("Jenkins Bridge: failed to poll " + mirroredJob.describeForLog(), e);
@@ -127,19 +128,41 @@ public class JenkinsBridgePollingService {
     }
   }
 
-  private void pollJob(MirroredJob mirroredJob, JenkinsBridgeSettings settings) throws Exception {
+  /**
+   * Calls {@code pollJob} once for regular pipelines, and once for each branch in the case of a multibranch pipeline.
+   */
+  private void pollPipeline(MirroredJob mirroredJob, JenkinsBridgeSettings settings) throws Exception {
     if (!mirroredJob.hasMinimumConfiguration()) {
       LOG.warn(mirroredJob.describeMinimumConfigurationProblem());
       return;
     }
 
-    String job = mirroredJob.getJenkinsJob();
-    String keyPrefix = mirroredJob.getMirrorKeyPrefix();
     int recentBuildLimit = mirroredJob.getEffectiveRecentBuildLimit(settings.getRecentBuildLimit());
 
-    // Fetch the most recent builds (Jenkins caps this at the 100 newest). The timestamp is part of
-    // the bridge identity because Jenkins build numbers can be reused after build history is reset.
-    List<JenkinsBuildInfo> builds = jenkinsClient.getBuilds(job);
+    if (mirroredJob.isMultibranch()) {
+      Map<String, List<JenkinsBuildInfo>> branchBuilds =
+          jenkinsClient.listBranchBuilds(mirroredJob.getJenkinsJob());
+      for (var entry : branchBuilds.entrySet()) {
+        MirroredJob branchJob = new MirroredJob(
+            entry.getKey(),
+            mirroredJob.getTeamCityBuildTypeExternalId(),
+            mirroredJob.getTeamCityBuildTypeName(),
+            0, false, false);
+        pollJob(branchJob, entry.getValue(), recentBuildLimit);
+      }
+      return;
+    }
+
+    pollJob(mirroredJob, jenkinsClient.getBuilds(mirroredJob.getJenkinsJob()), recentBuildLimit);
+  }
+
+  private void pollJob(MirroredJob mirroredJob, List<JenkinsBuildInfo> builds, int recentBuildLimit)
+      throws Exception {
+    String job = mirroredJob.getJenkinsJob();
+    String keyPrefix = mirroredJob.getMirrorKeyPrefix();
+
+    // The most recent builds are fetched (Jenkins caps this at the 100 newest). The timestamp is part of
+    // the bridge identity because Jenkins build numbers can be reused after the build history is reset.
     if (builds.isEmpty()) {
       LOG.info("[Jenkins Bridge DEBUG] Jenkins job " + job + " has no builds yet");
       return;
@@ -319,15 +342,6 @@ public class JenkinsBridgePollingService {
   }
 
   private void syncBuild(BuildMirror mirror, JenkinsBuildInfo buildInfo) throws Exception {
-    JenkinsVcsInfo vcsInfo = null;
-    if (!mirror.isVcsSynced() || mirror.getTeamCityBuildId() == null) {
-      vcsInfo = jenkinsClient.getBuildVcs(mirror.getJenkinsJob(), mirror.getJenkinsBuildNumber());
-      LOG.debug("Read " + vcsInfo.repositories().size() + " Jenkins VCS repository(ies) for " + mirror.getJenkinsBuildKey());
-      if (!mirror.isVcsSynced()) {
-        mirrorService.syncVcsIfNeeded(mirror, vcsInfo, buildInfo.isBuilding());
-      }
-    }
-
     // Decide once whether this build is a Jenkins Pipeline (mirror stages as build steps) or a
     // freestyle build (mirror the flat progressive console log). The decision is sticky per build.
     Boolean pipelineMode = mirror.getPipelineMode();
@@ -363,15 +377,21 @@ public class JenkinsBridgePollingService {
       }
     }
 
-    // Wait for the latest data to be published by Jenkins before registering the build.
-    // Needed for VCS and the pipeline graph.
-    if (buildInfo.isBuilding()) {
-      return;
-    }
-
     ensureJenkinsBuildParametersLoaded(mirror);
 
-    long teamCityBuildId = mirrorService.ensureTeamCityBuild(mirror, buildInfo, graph, vcsInfo);
+    // Try to fetch any existing VCS info before queueing to pin the correct branch name
+    // TODO: Check whether this API call can be merged with another one to prevent unnecessary network communication
+    JenkinsVcsInfo queueVcsInfo = null;
+    if (mirror.getTeamCityBuildId() == null && !buildInfo.isBuilding()) {
+      try {
+        queueVcsInfo = jenkinsClient.getBuildVcs(mirror.getJenkinsJob(), mirror.getJenkinsBuildNumber());
+      } catch (Exception e) {
+        LOG.warn("Failed to read VCS before queueing for build "
+            + mirror.getJenkinsBuildKey() + e);
+      }
+    }
+
+    long teamCityBuildId = mirrorService.ensureTeamCityBuild(mirror, buildInfo, graph, queueVcsInfo);
     mirrorService.ensureRunningDataSent(mirror, teamCityBuildId);
     mirrorService.ensureMetadataLogSent(mirror, teamCityBuildId);
     mirrorService.syncBuildNumber(mirror);
@@ -423,6 +443,13 @@ public class JenkinsBridgePollingService {
               + mirror.getJenkinsBuildKey(), saveError);
         }
       }
+    }
+    if (!buildInfo.isBuilding()
+        && !mirror.isVcsSynced()
+        && mirror.getSyncState() != SyncState.TEAMCITY_FINISHED) {
+      JenkinsVcsInfo vcsInfo = jenkinsClient.getBuildVcs(mirror.getJenkinsJob(), mirror.getJenkinsBuildNumber());
+      LOG.debug("Read " + vcsInfo.repositories().size() + " Jenkins VCS repository(ies) for " + mirror.getJenkinsBuildKey());
+      mirrorService.syncVcsIfNeeded(mirror, vcsInfo);
     }
     mirrorService.finishBuildIfNeeded(mirror, teamCityBuildId, buildInfo);
   }

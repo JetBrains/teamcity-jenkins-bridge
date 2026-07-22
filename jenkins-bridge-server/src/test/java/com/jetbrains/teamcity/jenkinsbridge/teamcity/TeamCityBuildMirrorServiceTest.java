@@ -12,13 +12,11 @@ import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsStages;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsVcsInfo;
 import com.jetbrains.teamcity.jenkinsbridge.persistence.BuildMirror;
 import com.jetbrains.teamcity.jenkinsbridge.persistence.BuildMirrorStore;
-import com.jetbrains.teamcity.jenkinsbridge.vcs.VcsBuildCustomization;
 import com.jetbrains.teamcity.jenkinsbridge.vcs.VcsSyncResult;
 import jetbrains.buildServer.messages.BuildMessage1;
 import jetbrains.buildServer.messages.DefaultMessagesInfo;
 import jetbrains.buildServer.serverSide.CustomDataStorage;
 import jetbrains.buildServer.serverSide.ProjectManager;
-import jetbrains.buildServer.serverSide.RepositoryVersion;
 import jetbrains.buildServer.serverSide.SProject;
 import org.junit.Test;
 
@@ -105,25 +103,6 @@ public class TeamCityBuildMirrorServiceTest {
     assertEquals("job#4@1710000000004", queuer.bridgeParameters.get("jenkins.build.key"));
     assertEquals("1710000000004", queuer.bridgeParameters.get("jenkins.build.timestamp"));
     assertEquals("feature/x", queuer.jenkinsParameters.get("BRANCH"));
-  }
-
-  @Test
-  public void ensureTeamCityBuildPassesPreparedVcsRevisionsToQueuer() throws Exception {
-    CapturingQueuer queuer = new CapturingQueuer();
-    CapturingVcsPublisher vcsPublisher = new CapturingVcsPublisher();
-    Map<Long, RepositoryVersion> revisions = new LinkedHashMap<Long, RepositoryVersion>();
-    revisions.put(42L, new RepositoryVersion("abc123", "abc123", "refs/heads/main"));
-    vcsPublisher.customization = new VcsBuildCustomization(new VcsSyncResult(), revisions, "main");
-    TeamCityBuildMirrorService service = new TeamCityBuildMirrorService(
-        null, new NoExistingBuildClient(), queuer, null, null, null, null, null, vcsPublisher, null, null, null, new NoopStore());
-
-    BuildMirror mirror = BuildMirror.create("job#4@1710000000004", "job", buildInfo(4), "buildType", "now");
-
-    service.ensureTeamCityBuild(mirror, buildInfo(4), null, gitVcsInfo());
-
-    assertSame(vcsPublisher.customization, queuer.vcsCustomization);
-    assertEquals("main", queuer.vcsCustomization.desiredBranchName());
-    assertEquals("abc123", queuer.vcsCustomization.upperLimitRevisions().get(42L).getVersion());
   }
 
   @Test
@@ -314,22 +293,8 @@ public class TeamCityBuildMirrorServiceTest {
     BuildMirror mirror = BuildMirror.create("job#1@1", "job", buildInfo(1), "buildType", "now");
     mirror.setVcsSynced(true);
 
-    service.syncVcsIfNeeded(mirror, gitVcsInfo(), false);
+    service.syncVcsIfNeeded(mirror, gitVcsInfo());
 
-    assertEquals(0, publisher.calls);
-  }
-
-  @Test
-  public void syncVcsEmptyWhileBuildingDoesNotMarkSynced() throws Exception {
-    CapturingVcsPublisher publisher = new CapturingVcsPublisher();
-    TeamCityBuildMirrorService service = new TeamCityBuildMirrorService(
-        null, null, null, null, new CapturingLogger(), null, null, null, publisher, null, null, null, new NoopStore());
-
-    BuildMirror mirror = BuildMirror.create("job#1@1", "job", buildInfo(1), "buildType", "now");
-
-    service.syncVcsIfNeeded(mirror, JenkinsVcsInfo.empty(), true);
-
-    assertFalse(mirror.isVcsSynced());
     assertEquals(0, publisher.calls);
   }
 
@@ -341,7 +306,7 @@ public class TeamCityBuildMirrorServiceTest {
 
     BuildMirror mirror = BuildMirror.create("job#1@1", "job", buildInfo(1), "buildType", "now");
 
-    service.syncVcsIfNeeded(mirror, JenkinsVcsInfo.empty(), false);
+    service.syncVcsIfNeeded(mirror, JenkinsVcsInfo.empty());
 
     assertTrue(mirror.isVcsSynced());
     assertTrue(mirror.getVcsSyncErrors().isEmpty());
@@ -358,7 +323,7 @@ public class TeamCityBuildMirrorServiceTest {
 
     BuildMirror mirror = BuildMirror.create("job#1@1", "job", buildInfo(1), "buildType", "now");
 
-    service.syncVcsIfNeeded(mirror, gitVcsInfo(), false);
+    service.syncVcsIfNeeded(mirror, gitVcsInfo());
 
     assertEquals(1, publisher.calls);
     assertTrue(mirror.isVcsSynced());
@@ -377,7 +342,7 @@ public class TeamCityBuildMirrorServiceTest {
 
     BuildMirror mirror = BuildMirror.create("job#1@1", "job", buildInfo(1), "buildType", "now");
 
-    service.syncVcsIfNeeded(mirror, gitVcsInfo(), false);
+    service.syncVcsIfNeeded(mirror, gitVcsInfo());
 
     assertTrue(mirror.isVcsSynced());
     assertTrue(hasVcsErrorContaining(mirror, "auth failed"));
@@ -393,7 +358,7 @@ public class TeamCityBuildMirrorServiceTest {
 
     BuildMirror mirror = BuildMirror.create("job#1@1", "job", buildInfo(1), "buildType", "now");
 
-    service.syncVcsIfNeeded(mirror, gitVcsInfo(), false);
+    service.syncVcsIfNeeded(mirror, gitVcsInfo());
 
     assertTrue(mirror.isVcsSynced());
     assertTrue(hasVcsErrorContaining(mirror, "RuntimeException"));
@@ -530,22 +495,18 @@ public class TeamCityBuildMirrorServiceTest {
     int calls;
     boolean throwError;
     final VcsSyncResult result = new VcsSyncResult();
-    VcsBuildCustomization customization;
 
     CapturingVcsPublisher() {
-      super(null);
+      super(null, null, null);
     }
 
     @Override
-    public VcsBuildCustomization prepareVcs(BuildMirror mirror, JenkinsVcsInfo vcsInfo) {
+    public VcsSyncResult applyVcsToBuild(BuildMirror mirror, JenkinsVcsInfo vcsInfo) {
       calls++;
       if (throwError) {
         throw new RuntimeException("boom");
       }
-      if (customization != null) {
-        return customization;
-      }
-      return new VcsBuildCustomization(result, null, null);
+      return result;
     }
   }
 
@@ -617,7 +578,6 @@ public class TeamCityBuildMirrorServiceTest {
   private static class CapturingQueuer extends TeamCityBuildQueuer {
     Map<String, String> bridgeParameters;
     Map<String, String> jenkinsParameters;
-    VcsBuildCustomization vcsCustomization;
 
     CapturingQueuer() {
       super(null, null);
@@ -627,21 +587,11 @@ public class TeamCityBuildMirrorServiceTest {
     public long queueAgentlessBuild(
         String buildTypeId,
         Map<String, String> properties,
-        Map<String, String> jenkinsBuildParameters
-    ) {
-      return queueAgentlessBuild(buildTypeId, properties, jenkinsBuildParameters, null);
-    }
-
-    @Override
-    public long queueAgentlessBuild(
-        String buildTypeId,
-        Map<String, String> properties,
         Map<String, String> jenkinsBuildParameters,
-        VcsBuildCustomization vcsCustomization
+        JenkinsVcsInfo vcsInfo
     ) {
       bridgeParameters = new LinkedHashMap<>(properties);
       jenkinsParameters = new LinkedHashMap<>(jenkinsBuildParameters);
-      this.vcsCustomization = vcsCustomization;
       return 55L;
     }
   }

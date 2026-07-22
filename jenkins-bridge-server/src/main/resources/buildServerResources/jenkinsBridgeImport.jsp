@@ -9,8 +9,8 @@
   <h2 class="noBorder">Import Jenkins jobs</h2>
   <p class="grayNote">
     Lists the top-level jobs at a Jenkins folder path (blank = server root) using the globally
-    configured Jenkins connection, and creates one build configuration per selected job in this
-    project. Folders, multibranch projects, and already-imported jobs cannot be selected.
+    configured Jenkins connection, and creates one build configuration per selected pipeline in this
+    project. Folders and already-imported jobs cannot be selected.
   </p>
 
   <table class="runnerFormTable">
@@ -63,9 +63,10 @@
       var html = '<table class="parametersTable" style="width:auto;"><tr><th></th><th>Job</th><th>Type</th></tr>';
       for (var i = 0; i < jobs.length; i++) {
         var j = jobs[i];
-        var selectable = j.importable && !j.alreadyImported;
+        var selectable = (j.importable || j.isMultibranch) && !j.alreadyImported;
         var note = j.alreadyImported ? ' <span class="grayNote">(already imported)</span>'
-          : (!j.importable ? ' <span class="grayNote">(folder / multibranch)</span>' : '');
+          : (j.isMultibranch ? ' <span class="grayNote">(multibranch pipeline)</span>'
+          : (!j.importable ? ' <span class="grayNote">(folder)</span>' : ''));
         html += '<tr>'
           + '<td><input type="checkbox" class="jbJob" value="' + esc(j.fullName) + '"' + (selectable ? '' : ' disabled="disabled"') + '/></td>'
           + '<td>' + esc(j.fullName) + note + '</td>'

@@ -11,34 +11,34 @@ import static org.junit.Assert.assertTrue;
 public class MirroredJobTest {
   @Test
   public void featureJobNamespacesKeyPrefixByBuildTypeAndJob() {
-    MirroredJob job = new MirroredJob("team/pipeline", "Proj_Mirror", "Proj / Mirror", 0, false);
+    MirroredJob job = new MirroredJob("team/pipeline", "Proj_Mirror", "Proj / Mirror", 0, false, false);
     assertFalse(job.isLegacy());
     assertEquals("Proj_Mirror::team/pipeline", job.getMirrorKeyPrefix());
   }
 
   @Test
   public void legacyJobKeepsBareJobKeyPrefix() {
-    MirroredJob job = new MirroredJob("team/pipeline", "Proj_Mirror", "Proj / Mirror", 0, true);
+    MirroredJob job = new MirroredJob("team/pipeline", "Proj_Mirror", "Proj / Mirror", 0, true, false);
     assertTrue(job.isLegacy());
     assertEquals("team/pipeline", job.getMirrorKeyPrefix());
   }
 
   @Test
   public void recentBuildLimitOverrideFallsBackToGlobalDefaultWhenUnset() {
-    MirroredJob noOverride = new MirroredJob("job", "Bt", "Bt", 0, false);
+    MirroredJob noOverride = new MirroredJob("job", "Bt", "Bt", 0, false, false);
     assertEquals(7, noOverride.getEffectiveRecentBuildLimit(7));
 
-    MirroredJob withOverride = new MirroredJob("job", "Bt", "Bt", 3, false);
+    MirroredJob withOverride = new MirroredJob("job", "Bt", "Bt", 3, false, false);
     assertEquals(3, withOverride.getEffectiveRecentBuildLimit(7));
   }
 
   @Test
   public void hasMinimumConfigurationRequiresJobAndBuildType() {
-    assertTrue(new MirroredJob("job", "Bt", "Bt", 0, false).hasMinimumConfiguration());
-    assertFalse(new MirroredJob("", "Bt", "Bt", 0, false).hasMinimumConfiguration());
-    assertFalse(new MirroredJob("job", "", "", 0, false).hasMinimumConfiguration());
+    assertTrue(new MirroredJob("job", "Bt", "Bt", 0, false, false).hasMinimumConfiguration());
+    assertFalse(new MirroredJob("", "Bt", "Bt", 0, false, false).hasMinimumConfiguration());
+    assertFalse(new MirroredJob("job", "", "", 0, false, false).hasMinimumConfiguration());
 
-    MirroredJob missingJob = new MirroredJob("  ", "Bt", "Bt", 0, false);
+    MirroredJob missingJob = new MirroredJob("  ", "Bt", "Bt", 0, false, false);
     assertTrue(missingJob.describeMinimumConfigurationProblem().contains("jenkinsJob"));
   }
 
