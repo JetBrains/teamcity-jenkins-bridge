@@ -42,6 +42,15 @@ public final class Utilities {
     return object.get(key).getAsString();
   }
 
+  /**
+   * The segment after the final {@code /} in a Jenkins job path.
+   */
+  @NotNull
+  public static String lastPathSegment(@NotNull String path) {
+    int slash = path.lastIndexOf('/');
+    return slash >= 0 && slash < path.length() - 1 ? path.substring(slash + 1) : path;
+  }
+
   @NotNull
   public static String describeException(@NotNull Exception e) {
     return e.getClass().getSimpleName() + (e.getMessage() == null ? "" : ": " + e.getMessage());

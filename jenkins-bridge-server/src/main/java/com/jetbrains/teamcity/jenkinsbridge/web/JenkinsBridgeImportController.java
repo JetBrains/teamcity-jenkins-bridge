@@ -116,6 +116,7 @@ public class JenkinsBridgeImportController extends BaseController {
     final String fullName;
     final String type;
     final boolean importable;
+    final boolean isMultibranch;
     final boolean alreadyImported;
 
     JobView(JenkinsJob job, boolean alreadyImported) {
@@ -123,6 +124,7 @@ public class JenkinsBridgeImportController extends BaseController {
       this.fullName = job.getFullName();
       this.type = job.getType();
       this.importable = job.isImportable();
+      this.isMultibranch = job.isMultibranch();
       this.alreadyImported = alreadyImported;
     }
   }

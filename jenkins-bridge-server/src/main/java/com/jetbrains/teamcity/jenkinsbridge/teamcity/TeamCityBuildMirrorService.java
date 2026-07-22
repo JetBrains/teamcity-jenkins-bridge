@@ -100,7 +100,8 @@ public class TeamCityBuildMirrorService {
   public long ensureTeamCityBuild(
       BuildMirror mirror,
       JenkinsBuildInfo jenkinsInfo,
-      JenkinsPipelineGraph graph
+      JenkinsPipelineGraph graph,
+      JenkinsVcsInfo vcsInfo
   )
       throws BridgeHttpException, IOException {
     if (mirror.getTeamCityBuildId() != null) {
@@ -160,7 +161,8 @@ public class TeamCityBuildMirrorService {
     long buildId = teamCityBuildQueuer.queueAgentlessBuild(
         mirror.getTeamCityBuildTypeId(),
         properties,
-        mirror.getJenkinsBuildParameters());
+        mirror.getJenkinsBuildParameters(),
+        vcsInfo);
     mirror.setTeamCityBuildId(buildId);
     mirror.setSyncState(SyncState.TEAMCITY_CREATED);
     mirror.setLastError(null);

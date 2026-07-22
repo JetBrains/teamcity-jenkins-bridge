@@ -356,7 +356,19 @@ public class JenkinsBridgePollingService {
 
     ensureJenkinsBuildParametersLoaded(mirror);
 
-    long teamCityBuildId = mirrorService.ensureTeamCityBuild(mirror, buildInfo, graph);
+    // Try to fetch any existing VCS info before queueing to pin the correct branch name
+    // TODO: Check whether this API call can be merged with another one to prevent unnecessary network communication
+    JenkinsVcsInfo queueVcsInfo = null;
+    if (mirror.getTeamCityBuildId() == null && !buildInfo.isBuilding()) {
+      try {
+        queueVcsInfo = jenkinsClient.getBuildVcs(mirror.getJenkinsJob(), mirror.getJenkinsBuildNumber());
+      } catch (Exception e) {
+        LOG.warn("Failed to read VCS before queueing for build "
+            + mirror.getJenkinsBuildKey() + e);
+      }
+    }
+
+    long teamCityBuildId = mirrorService.ensureTeamCityBuild(mirror, buildInfo, graph, queueVcsInfo);
     mirrorService.ensureRunningDataSent(mirror, teamCityBuildId);
     mirrorService.ensureMetadataLogSent(mirror, teamCityBuildId);
     mirrorService.syncBuildNumber(mirror);

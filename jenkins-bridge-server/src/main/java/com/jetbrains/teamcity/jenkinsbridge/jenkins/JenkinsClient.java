@@ -337,6 +337,23 @@ public class JenkinsClient {
   }
 
   /**
+   * The Jenkins {@code _class} of a single job.
+   * Returns an empty string when Jenkins does not report a class.
+   */
+  @NotNull
+  public String getJobClass(String fullName) throws BridgeHttpException {
+    JenkinsBridgeSettings settings = settingsProvider.load();
+    String url = settings.getJenkinsUrl()
+        + jenkinsJobPath(fullName == null ? "" : fullName)
+        + "/api/json?tree="
+        + encodeQueryValue("_class");
+
+    String response = httpClient.get(url, settings.getJenkinsUser(), settings.getJenkinsToken(), "application/json");
+    JsonObject root = JsonParser.parseString(response).getAsJsonObject();
+    return stringValue(root, "_class");
+  }
+
+  /**
    * Absolute Jenkins job page URL for {@code fullName}, derived from the global base URL.
    */
   public String jobUrl(String fullName) {

@@ -97,7 +97,7 @@ public class TeamCityBuildMirrorServiceTest {
     parameters.put("BRANCH", "feature/x");
     mirror.setJenkinsBuildParameters(parameters);
 
-    service.ensureTeamCityBuild(mirror, buildInfo(4), null);
+    service.ensureTeamCityBuild(mirror, buildInfo(4), null, null);
 
     assertEquals("job", queuer.bridgeParameters.get("jenkins.job"));
     assertEquals("job#4@1710000000004", queuer.bridgeParameters.get("jenkins.build.key"));
@@ -587,7 +587,8 @@ public class TeamCityBuildMirrorServiceTest {
     public long queueAgentlessBuild(
         String buildTypeId,
         Map<String, String> properties,
-        Map<String, String> jenkinsBuildParameters
+        Map<String, String> jenkinsBuildParameters,
+        JenkinsVcsInfo vcsInfo
     ) {
       bridgeParameters = new LinkedHashMap<>(properties);
       jenkinsParameters = new LinkedHashMap<>(jenkinsBuildParameters);

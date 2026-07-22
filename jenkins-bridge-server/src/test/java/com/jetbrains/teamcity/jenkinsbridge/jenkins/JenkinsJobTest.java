@@ -47,4 +47,14 @@ public class JenkinsJobTest {
     assertTrue(JenkinsJob.isImportableClass("com.example.SomeNewJobPlugin"));
     assertTrue(JenkinsJob.isImportableClass(null));
   }
+
+  @Test
+  public void isMultibranchDetectsMultibranchPipelinesOnly() {
+    assertTrue(JenkinsJob.isMultibranchClass("org.jenkinsci.plugins.workflow.multibranch.WorkflowMultiBranchProject"));
+
+    assertFalse(JenkinsJob.isMultibranchClass("com.cloudbees.hudson.plugins.folder.Folder"));
+    assertFalse(JenkinsJob.isMultibranchClass("jenkins.branch.OrganizationFolder"));
+    assertFalse(JenkinsJob.isMultibranchClass("org.jenkinsci.plugins.workflow.job.WorkflowJob"));
+    assertFalse(JenkinsJob.isMultibranchClass(null));
+  }
 }
