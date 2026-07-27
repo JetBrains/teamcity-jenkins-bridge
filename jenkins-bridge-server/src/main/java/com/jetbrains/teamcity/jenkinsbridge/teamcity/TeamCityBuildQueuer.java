@@ -3,14 +3,8 @@ package com.jetbrains.teamcity.jenkinsbridge.teamcity;
 import com.jetbrains.teamcity.jenkinsbridge.feature.BridgeBuildFeatureConstants;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsVcsInfo;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsVcsRepository;
-import jetbrains.buildServer.serverSide.BuildCustomizer;
-import jetbrains.buildServer.serverSide.BuildCustomizerEx;
-import jetbrains.buildServer.serverSide.BuildCustomizerFactory;
-import jetbrains.buildServer.serverSide.BuildPromotion;
-import jetbrains.buildServer.serverSide.ProjectManager;
-import jetbrains.buildServer.serverSide.SBuildFeatureDescriptor;
-import jetbrains.buildServer.serverSide.SBuildType;
-import jetbrains.buildServer.serverSide.SQueuedBuild;
+import com.jetbrains.teamcity.jenkinsbridge.util.Utilities;
+import jetbrains.buildServer.serverSide.*;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.LinkedHashMap;
@@ -55,9 +49,12 @@ public class TeamCityBuildQueuer {
 
     BuildCustomizer customizer = buildCustomizerFactory.createBuildCustomizer(buildType, null);
     customizer.setParameters(parameters);
-    pinBranch(customizer, buildType, properties, vcsInfo);
+    String branchDisplayName = pinBranch(customizer, buildType, properties, vcsInfo);
 
     BuildPromotion promotion = customizer.createPromotion();
+    if (branchDisplayName != null && promotion instanceof BuildPromotionEx promotionEx) {
+      promotionEx.setAttribute(BuildAttributes.BRANCH_DISPLAY_NAME, branchDisplayName);
+    }
     SQueuedBuild queuedBuild = promotion.addToQueue(TRIGGERED_BY);
     if (queuedBuild == null) {
       throw new IllegalStateException("Failed to add TeamCity build type " + buildTypeId + " to the queue");
@@ -68,11 +65,15 @@ public class TeamCityBuildQueuer {
 
   /**
    * Registers the build branch before the promotion is queued, so TeamCity finalizes the immutable branch name correctly.
+   *
+   * @return The branch display name in the overview panel. It only differs for pull request builds in multibranch pipelines.
    */
-  private void pinBranch(BuildCustomizer customizer, SBuildType buildType, Map<String, String> properties,
-                         @Nullable JenkinsVcsInfo vcsInfo) {
+  @Nullable
+  private String pinBranch(BuildCustomizer customizer, SBuildType buildType, Map<String, String> properties,
+                           @Nullable JenkinsVcsInfo vcsInfo) {
     String branchName = null;
     SBuildFeatureDescriptor feature = buildType.getBuildFeaturesOfType(BridgeBuildFeatureConstants.TYPE).stream().findFirst().orElse(null);
+    String branchDisplayName = null;
     if (feature != null && Objects.equals("true", feature.getParameters().get(BridgeBuildFeatureConstants.PARAM_IN_MULTIBRANCH))) {
       // Check the name of the nested branch job for the branch name
       String job = properties.get("jenkins.job");
@@ -81,6 +82,10 @@ public class TeamCityBuildQueuer {
       }
       if (job != null && !job.trim().isEmpty()) {
         branchName = lastPathSegment(job.trim());
+        String mappedBranchName = Utilities.mapPullRequestBranchName(branchName);
+        if (!mappedBranchName.equals(branchName)) {
+          branchDisplayName = mappedBranchName;
+        }
       }
     } else if (vcsInfo != null) {
       for (JenkinsVcsRepository repo : vcsInfo.repositories()) {
@@ -93,5 +98,6 @@ public class TeamCityBuildQueuer {
     if (branchName != null && customizer instanceof BuildCustomizerEx customizerEx) {
       customizerEx.setDesiredBranchName(branchName, false);
     }
+    return branchDisplayName == null ? branchName : branchDisplayName;
   }
 }

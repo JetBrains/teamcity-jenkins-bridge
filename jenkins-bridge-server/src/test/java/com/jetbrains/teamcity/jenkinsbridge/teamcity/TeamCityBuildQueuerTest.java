@@ -4,13 +4,7 @@ import com.google.gson.JsonParser;
 import com.jetbrains.teamcity.jenkinsbridge.feature.BridgeBuildFeatureConstants;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsVcsInfo;
 import jetbrains.buildServer.parameters.ParametersProvider;
-import jetbrains.buildServer.serverSide.BuildCustomizerEx;
-import jetbrains.buildServer.serverSide.BuildCustomizerFactory;
-import jetbrains.buildServer.serverSide.BuildPromotion;
-import jetbrains.buildServer.serverSide.ProjectManager;
-import jetbrains.buildServer.serverSide.SBuildFeatureDescriptor;
-import jetbrains.buildServer.serverSide.SBuildType;
-import jetbrains.buildServer.serverSide.SQueuedBuild;
+import jetbrains.buildServer.serverSide.*;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -35,6 +29,7 @@ public class TeamCityBuildQueuerTest {
   private final SBuildType buildType = mock(SBuildType.class);
   private final BuildCustomizerEx customizer = mock(BuildCustomizerEx.class);
 
+  private final BuildPromotionEx promotion = mock(BuildPromotionEx.class);
   private final TeamCityBuildQueuer queuer = new TeamCityBuildQueuer(projectManager, customizerFactory);
 
   @Before
@@ -45,7 +40,6 @@ public class TeamCityBuildQueuerTest {
     when(buildType.getParametersProvider()).thenReturn(parametersProvider);
     when(customizerFactory.createBuildCustomizer(eq(buildType), any())).thenReturn(customizer);
 
-    BuildPromotion promotion = mock(BuildPromotion.class);
     when(promotion.getId()).thenReturn(55L);
     SQueuedBuild queued = mock(SQueuedBuild.class);
     when(queued.getBuildPromotion()).thenReturn(promotion);
@@ -60,6 +54,18 @@ public class TeamCityBuildQueuerTest {
     queuer.queueAgentlessBuild(BUILD_TYPE_ID, properties(), Collections.emptyMap(), null);
 
     verify(customizer).setDesiredBranchName("main", false);
+  }
+
+  @Test
+  public void queueAgentlessBuildMapsPullRequestBranchNameForMultibranchJob() {
+    withMultibranchFeature("team/my-pipeline/PR-1-merge");
+    Map<String, String> properties = new LinkedHashMap<>();
+    properties.put("jenkins.job", "team/my-pipeline/PR-1-merge");
+
+    queuer.queueAgentlessBuild(BUILD_TYPE_ID, properties, Collections.emptyMap(), null);
+
+    verify(customizer).setDesiredBranchName("PR-1-merge", false);
+    verify(promotion).setAttribute(BuildAttributes.BRANCH_DISPLAY_NAME, "pull/1");
   }
 
   @Test

@@ -88,6 +88,27 @@ public final class Utilities {
     return normalizedRepositoryKey(uri.getHost(), uri.getPath());
   }
 
+  /**
+   * Maps the branch name assigned to Jenkins pull request builds in multibranch pipelines to the
+   * format used in TeamCity (MR-N and PR-N, potentially with the head/merge suffix, to pull/N).
+   *
+   * @param branchName The original branch name assigned internally by Jenkins.
+   * @return The branch name mapped to the TeamCity format.
+   */
+  public static @NotNull String mapPullRequestBranchName(@NotNull String branchName) {
+    branchName = branchName.trim();
+    if (branchName.matches("[PM]R-\\d+(-(head|merge))?")) {
+      final int firstDashIndex = 2;
+      int secondDashIndex = branchName.indexOf('-', firstDashIndex + 1);
+      String substring = secondDashIndex == -1
+          ? branchName.substring(firstDashIndex + 1)
+          : branchName.substring(firstDashIndex + 1, secondDashIndex);
+      int number = Integer.parseInt(substring.trim());
+      return "pull/" + number;
+    }
+    return branchName;
+  }
+
   private static String normalizedRepositoryKey(String host, String path) {
     if (host == null || path == null) {
       return null;

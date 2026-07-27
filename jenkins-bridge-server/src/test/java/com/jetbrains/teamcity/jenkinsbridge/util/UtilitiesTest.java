@@ -123,4 +123,23 @@ public class UtilitiesTest {
   public void describeExceptionOmitsMessageSeparatorWhenMessageIsNull() {
     assertEquals("RuntimeException", Utilities.describeException(new RuntimeException()));
   }
+
+  @Test
+  public void mapPullRequestBranchNameReturnsPullNumber() {
+    assertEquals("pull/123", Utilities.mapPullRequestBranchName(" PR-123"));
+    assertEquals("pull/1", Utilities.mapPullRequestBranchName("MR-1 "));
+  }
+
+  @Test
+  public void mapPullRequestBranchNameLeavesNonPrBranchesTheSame() {
+    assertEquals("something", Utilities.mapPullRequestBranchName("something"));
+    assertEquals("PR-123a", Utilities.mapPullRequestBranchName("PR-123a"));
+    assertEquals("PR-123-headd", Utilities.mapPullRequestBranchName("PR-123-headd"));
+  }
+
+  @Test
+  public void mapPullRequestBranchNamePreservesSuffixes() {
+    assertEquals("pull/123", Utilities.mapPullRequestBranchName(" PR-123-head"));
+    assertEquals("pull/1", Utilities.mapPullRequestBranchName("MR-1-merge "));
+  }
 }
