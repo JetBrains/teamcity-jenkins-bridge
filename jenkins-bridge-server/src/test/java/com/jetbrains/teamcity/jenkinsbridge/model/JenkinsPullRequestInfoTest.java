@@ -142,7 +142,7 @@ public class JenkinsPullRequestInfoTest {
     assertEquals("1", info.number());
     assertEquals("development", info.sourceBranch());
     assertEquals("master", info.targetBranch());
-    assertEquals("712020:d05760d0-cab2-4877-a236-d2115fd95349", info.author());
+    assertEquals("John Doe", info.author());
     assertEquals("Merge development into master", info.title());
   }
 

@@ -1,6 +1,7 @@
 package com.jetbrains.teamcity.jenkinsbridge.model;
 
 import com.intellij.openapi.diagnostic.Logger;
+import com.jetbrains.teamcity.jenkinsbridge.vcs.VcsHost;
 import com.jetbrains.teamcity.jenkinsbridge.xml.JaxbUnmarshaller;
 import jakarta.xml.bind.annotation.XmlAccessType;
 import jakarta.xml.bind.annotation.XmlAccessorType;
@@ -10,6 +11,7 @@ import jakarta.xml.bind.annotation.XmlRootElement;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.Locale;
 import java.util.Optional;
 
 import static com.jetbrains.teamcity.jenkinsbridge.util.Utilities.firstNonBlankString;
@@ -74,13 +76,40 @@ public record JenkinsPullRequestInfo(
 
     ContributorMetadataAction contributor = branch.actions == null ? null : branch.actions.contributorMetadataAction;
     ObjectMetadataAction objectMetadata = branch.actions == null ? null : branch.actions.objectMetadataAction;
+    VcsHost vcsHost = vcsHost(head.headClass);
+
+    // The Bitbucket contributor is an internal account id, which is too technical to be useful.
+    String author = contributor == null ? "" : nullToEmpty(vcsHost == VcsHost.BITBUCKET
+        ? contributor.contributorDisplayName
+        : contributor.contributor);
 
     return Optional.of(new JenkinsPullRequestInfo(
         firstNonBlankString(head.number, head.id),
         sourceBranch,
         head.target == null ? "" : firstNonBlankString(head.target.name),
-        contributor == null ? "" : firstNonBlankString(contributor.contributor, contributor.contributorDisplayName),
+        author,
         firstNonBlankString(head.title, objectMetadata == null ? null : objectMetadata.objectDisplayName)));
+  }
+
+  /**
+   * Reads the hosting provider from the class the branch head is stored as.
+   *
+   * @param headClass The class attribute of the head element.
+   * @return The provider, or null when it is not one of the supported ones.
+   */
+  @Nullable
+  private static VcsHost vcsHost(@Nullable String headClass) {
+    String head = nullToEmpty(headClass).toLowerCase(Locale.ROOT);
+    if (head.contains("bitbucket")) {
+      return VcsHost.BITBUCKET;
+    }
+    if (head.contains("gitlab")) {
+      return VcsHost.GITLAB;
+    }
+    if (head.contains("github")) {
+      return VcsHost.GITHUB;
+    }
+    return null;
   }
 
   @XmlAccessorType(XmlAccessType.FIELD)
