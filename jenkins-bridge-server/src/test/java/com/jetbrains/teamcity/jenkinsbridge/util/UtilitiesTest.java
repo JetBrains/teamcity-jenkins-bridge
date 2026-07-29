@@ -5,9 +5,7 @@ import jetbrains.buildServer.serverSide.ProjectManager;
 import jetbrains.buildServer.serverSide.SBuildType;
 import org.junit.Test;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertSame;
-import static org.junit.Assert.assertNull;
+import static org.junit.Assert.*;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -124,12 +122,14 @@ public class UtilitiesTest {
     assertEquals("RuntimeException", Utilities.describeException(new RuntimeException()));
   }
 
+  @Deprecated
   @Test
   public void mapPullRequestBranchNameReturnsPullNumber() {
     assertEquals("pull/123", Utilities.mapPullRequestBranchName(" PR-123"));
     assertEquals("pull/1", Utilities.mapPullRequestBranchName("MR-1 "));
   }
 
+  @Deprecated
   @Test
   public void mapPullRequestBranchNameLeavesNonPrBranchesTheSame() {
     assertEquals("something", Utilities.mapPullRequestBranchName("something"));
@@ -137,9 +137,34 @@ public class UtilitiesTest {
     assertEquals("PR-123-headd", Utilities.mapPullRequestBranchName("PR-123-headd"));
   }
 
+  @Deprecated
   @Test
   public void mapPullRequestBranchNamePreservesSuffixes() {
     assertEquals("pull/123", Utilities.mapPullRequestBranchName(" PR-123-head"));
     assertEquals("pull/1", Utilities.mapPullRequestBranchName("MR-1-merge "));
+  }
+
+  @Test
+  public void looksLikePullOrMergeRequestBranchReturnsTrueForPullAndMergeRequestNames() {
+    assertTrue(Utilities.looksLikePullOrMergeRequestBranch("PR-1"));
+    assertTrue(Utilities.looksLikePullOrMergeRequestBranch("PR-123-head"));
+    assertTrue(Utilities.looksLikePullOrMergeRequestBranch("MR-1-merge"));
+    assertTrue(Utilities.looksLikePullOrMergeRequestBranch(" PR-1 "));
+  }
+
+  @Test
+  public void looksLikePullOrMergeRequestBranchReturnsFalseForRegularBranchNames() {
+    assertFalse(Utilities.looksLikePullOrMergeRequestBranch("main"));
+    assertFalse(Utilities.looksLikePullOrMergeRequestBranch("PR-123a"));
+    assertFalse(Utilities.looksLikePullOrMergeRequestBranch("PR-123-headd"));
+  }
+
+  @Test
+  public void firstNonBlankStringReturnsFirstNonBlankString() {
+    assertEquals("first", Utilities.firstNonBlankString("first", "second"));
+    assertEquals("second", Utilities.firstNonBlankString(null, "second"));
+    assertEquals("", Utilities.firstNonBlankString());
+    assertEquals("", Utilities.firstNonBlankString((String) null));
+    assertEquals("", Utilities.firstNonBlankString(null, null));
   }
 }

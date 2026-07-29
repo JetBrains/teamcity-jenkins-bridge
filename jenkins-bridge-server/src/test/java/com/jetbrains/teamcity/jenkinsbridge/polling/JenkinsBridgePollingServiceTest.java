@@ -209,7 +209,7 @@ public class JenkinsBridgePollingServiceTest {
     int getBuildInfoCalls;
 
     FakeJenkinsClient() {
-      super(null, null);
+      super(null, null, null);
     }
 
     void addBuild(JenkinsBuildInfo buildInfo) {

@@ -14,6 +14,12 @@ import java.util.regex.Pattern;
 public final class Utilities {
   private static final Pattern SCP_REPOSITORY_URL = Pattern.compile("^(?:[^@/]+@)?([^:/]+):/?(.+)$");
 
+  /**
+   * Matches the branch name Jenkins assigns to pull and merge request builds in multibranch
+   * pipelines (PR-N, MR-N, potentially with a head/merge suffix).
+   */
+  public static final Pattern PULL_OR_MERGE_REQUEST_BRANCH_NAME = Pattern.compile("[PM]R-\\d+(-(head|merge))?");
+
   private Utilities() {
   }
 
@@ -95,9 +101,10 @@ public final class Utilities {
    * @param branchName The original branch name assigned internally by Jenkins.
    * @return The branch name mapped to the TeamCity format.
    */
+  @Deprecated
   public static @NotNull String mapPullRequestBranchName(@NotNull String branchName) {
     branchName = branchName.trim();
-    if (branchName.matches("[PM]R-\\d+(-(head|merge))?")) {
+    if (PULL_OR_MERGE_REQUEST_BRANCH_NAME.matcher(branchName).matches()) {
       final int firstDashIndex = 2;
       int secondDashIndex = branchName.indexOf('-', firstDashIndex + 1);
       String substring = secondDashIndex == -1
@@ -107,6 +114,24 @@ public final class Utilities {
       return "pull/" + number;
     }
     return branchName;
+  }
+
+  /**
+   * Whether a Jenkins multibranch branch job name matches an internal Jenkins pull or merge request pattern.
+   */
+  public static boolean looksLikePullOrMergeRequestBranch(@NotNull String branchName) {
+    return PULL_OR_MERGE_REQUEST_BRANCH_NAME.matcher(branchName.trim()).matches();
+  }
+
+  @NotNull
+  public static String firstNonBlankString(@Nullable String... values) {
+    if (values == null) return "";
+    for (String value : values) {
+      if (value != null && !value.trim().isEmpty()) {
+        return value.trim();
+      }
+    }
+    return "";
   }
 
   private static String normalizedRepositoryKey(String host, String path) {

@@ -9,6 +9,12 @@
   <bean id="jenkinsBridgeHttpClient"
         class="com.jetbrains.teamcity.jenkinsbridge.http.BridgeHttpClient"/>
 
+  <bean id="jenkinsBridgeXmlReaderFactory"
+        class="com.jetbrains.teamcity.jenkinsbridge.xml.XmlReaderFactory"/>
+
+  <bean id="jenkinsBridgeXmlUnmarshaller"
+        class="com.jetbrains.teamcity.jenkinsbridge.xml.JaxbUnmarshaller"/>
+
   <bean id="jenkinsClient"
         class="com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClient"/>
 

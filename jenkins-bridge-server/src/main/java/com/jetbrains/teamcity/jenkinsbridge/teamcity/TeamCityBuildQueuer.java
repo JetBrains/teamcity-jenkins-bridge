@@ -1,12 +1,14 @@
 package com.jetbrains.teamcity.jenkinsbridge.teamcity;
 
 import com.jetbrains.teamcity.jenkinsbridge.feature.BridgeBuildFeatureConstants;
+import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClient;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsVcsInfo;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsVcsRepository;
 import com.jetbrains.teamcity.jenkinsbridge.util.Utilities;
 import jetbrains.buildServer.serverSide.*;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -19,10 +21,16 @@ public class TeamCityBuildQueuer {
 
   private final ProjectManager projectManager;
   private final BuildCustomizerFactory buildCustomizerFactory;
+  private final JenkinsClient jenkinsClient;
 
-  public TeamCityBuildQueuer(ProjectManager projectManager, BuildCustomizerFactory buildCustomizerFactory) {
+  public TeamCityBuildQueuer(
+      ProjectManager projectManager,
+      BuildCustomizerFactory buildCustomizerFactory,
+      JenkinsClient jenkinsClient
+  ) {
     this.projectManager = projectManager;
     this.buildCustomizerFactory = buildCustomizerFactory;
+    this.jenkinsClient = jenkinsClient;
   }
 
   public long queueAgentlessBuild(
@@ -36,6 +44,11 @@ public class TeamCityBuildQueuer {
       throw new IllegalStateException("TeamCity build type " + buildTypeId + " was not found");
     }
 
+    BranchResolution branchResolution = resolveBranch(buildType, properties, vcsInfo);
+
+    Map<String, String> bridgeParameters = new LinkedHashMap<>(properties);
+    bridgeParameters.putAll(branchResolution.pullRequestParameters());
+
     Map<String, String> parameters = new LinkedHashMap<>();
 
     // TODO: Replace the line below with parameters.put(BuildPromotionImpl.ALLOW_RESETTING_ACTIVE_REVISIONS, "true"); once merged in core
@@ -43,18 +56,17 @@ public class TeamCityBuildQueuer {
 
     parameters.put(TeamCityBuildParameters.AGENTLESS_BUILD_PROPERTY, "true");
     parameters.putAll(TeamCityBuildParameters.mergeWithJenkinsParameters(
-        properties,
+        bridgeParameters,
         jenkinsBuildParameters,
         buildType.getParametersProvider().getAll().keySet()));
 
     BuildCustomizer customizer = buildCustomizerFactory.createBuildCustomizer(buildType, null);
     customizer.setParameters(parameters);
-    String branchDisplayName = pinBranch(customizer, buildType, properties, vcsInfo);
+    if (branchResolution.branchName() != null && customizer instanceof BuildCustomizerEx customizerEx) {
+      customizerEx.setDesiredBranchName(branchResolution.branchName(), false);
+    }
 
     BuildPromotion promotion = customizer.createPromotion();
-    if (branchDisplayName != null && promotion instanceof BuildPromotionEx promotionEx) {
-      promotionEx.setAttribute(BuildAttributes.BRANCH_DISPLAY_NAME, branchDisplayName);
-    }
     SQueuedBuild queuedBuild = promotion.addToQueue(TRIGGERED_BY);
     if (queuedBuild == null) {
       throw new IllegalStateException("Failed to add TeamCity build type " + buildTypeId + " to the queue");
@@ -64,16 +76,14 @@ public class TeamCityBuildQueuer {
   }
 
   /**
-   * Registers the build branch before the promotion is queued, so TeamCity finalizes the immutable branch name correctly.
-   *
-   * @return The branch display name in the overview panel. It only differs for pull request builds in multibranch pipelines.
+   * Determines the branch to pin the build to before the promotion is queued, so TeamCity finalizes
+   * the immutable branch name correctly, and any pull/merge request parameters to publish alongside it.
    */
-  @Nullable
-  private String pinBranch(BuildCustomizer customizer, SBuildType buildType, Map<String, String> properties,
-                           @Nullable JenkinsVcsInfo vcsInfo) {
+  private BranchResolution resolveBranch(SBuildType buildType, Map<String, String> properties,
+                                          @Nullable JenkinsVcsInfo vcsInfo) {
     String branchName = null;
+    Map<String, String> pullRequestParameters = Collections.emptyMap();
     SBuildFeatureDescriptor feature = buildType.getBuildFeaturesOfType(BridgeBuildFeatureConstants.TYPE).stream().findFirst().orElse(null);
-    String branchDisplayName = null;
     if (feature != null && Objects.equals("true", feature.getParameters().get(BridgeBuildFeatureConstants.PARAM_IN_MULTIBRANCH))) {
       // Check the name of the nested branch job for the branch name
       String job = properties.get("jenkins.job");
@@ -81,10 +91,15 @@ public class TeamCityBuildQueuer {
         job = feature.getParameters().get(BridgeBuildFeatureConstants.PARAM_JENKINS_JOB);
       }
       if (job != null && !job.trim().isEmpty()) {
-        branchName = lastPathSegment(job.trim());
-        String mappedBranchName = Utilities.mapPullRequestBranchName(branchName);
-        if (!mappedBranchName.equals(branchName)) {
-          branchDisplayName = mappedBranchName;
+        job = job.trim();
+        branchName = lastPathSegment(job);
+        if (Utilities.looksLikePullOrMergeRequestBranch(branchName)) {
+          var pullRequestInfoResult = jenkinsClient.getPullRequestInfo(job);
+          if (pullRequestInfoResult.isPresent()) {
+            var pullRequestInfo = pullRequestInfoResult.get();
+            branchName = pullRequestInfo.sourceBranch();
+            pullRequestParameters = TeamCityBuildParameters.pullRequestParameters(pullRequestInfo);
+          }
         }
       }
     } else if (vcsInfo != null) {
@@ -95,9 +110,9 @@ public class TeamCityBuildQueuer {
         }
       }
     }
-    if (branchName != null && customizer instanceof BuildCustomizerEx customizerEx) {
-      customizerEx.setDesiredBranchName(branchName, false);
-    }
-    return branchDisplayName == null ? branchName : branchDisplayName;
+    return new BranchResolution(branchName, pullRequestParameters);
+  }
+
+  private record BranchResolution(@Nullable String branchName, Map<String, String> pullRequestParameters) {
   }
 }

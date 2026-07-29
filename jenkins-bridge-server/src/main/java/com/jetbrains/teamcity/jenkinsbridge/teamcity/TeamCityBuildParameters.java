@@ -1,5 +1,8 @@
 package com.jetbrains.teamcity.jenkinsbridge.teamcity;
 
+import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsPullRequestInfo;
+import org.jetbrains.annotations.NotNull;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -11,7 +14,28 @@ import java.util.Set;
 public class TeamCityBuildParameters {
   public static final String AGENTLESS_BUILD_PROPERTY = "teamcity.build.agentLess";
 
+  public static final String PULL_REQUEST_AUTHOR = "teamcity.pullRequest.author";
+  public static final String PULL_REQUEST_BRANCH = "teamcity.pullRequest.branch.pullrequests";
+  public static final String PULL_REQUEST_NUMBER = "teamcity.pullRequest.number";
+  public static final String PULL_REQUEST_SOURCE_BRANCH = "teamcity.pullRequest.source.branch";
+  public static final String PULL_REQUEST_TARGET_BRANCH = "teamcity.pullRequest.target.branch";
+  public static final String PULL_REQUEST_TITLE = "teamcity.pullRequest.title";
+
   private TeamCityBuildParameters() {
+  }
+
+  /**
+   * TeamCity pull/merge request parameters for a build.
+   */
+  public static Map<String, String> pullRequestParameters(@NotNull JenkinsPullRequestInfo info) {
+    Map<String, String> parameters = new LinkedHashMap<>();
+    parameters.put(PULL_REQUEST_AUTHOR, info.author());
+    parameters.put(PULL_REQUEST_BRANCH, info.number());
+    parameters.put(PULL_REQUEST_NUMBER, info.number());
+    parameters.put(PULL_REQUEST_SOURCE_BRANCH, info.sourceBranch());
+    parameters.put(PULL_REQUEST_TARGET_BRANCH, info.targetBranch());
+    parameters.put(PULL_REQUEST_TITLE, info.title());
+    return parameters;
   }
 
   public static Map<String, String> mergeWithJenkinsParameters(
