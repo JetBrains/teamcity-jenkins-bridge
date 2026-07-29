@@ -82,6 +82,10 @@
         class="com.jetbrains.teamcity.jenkinsbridge.web.JenkinsBuildResultExtension"
         destroy-method="dispose"/>
 
+  <bean id="jenkinsPullRequestExtension"
+        class="com.jetbrains.teamcity.jenkinsbridge.web.JenkinsPullRequestExtension"
+        destroy-method="dispose"/>
+
   <bean id="jenkinsBuildSummaryExtension"
         class="com.jetbrains.teamcity.jenkinsbridge.web.JenkinsBuildSummaryExtension"
         destroy-method="dispose"/>

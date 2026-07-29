@@ -68,7 +68,8 @@ public class TeamCityBuildQueuerTest {
     Map<String, String> properties = new LinkedHashMap<>();
     properties.put("jenkins.job", "team/my-pipeline/PR-1-merge");
     when(jenkinsClient.getPullRequestInfo("team/my-pipeline/PR-1-merge")).thenReturn(
-        Optional.of(new JenkinsPullRequestInfo("1", "feature-branch", "master", "some-author", "Some title")));
+        Optional.of(new JenkinsPullRequestInfo("1", "feature-branch", "master", "some-author", "Some title",
+            "https://github.com/some-owner/some-repository/pull/1")));
 
     queuer.queueAgentlessBuild(BUILD_TYPE_ID, properties, Collections.emptyMap(), null);
 
@@ -78,7 +79,9 @@ public class TeamCityBuildQueuerTest {
             && "feature-branch".equals(parameters.get(TeamCityBuildParameters.PULL_REQUEST_SOURCE_BRANCH))
             && "master".equals(parameters.get(TeamCityBuildParameters.PULL_REQUEST_TARGET_BRANCH))
             && "some-author".equals(parameters.get(TeamCityBuildParameters.PULL_REQUEST_AUTHOR))
-            && "Some title".equals(parameters.get(TeamCityBuildParameters.PULL_REQUEST_TITLE))));
+            && "Some title".equals(parameters.get(TeamCityBuildParameters.PULL_REQUEST_TITLE))
+            && "https://github.com/some-owner/some-repository/pull/1"
+                .equals(parameters.get(TeamCityBuildParameters.PULL_REQUEST_URL))));
   }
 
   @Test

@@ -23,7 +23,8 @@ public record JenkinsPullRequestInfo(
     @NotNull String sourceBranch,
     @NotNull String targetBranch,
     @NotNull String author,
-    @NotNull String title
+    @NotNull String title,
+    @NotNull String url
 ) {
   private static final Logger LOG = Logger.getInstance(JenkinsPullRequestInfo.class.getName());
 
@@ -33,6 +34,7 @@ public record JenkinsPullRequestInfo(
     targetBranch = nullToEmpty(targetBranch);
     author = nullToEmpty(author);
     title = nullToEmpty(title);
+    url = nullToEmpty(url);
   }
 
   /**
@@ -88,7 +90,8 @@ public record JenkinsPullRequestInfo(
         sourceBranch,
         head.target == null ? "" : firstNonBlankString(head.target.name),
         author,
-        firstNonBlankString(head.title, objectMetadata == null ? null : objectMetadata.objectDisplayName)));
+        firstNonBlankString(head.title, objectMetadata == null ? null : objectMetadata.objectDisplayName),
+        objectMetadata == null ? "" : firstNonBlankString(objectMetadata.objectUrl)));
   }
 
   /**
@@ -181,9 +184,14 @@ public record JenkinsPullRequestInfo(
     private String contributorDisplayName;
   }
 
+  /**
+   * {@code objectUrl} is the pull or merge request page on the hosting service.
+   */
   @XmlAccessorType(XmlAccessType.FIELD)
   private static class ObjectMetadataAction {
     @XmlElement(name = "objectDisplayName")
     private String objectDisplayName;
+    @XmlElement(name = "objectUrl")
+    private String objectUrl;
   }
 }

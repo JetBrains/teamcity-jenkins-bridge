@@ -35,6 +35,7 @@ public class JenkinsPullRequestInfoTest {
                           <jenkins.scm.api.metadata.ObjectMetadataAction plugin="scm-api@728.vc30dcf7a_0df5">
                               <objectDisplayName>Merge development into master</objectDisplayName>
                               <objectDescription>Test description</objectDescription>
+                              <objectUrl>https://github.com/john-doe/building-a-multibranch-pipeline-project/pull/1</objectUrl>
                           </jenkins.scm.api.metadata.ObjectMetadataAction>
                       </actions>
                   </branch>
@@ -67,6 +68,7 @@ public class JenkinsPullRequestInfoTest {
                           </jenkins.scm.api.metadata.ContributorMetadataAction>
                           <jenkins.scm.api.metadata.ObjectMetadataAction plugin="scm-api@728.vc30dcf7a_0df5">
                               <objectDisplayName>Merge development into master</objectDisplayName>
+                              <objectUrl>https://bitbucket.org/john-doe/multibranch-react/pull-requests/1</objectUrl>
                           </jenkins.scm.api.metadata.ObjectMetadataAction>
                       </actions>
                   </branch>
@@ -94,6 +96,7 @@ public class JenkinsPullRequestInfoTest {
                           <jenkins.scm.api.metadata.ObjectMetadataAction plugin="scm-api@728.vc30dcf7a_0df5">
                               <objectDisplayName>Merge development into master</objectDisplayName>
                               <objectDescription/>
+                              <objectUrl>https://gitlab.com/john-doe/multibranch-react/-/merge_requests/1</objectUrl>
                           </jenkins.scm.api.metadata.ObjectMetadataAction>
                           <jenkins.scm.api.metadata.ContributorMetadataAction plugin="scm-api@728.vc30dcf7a_0df5">
                               <contributor>john-doe</contributor>
@@ -131,6 +134,7 @@ public class JenkinsPullRequestInfoTest {
     assertEquals("master", info.targetBranch());
     assertEquals("john-doe", info.author());
     assertEquals("Merge development into master", info.title());
+    assertEquals("https://github.com/john-doe/building-a-multibranch-pipeline-project/pull/1", info.url());
   }
 
   @Test
@@ -144,6 +148,7 @@ public class JenkinsPullRequestInfoTest {
     assertEquals("master", info.targetBranch());
     assertEquals("John Doe", info.author());
     assertEquals("Merge development into master", info.title());
+    assertEquals("https://bitbucket.org/john-doe/multibranch-react/pull-requests/1", info.url());
   }
 
   @Test
@@ -157,6 +162,7 @@ public class JenkinsPullRequestInfoTest {
     assertEquals("master", info.targetBranch());
     assertEquals("john-doe", info.author());
     assertEquals("Merge development into master", info.title());
+    assertEquals("https://gitlab.com/john-doe/multibranch-react/-/merge_requests/1", info.url());
   }
 
   @Test

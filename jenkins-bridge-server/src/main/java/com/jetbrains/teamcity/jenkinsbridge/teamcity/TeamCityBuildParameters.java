@@ -20,6 +20,7 @@ public class TeamCityBuildParameters {
   public static final String PULL_REQUEST_SOURCE_BRANCH = "teamcity.pullRequest.source.branch";
   public static final String PULL_REQUEST_TARGET_BRANCH = "teamcity.pullRequest.target.branch";
   public static final String PULL_REQUEST_TITLE = "teamcity.pullRequest.title";
+  public static final String PULL_REQUEST_URL = "teamcity.pullRequest.url";
 
   private TeamCityBuildParameters() {
   }
@@ -35,6 +36,7 @@ public class TeamCityBuildParameters {
     parameters.put(PULL_REQUEST_SOURCE_BRANCH, info.sourceBranch());
     parameters.put(PULL_REQUEST_TARGET_BRANCH, info.targetBranch());
     parameters.put(PULL_REQUEST_TITLE, info.title());
+    parameters.put(PULL_REQUEST_URL, info.url());
     return parameters;
   }
 
