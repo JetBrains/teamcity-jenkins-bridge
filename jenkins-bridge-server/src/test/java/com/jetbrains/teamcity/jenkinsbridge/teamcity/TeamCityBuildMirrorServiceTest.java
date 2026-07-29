@@ -415,7 +415,7 @@ public class TeamCityBuildMirrorServiceTest {
     String text = "";
 
     FakeStageLogClient() {
-      super(null, null);
+      super(null, null, null);
     }
 
     @Override
@@ -429,7 +429,7 @@ public class TeamCityBuildMirrorServiceTest {
     int streamCalls;
 
     FakeArtifactClient() {
-      super(null, null);
+      super(null, null, null);
     }
 
     @Override
@@ -580,7 +580,7 @@ public class TeamCityBuildMirrorServiceTest {
     Map<String, String> jenkinsParameters;
 
     CapturingQueuer() {
-      super(null, null);
+      super(null, null, null);
     }
 
     @Override

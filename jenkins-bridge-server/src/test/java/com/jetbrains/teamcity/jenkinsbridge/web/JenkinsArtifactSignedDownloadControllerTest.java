@@ -39,7 +39,7 @@ public class JenkinsArtifactSignedDownloadControllerTest {
   public void streamsTheArtifactWhenTheSignatureIsValid() throws Exception {
     when(settings.getJenkinsUrl()).thenReturn("http://jenkins.instance");
     when(settingsProvider.load()).thenReturn(settings);
-    JenkinsClient jenkinsClient = new JenkinsClient(settingsProvider, new StubStreamHttpClient("artifact bytes"));
+    JenkinsClient jenkinsClient = new JenkinsClient(settingsProvider, new StubStreamHttpClient("artifact bytes"), null);
     JenkinsArtifactContentProvider contentProvider = new JenkinsArtifactContentProvider(jenkinsClient, new JenkinsArtifactInfoUtils());
     JenkinsArtifactSignedDownloadController controller = new JenkinsArtifactSignedDownloadController(
         mock(WebControllerManager.class), contentProvider, signer);
@@ -59,7 +59,7 @@ public class JenkinsArtifactSignedDownloadControllerTest {
 
   @Test
   public void rejectsAnInvalidSignatureWith403() throws Exception {
-    JenkinsClient jenkinsClient = new JenkinsClient(settingsProvider, new StubStreamHttpClient("artifact bytes"));
+    JenkinsClient jenkinsClient = new JenkinsClient(settingsProvider, new StubStreamHttpClient("artifact bytes"), null);
     JenkinsArtifactContentProvider contentProvider = new JenkinsArtifactContentProvider(jenkinsClient, new JenkinsArtifactInfoUtils());
     JenkinsArtifactSignedDownloadController controller = new JenkinsArtifactSignedDownloadController(
         mock(WebControllerManager.class), contentProvider, signer);
@@ -77,7 +77,7 @@ public class JenkinsArtifactSignedDownloadControllerTest {
 
   @Test
   public void rejectsAnExpiredSignatureWith403() throws Exception {
-    JenkinsClient jenkinsClient = new JenkinsClient(settingsProvider, new StubStreamHttpClient("artifact bytes"));
+    JenkinsClient jenkinsClient = new JenkinsClient(settingsProvider, new StubStreamHttpClient("artifact bytes"), null);
     JenkinsArtifactContentProvider contentProvider = new JenkinsArtifactContentProvider(jenkinsClient, new JenkinsArtifactInfoUtils());
     JenkinsArtifactSignedDownloadController controller = new JenkinsArtifactSignedDownloadController(
         mock(WebControllerManager.class), contentProvider, signer);
@@ -96,7 +96,7 @@ public class JenkinsArtifactSignedDownloadControllerTest {
 
   @Test
   public void respondsWith400WhenParametersAreMissing() throws Exception {
-    JenkinsClient jenkinsClient = new JenkinsClient(settingsProvider, new StubStreamHttpClient("artifact bytes"));
+    JenkinsClient jenkinsClient = new JenkinsClient(settingsProvider, new StubStreamHttpClient("artifact bytes"), null);
     JenkinsArtifactContentProvider contentProvider = new JenkinsArtifactContentProvider(jenkinsClient, new JenkinsArtifactInfoUtils());
     JenkinsArtifactSignedDownloadController controller = new JenkinsArtifactSignedDownloadController(
         mock(WebControllerManager.class), contentProvider, signer);

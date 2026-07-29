@@ -12,21 +12,14 @@ import com.jetbrains.teamcity.jenkinsbridge.model.*;
 import com.jetbrains.teamcity.jenkinsbridge.settings.JenkinsBridgeSettings;
 import com.jetbrains.teamcity.jenkinsbridge.settings.JenkinsBridgeSettingsProvider;
 import com.jetbrains.teamcity.jenkinsbridge.vcs.constants.GitConstants;
+import com.jetbrains.teamcity.jenkinsbridge.xml.JaxbUnmarshaller;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.UnsupportedEncodingException;
 import java.net.URLEncoder;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Date;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.regex.Pattern;
 
 import static com.jetbrains.teamcity.jenkinsbridge.util.Utilities.nullToEmpty;
@@ -43,11 +36,15 @@ public class JenkinsClient {
 
   private final JenkinsBridgeSettingsProvider settingsProvider;
   private final BridgeHttpClient httpClient;
+  private final JaxbUnmarshaller xmlUnmarshaller;
   private final JsonParser jsonParser = new JsonParser();
 
-  public JenkinsClient(JenkinsBridgeSettingsProvider settingsProvider, BridgeHttpClient httpClient) {
+  public JenkinsClient(JenkinsBridgeSettingsProvider settingsProvider,
+                       BridgeHttpClient httpClient,
+                       JaxbUnmarshaller xmlUnmarshaller) {
     this.settingsProvider = settingsProvider;
     this.httpClient = httpClient;
+    this.xmlUnmarshaller = xmlUnmarshaller;
   }
 
   /**
@@ -842,6 +839,35 @@ public class JenkinsClient {
         return JenkinsStageLog.empty();
       }
       throw e;
+    }
+  }
+
+  /**
+   * Reads pull or merge request metadata from a multibranch pipeline branch job's config.xml.
+   * Returns {@link Optional#empty()} when the branch is not a pull or merge request, or
+   * the config cannot be read.
+   */
+  @NotNull
+  public Optional<JenkinsPullRequestInfo> getPullRequestInfo(String jobName) {
+    JenkinsBridgeSettings settings = settingsProvider.load();
+    String url = settings.getJenkinsUrl()
+        + jenkinsJobPath(jobName)
+        + "/config.xml";
+
+    try {
+      String response = httpClient.get(url, settings.getJenkinsUser(), settings.getJenkinsToken(), "application/xml");
+      var infoResult = JenkinsPullRequestInfo.fromConfigXml(response, xmlUnmarshaller);
+      if (infoResult.isPresent()) {
+        var info = infoResult.get();
+        LOG.info("Branch job " + jobName + " is pull request #" + info.number()
+            + " merging from " + info.sourceBranch() + " into " + info.targetBranch());
+      } else {
+        LOG.warn("Found no pull or merge request metadata for branch job " + jobName);
+      }
+      return infoResult;
+    } catch (BridgeHttpException e) {
+      LOG.warn("Failed to read the config of branch job " + jobName, e);
+      return Optional.empty();
     }
   }
 

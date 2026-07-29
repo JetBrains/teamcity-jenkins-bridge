@@ -2,24 +2,22 @@ package com.jetbrains.teamcity.jenkinsbridge.teamcity;
 
 import com.google.gson.JsonParser;
 import com.jetbrains.teamcity.jenkinsbridge.feature.BridgeBuildFeatureConstants;
+import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClient;
+import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsPullRequestInfo;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsVcsInfo;
 import jetbrains.buildServer.parameters.ParametersProvider;
-import jetbrains.buildServer.serverSide.BuildCustomizerEx;
-import jetbrains.buildServer.serverSide.BuildCustomizerFactory;
-import jetbrains.buildServer.serverSide.BuildPromotion;
-import jetbrains.buildServer.serverSide.ProjectManager;
-import jetbrains.buildServer.serverSide.SBuildFeatureDescriptor;
-import jetbrains.buildServer.serverSide.SBuildType;
-import jetbrains.buildServer.serverSide.SQueuedBuild;
+import jetbrains.buildServer.serverSide.*;
 import org.junit.Before;
 import org.junit.Test;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Optional;
 
 import static org.junit.Assert.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -32,10 +30,12 @@ public class TeamCityBuildQueuerTest {
 
   private final ProjectManager projectManager = mock(ProjectManager.class);
   private final BuildCustomizerFactory customizerFactory = mock(BuildCustomizerFactory.class);
+  private final JenkinsClient jenkinsClient = mock(JenkinsClient.class);
   private final SBuildType buildType = mock(SBuildType.class);
   private final BuildCustomizerEx customizer = mock(BuildCustomizerEx.class);
 
-  private final TeamCityBuildQueuer queuer = new TeamCityBuildQueuer(projectManager, customizerFactory);
+  private final BuildPromotionEx promotion = mock(BuildPromotionEx.class);
+  private final TeamCityBuildQueuer queuer = new TeamCityBuildQueuer(projectManager, customizerFactory, jenkinsClient);
 
   @Before
   public void setUp() {
@@ -44,8 +44,8 @@ public class TeamCityBuildQueuerTest {
     when(parametersProvider.getAll()).thenReturn(Collections.emptyMap());
     when(buildType.getParametersProvider()).thenReturn(parametersProvider);
     when(customizerFactory.createBuildCustomizer(eq(buildType), any())).thenReturn(customizer);
+    when(jenkinsClient.getPullRequestInfo(anyString())).thenReturn(Optional.empty());
 
-    BuildPromotion promotion = mock(BuildPromotion.class);
     when(promotion.getId()).thenReturn(55L);
     SQueuedBuild queued = mock(SQueuedBuild.class);
     when(queued.getBuildPromotion()).thenReturn(promotion);
@@ -60,6 +60,40 @@ public class TeamCityBuildQueuerTest {
     queuer.queueAgentlessBuild(BUILD_TYPE_ID, properties(), Collections.emptyMap(), null);
 
     verify(customizer).setDesiredBranchName("main", false);
+  }
+
+  @Test
+  public void queueAgentlessBuildUsesSourceBranchAndPullRequestParametersForMultibranchJob() {
+    withMultibranchFeature("team/my-pipeline/PR-1-merge");
+    Map<String, String> properties = new LinkedHashMap<>();
+    properties.put("jenkins.job", "team/my-pipeline/PR-1-merge");
+    when(jenkinsClient.getPullRequestInfo("team/my-pipeline/PR-1-merge")).thenReturn(
+        Optional.of(new JenkinsPullRequestInfo("1", "feature-branch", "master", "some-author", "Some title",
+            "https://github.com/some-owner/some-repository/pull/1")));
+
+    queuer.queueAgentlessBuild(BUILD_TYPE_ID, properties, Collections.emptyMap(), null);
+
+    verify(customizer).setDesiredBranchName("feature-branch", false);
+    verify(customizer).setParameters(argThat((Map<String, String> parameters) ->
+        "1".equals(parameters.get(TeamCityBuildParameters.PULL_REQUEST_NUMBER))
+            && "feature-branch".equals(parameters.get(TeamCityBuildParameters.PULL_REQUEST_SOURCE_BRANCH))
+            && "master".equals(parameters.get(TeamCityBuildParameters.PULL_REQUEST_TARGET_BRANCH))
+            && "some-author".equals(parameters.get(TeamCityBuildParameters.PULL_REQUEST_AUTHOR))
+            && "Some title".equals(parameters.get(TeamCityBuildParameters.PULL_REQUEST_TITLE))
+            && "https://github.com/some-owner/some-repository/pull/1"
+                .equals(parameters.get(TeamCityBuildParameters.PULL_REQUEST_URL))));
+  }
+
+  @Test
+  public void queueAgentlessBuildFallsBackToRawBranchNameWhenPullRequestInfoIsUnavailable() {
+    withMultibranchFeature("team/my-pipeline/PR-1-merge");
+    Map<String, String> properties = new LinkedHashMap<>();
+    properties.put("jenkins.job", "team/my-pipeline/PR-1-merge");
+    when(jenkinsClient.getPullRequestInfo("team/my-pipeline/PR-1-merge")).thenReturn(Optional.empty());
+
+    queuer.queueAgentlessBuild(BUILD_TYPE_ID, properties, Collections.emptyMap(), null);
+
+    verify(customizer).setDesiredBranchName("PR-1-merge", false);
   }
 
   @Test

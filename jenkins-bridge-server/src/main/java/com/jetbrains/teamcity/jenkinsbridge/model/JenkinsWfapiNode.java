@@ -10,6 +10,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
+import static com.jetbrains.teamcity.jenkinsbridge.util.Utilities.firstNonBlankString;
 import static com.jetbrains.teamcity.jenkinsbridge.util.Utilities.nullToEmpty;
 
 public class JenkinsWfapiNode {
@@ -53,7 +54,7 @@ public class JenkinsWfapiNode {
   public static JenkinsWfapiNode fromJson(JsonObject json) {
     return new JenkinsWfapiNode(
         getString(json, "id", ""),
-        firstNonBlank(getString(json, "name", ""), getString(json, "displayName", "")),
+        firstNonBlankString(getString(json, "name", ""), getString(json, "displayName", "")),
         getString(json, "status", ""),
         getLong(json, "startTimeMillis"),
         getLong(json, "durationMillis"),
@@ -86,9 +87,9 @@ public class JenkinsWfapiNode {
     Set<String> parents = new LinkedHashSet<String>(getParentIds());
     parents.addAll(other.getParentIds());
     return new JenkinsWfapiNode(
-        firstNonBlank(other.getId(), getId()),
-        firstNonBlank(other.getName(), getName()),
-        firstNonBlank(other.getStatus(), getStatus()),
+        firstNonBlankString(other.getId(), getId()),
+        firstNonBlankString(other.getName(), getName()),
+        firstNonBlankString(other.getStatus(), getStatus()),
         other.getStartTimeMillis() > 0 ? other.getStartTimeMillis() : getStartTimeMillis(),
         other.getDurationMillis() > 0 ? other.getDurationMillis() : getDurationMillis(),
         new ArrayList<String>(parents),
@@ -184,10 +185,6 @@ public class JenkinsWfapiNode {
       return Collections.emptyList();
     }
     return Collections.unmodifiableList(new ArrayList<String>(values));
-  }
-
-  private static String firstNonBlank(String first, String second) {
-    return first != null && first.trim().length() > 0 ? first : nullToEmpty(second);
   }
 
 }

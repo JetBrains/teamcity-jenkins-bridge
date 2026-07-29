@@ -1,6 +1,7 @@
 package com.jetbrains.teamcity.jenkinsbridge.teamcity;
 
 import com.intellij.openapi.diagnostic.Logger;
+import com.jetbrains.teamcity.jenkinsbridge.feature.BridgeBuildFeatureConstants;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsVcsInfo;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsVcsRepository;
 import com.jetbrains.teamcity.jenkinsbridge.persistence.BuildMirror;
@@ -20,11 +21,7 @@ import jetbrains.buildServer.vcs.VcsRootInstanceEntry;
 import jetbrains.buildServer.vcs.impl.BuildChainChangesCollector;
 import org.jetbrains.annotations.NotNull;
 
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 
 import static com.jetbrains.teamcity.jenkinsbridge.util.Utilities.*;
 
