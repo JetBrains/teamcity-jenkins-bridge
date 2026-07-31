@@ -3,6 +3,7 @@ package com.jetbrains.teamcity.jenkinsbridge.feature;
 import com.jetbrains.teamcity.jenkinsbridge.settings.JenkinsBridgeSettings;
 import com.jetbrains.teamcity.jenkinsbridge.settings.JenkinsBridgeSettingsProvider;
 import com.jetbrains.teamcity.jenkinsbridge.settings.MirroredJob;
+import com.jetbrains.teamcity.jenkinsbridge.util.Utilities;
 import jetbrains.buildServer.serverSide.ProjectManager;
 import jetbrains.buildServer.serverSide.SBuildFeatureDescriptor;
 import jetbrains.buildServer.serverSide.SBuildType;
@@ -10,7 +11,6 @@ import jetbrains.buildServer.serverSide.SBuildType;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 
 /**
  * Discovers the jobs to mirror by scanning every active build configuration for the
@@ -52,8 +52,8 @@ public class MirroredJobProvider {
     Map<String, String> params = descriptor.getParameters();
     String job = params.get(BridgeBuildFeatureConstants.PARAM_JENKINS_JOB);
     int limit = parsePositiveInt(params.get(BridgeBuildFeatureConstants.PARAM_RECENT_LIMIT));
-    boolean multibranch = Objects.equals("true", params.get(BridgeBuildFeatureConstants.PARAM_IN_MULTIBRANCH));
-    return new MirroredJob(job, buildType.getExternalId(), buildType.getFullName(), limit, false, multibranch);
+    boolean isMultibranch = Utilities.isBuildConfigMultibranch(buildType);
+    return new MirroredJob(job, buildType.getExternalId(), buildType.getFullName(), limit, false, isMultibranch);
   }
 
   private MirroredJob legacyJobOrNull() {

@@ -1,6 +1,7 @@
 package com.jetbrains.teamcity.jenkinsbridge.web;
 
 import com.jetbrains.teamcity.jenkinsbridge.feature.BridgeBuildFeatureConstants;
+import com.jetbrains.teamcity.jenkinsbridge.util.Utilities;
 import jetbrains.buildServer.controllers.BaseController;
 import jetbrains.buildServer.serverSide.ProjectManager;
 import jetbrains.buildServer.serverSide.SBuildType;
@@ -73,6 +74,7 @@ public class JenkinsBuildSummaryExtension extends BaseController {
         SBuildType buildType = findBuildType(request);
         if (buildType == null) return null;
         if (buildType.getBuildFeaturesOfType(BridgeBuildFeatureConstants.TYPE).isEmpty()) return null;
+        boolean inMultibranchPipeline = Utilities.isBuildConfigMultibranch(buildType);
         List<SFinishedBuild> history = buildType.getHistory(); // TODO: Find a way to not load the entire history
 
         return history.stream()
@@ -81,6 +83,7 @@ public class JenkinsBuildSummaryExtension extends BaseController {
             .filter(buildUrl -> !StringUtil.isEmpty(buildUrl))
             .findFirst()
             .map(JenkinsBuildSummaryExtension::stripRunNumber)
+            .map(url -> inMultibranchPipeline ? stripNestedJob(url) : url)
             .orElse(null);
     }
 
@@ -93,6 +96,14 @@ public class JenkinsBuildSummaryExtension extends BaseController {
         String urlNotEndingInSlash = buildUrl.endsWith("/") ? buildUrl.substring(0, buildUrl.length() - 1) : buildUrl;
         int lastSlash = urlNotEndingInSlash.lastIndexOf('/');
         return lastSlash > 0 ? urlNotEndingInSlash.substring(0, lastSlash + 1) : buildUrl;
+    }
+
+    @NotNull
+    private static String stripNestedJob(@NotNull String buildUrl) {
+        String urlNotEndingInSlash = buildUrl.endsWith("/") ? buildUrl.substring(0, buildUrl.length() - 1) : buildUrl;
+        int lastSlash = urlNotEndingInSlash.lastIndexOf('/');
+        int secondToLastSlash = urlNotEndingInSlash.lastIndexOf('/', lastSlash - 1);
+        return secondToLastSlash > 0 ? urlNotEndingInSlash.substring(0, secondToLastSlash + 1) : buildUrl;
     }
 
     @Nullable
