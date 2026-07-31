@@ -20,13 +20,15 @@ public enum VcsProvider {
   GIT("jetbrains.git", "hudson.plugins.git.util.BuildData", GitConstants.URL_PROP, true) {
     @Override
     @NotNull
-    public Map<String, String> buildRootParameters(String repoUrl, String branchRef) {
+    public Map<String, String> buildRootParameters(String repoUrl, String branchRef, VcsRefType refType) {
       Map<String, String> params = new LinkedHashMap<>();
       params.put(GitConstants.URL_PROP, repoUrl == null ? "" : repoUrl);
       if (branchRef != null && !branchRef.isEmpty()) {
         params.put(GitConstants.BRANCH_PROP, branchRef);
       }
-      params.put(GenericVcsConstants.BRANCH_SPEC_PROP, GitConstants.BRANCH_SPEC_ALL_HEADS);
+      params.put(GenericVcsConstants.BRANCH_SPEC_PROP, refType == VcsRefType.TAGS
+          ? GitConstants.BRANCH_SPEC_ALL_TAGS
+          : GitConstants.BRANCH_SPEC_ALL_HEADS);
       params.put(GenericVcsConstants.AUTH_METHOD_PROP, GenericVcsConstants.AUTH_METHOD_ANONYMOUS);
       return params;
     }
@@ -76,7 +78,7 @@ public enum VcsProvider {
   /**
    * Builds the TeamCity VCS root property map for a repository. Implemented per provider.
    */
-  public Map<String, String> buildRootParameters(String repoUrl, String branchRef) {
+  public Map<String, String> buildRootParameters(String repoUrl, String branchRef, VcsRefType refType) {
     throw new UnsupportedOperationException("VCS provider " + name() + " is not implemented.");
   }
 

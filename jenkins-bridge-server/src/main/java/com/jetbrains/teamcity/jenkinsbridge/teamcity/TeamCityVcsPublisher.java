@@ -1,11 +1,12 @@
 package com.jetbrains.teamcity.jenkinsbridge.teamcity;
 
 import com.intellij.openapi.diagnostic.Logger;
-import com.jetbrains.teamcity.jenkinsbridge.feature.BridgeBuildFeatureConstants;
+import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClient;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsVcsInfo;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsVcsRepository;
 import com.jetbrains.teamcity.jenkinsbridge.persistence.BuildMirror;
 import com.jetbrains.teamcity.jenkinsbridge.vcs.VcsProvider;
+import com.jetbrains.teamcity.jenkinsbridge.vcs.VcsRefType;
 import com.jetbrains.teamcity.jenkinsbridge.vcs.VcsSyncResult;
 import jetbrains.buildServer.serverSide.BuildPromotion;
 import jetbrains.buildServer.serverSide.BuildPromotionEx;
@@ -37,11 +38,14 @@ public class TeamCityVcsPublisher {
     private final ProjectManager myProjectManager;
     private final TeamCityRunningBuildLocator myBuildLocator;
     private final BuildChainChangesCollector myChangesCollector;
+    private final JenkinsClient myJenkinsClient;
 
-    public TeamCityVcsPublisher(ProjectManager projectManager, TeamCityRunningBuildLocator buildLocator, BuildChainChangesCollector changesCollector) {
+    public TeamCityVcsPublisher(ProjectManager projectManager, TeamCityRunningBuildLocator buildLocator,
+                                 BuildChainChangesCollector changesCollector, JenkinsClient jenkinsClient) {
         myProjectManager = projectManager;
         myBuildLocator = buildLocator;
         myChangesCollector = changesCollector;
+        myJenkinsClient = jenkinsClient;
     }
 
     public VcsSyncResult applyVcsToBuild(BuildMirror mirror, JenkinsVcsInfo vcsInfo) {
@@ -57,7 +61,8 @@ public class TeamCityVcsPublisher {
         }
         SProject project = buildType.getProject();
 
-        List<AttachedRepository> attached = ensureVcsRootsAttached(project, buildType, vcsInfo, result);
+        VcsRefType refType = myJenkinsClient.getBranchRefType(mirror.getJenkinsJob());
+        List<AttachedRepository> attached = ensureVcsRootsAttached(project, buildType, vcsInfo, result, refType);
 
         Map<Long, RepositoryVersion> revisions = new LinkedHashMap<>();
         for (AttachedRepository repo : attached) {
@@ -96,7 +101,8 @@ public class TeamCityVcsPublisher {
             SProject project,
             SBuildType buildType,
             JenkinsVcsInfo vcsInfo,
-            VcsSyncResult result
+            VcsSyncResult result,
+            VcsRefType refType
     ) {
         List<AttachedRepository> attached = new ArrayList<>();
         boolean buildTypeChanged = false;
@@ -113,9 +119,12 @@ public class TeamCityVcsPublisher {
                 continue;
             }
             TeamCityBranch branch = TeamCityBranch.fromJenkinsGit(repo.rawBranchName());
+            if (refType == VcsRefType.TAGS) {
+                branch = branch.asTag();
+            }
 
             try {
-                SVcsRoot root = findOrCreateRoot(project, provider, repo, normalized, branch);
+                SVcsRoot root = findOrCreateRoot(project, provider, repo, normalized, branch, refType);
                 if (buildType.getVcsRootInstanceEntryForParent(root) == null) {
                     buildType.addVcsRoot(root);
                     buildType.setCheckoutRules(root, CheckoutRules.DEFAULT);
@@ -140,22 +149,24 @@ public class TeamCityVcsPublisher {
             VcsProvider provider,
             JenkinsVcsRepository repo,
             String normalizedUrl,
-            TeamCityBranch branch
+            TeamCityBranch branch,
+            VcsRefType refType
     ) {
-        Optional<SVcsRoot> existing = findExistingRoot(project, provider, normalizedUrl);
+        Optional<SVcsRoot> existing = findExistingRoot(project, provider, normalizedUrl, refType);
         if (existing.isPresent()) {
             return existing.get();
         }
 
+        String rootName = refType == VcsRefType.TAGS ? normalizedUrl + "/tags" : normalizedUrl;
         try {
             SVcsRoot created = project.createVcsRoot(
                     provider.teamCityVcsName(),
-                    normalizedUrl,
-                    provider.buildRootParameters(repo.remoteUrl(), branch.ref()));
+                    rootName,
+                    provider.buildRootParameters(repo.remoteUrl(), branch.ref(), refType));
             created.persist();
             return created;
         } catch (DuplicateVcsRootNameException duplicate) {
-            Optional<SVcsRoot> found = findExistingRoot(project, provider, normalizedUrl);
+            Optional<SVcsRoot> found = findExistingRoot(project, provider, normalizedUrl, refType);
             if (found.isPresent()) {
                 return found.get();
             }
@@ -164,10 +175,12 @@ public class TeamCityVcsPublisher {
     }
 
     /**
-     * Finds an existing root with the same identity (normalized URL)
+     * Finds an existing root with the same identity (normalized URL and ref type). Tags have separate VCS roots.
      */
     @NotNull
-    private Optional<SVcsRoot> findExistingRoot(SProject project, VcsProvider provider, String normalized) {
+    private Optional<SVcsRoot> findExistingRoot(SProject project, VcsProvider provider, String normalized,
+                                                 VcsRefType refType) {
+        boolean wantsTagsRoot = refType == VcsRefType.TAGS;
         for (SVcsRoot root : project.getVcsRoots()) {
             if (!provider.teamCityVcsName().equals(root.getVcsName())) {
                 continue;
@@ -176,7 +189,10 @@ public class TeamCityVcsPublisher {
             if (urlProperty == null) {
                 continue;
             }
-            if (normalized.equals(normalizeRepositoryUrl(urlProperty))) {
+            if (!normalized.equals(normalizeRepositoryUrl(urlProperty))) {
+                continue;
+            }
+            if (nullToEmpty(root.getName()).endsWith("/tags") == wantsTagsRoot) {
                 return Optional.of(root);
             }
         }

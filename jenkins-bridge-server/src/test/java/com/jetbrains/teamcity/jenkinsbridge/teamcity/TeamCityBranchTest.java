@@ -43,6 +43,21 @@ public class TeamCityBranchTest {
   }
 
   @Test
+  public void asTagRewritesHeadsRefToTagsRef() {
+    TeamCityBranch branch = TeamCityBranch.fromJenkinsGit("refs/remotes/origin/v1.0").asTag();
+    assertEquals("refs/tags/v1.0", branch.ref());
+    assertEquals("v1.0", branch.displayName());
+  }
+
+  @Test
+  public void asTagIsANoOpForAlreadyTaggedOrDefaultBranch() {
+    TeamCityBranch alreadyTag = TeamCityBranch.fromJenkinsGit("refs/tags/v1.2.3");
+    assertEquals("refs/tags/v1.2.3", alreadyTag.asTag().ref());
+
+    assertTrue(TeamCityBranch.defaultBranch().asTag().isDefault());
+  }
+
+  @Test
   public void nullOrEmptyBranchIsDefault() {
     assertTrue(TeamCityBranch.fromJenkinsGit(null).isDefault());
     assertTrue(TeamCityBranch.fromJenkinsGit("").isDefault());

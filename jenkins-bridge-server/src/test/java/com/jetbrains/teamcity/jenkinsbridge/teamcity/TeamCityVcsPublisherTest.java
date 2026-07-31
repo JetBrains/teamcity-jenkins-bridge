@@ -1,8 +1,10 @@
 package com.jetbrains.teamcity.jenkinsbridge.teamcity;
 
 import com.google.gson.JsonParser;
+import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClient;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsVcsInfo;
 import com.jetbrains.teamcity.jenkinsbridge.persistence.BuildMirror;
+import com.jetbrains.teamcity.jenkinsbridge.vcs.VcsRefType;
 import com.jetbrains.teamcity.jenkinsbridge.vcs.VcsSyncResult;
 import jetbrains.buildServer.serverSide.BuildPromotionEx;
 import jetbrains.buildServer.serverSide.ProjectManager;
@@ -44,9 +46,10 @@ public class TeamCityVcsPublisherTest {
   private final TeamCityRunningBuildLocator buildLocator = mock(TeamCityRunningBuildLocator.class);
   private final BuildChainChangesCollector changesCollector = mock(BuildChainChangesCollector.class);
   private final BuildPromotionEx promotion = mock(BuildPromotionEx.class);
+  private final JenkinsClient jenkinsClient = mock(JenkinsClient.class);
 
   private final TeamCityVcsPublisher publisher =
-      new TeamCityVcsPublisher(projectManager, buildLocator, changesCollector);
+      new TeamCityVcsPublisher(projectManager, buildLocator, changesCollector, jenkinsClient);
 
   @Before
   public void setUp() {
@@ -54,6 +57,7 @@ public class TeamCityVcsPublisherTest {
     when(buildType.getProject()).thenReturn(project);
     when(project.getVcsRoots()).thenReturn(Collections.emptyList());
     when(buildLocator.findPromotion(PROMOTION_ID)).thenReturn(promotion);
+    when(jenkinsClient.getBranchRefType(any())).thenReturn(VcsRefType.HEADS);
   }
 
   @Test
@@ -148,6 +152,45 @@ public class TeamCityVcsPublisherTest {
     VcsSyncResult result = publisher.applyVcsToBuild(mirror(), vcsInfo(json));
 
     assertEquals(2, result.getNumberOfAttachedRepositories());
+  }
+
+  @Test
+  public void applyVcsToBuildCreatesTagsSuffixedRootWithTagsBranchSpecForTagBuild() {
+    when(jenkinsClient.getBranchRefType(any())).thenReturn(VcsRefType.TAGS);
+    SVcsRoot created = gitRoot("https://github.com/org/repo.git");
+    ArgumentCaptor<String> nameCaptor = ArgumentCaptor.captor();
+    ArgumentCaptor<Map<String, String>> paramsCaptor = ArgumentCaptor.captor();
+    when(project.createVcsRoot(eq("jetbrains.git"), nameCaptor.capture(), paramsCaptor.capture()))
+        .thenReturn(created);
+    VcsRootInstanceEntry entry = entry(11L);
+    when(buildType.getVcsRootInstanceEntryForParent(created)).thenReturn(null, entry);
+
+    VcsSyncResult result = publisher.applyVcsToBuild(
+        mirror(), gitInfo("https://github.com/org/repo.git", "abc123", "refs/remotes/origin/v1.0"));
+
+    assertTrue(nameCaptor.getValue().endsWith("/tags"));
+    assertEquals("+:refs/tags/*", paramsCaptor.getValue().get("teamcity:branchSpec"));
+    assertEquals("refs/tags/v1.0", paramsCaptor.getValue().get("branch"));
+    assertFalse(result.hasErrors());
+  }
+
+  @Test
+  public void applyVcsToBuildDoesNotReuseHeadsRootForTagBuildWithSameUrl() {
+    when(jenkinsClient.getBranchRefType(any())).thenReturn(VcsRefType.TAGS);
+    SVcsRoot headsRoot = gitRoot("https://github.com/org/repo.git");
+    when(headsRoot.getName()).thenReturn("https://github.com/org/repo.git");
+    when(project.getVcsRoots()).thenReturn(Collections.singletonList(headsRoot));
+    SVcsRoot tagsRoot = gitRoot("https://github.com/org/repo.git");
+    when(tagsRoot.getName()).thenReturn("https://github.com/org/repo.git/tags");
+    when(project.createVcsRoot(eq("jetbrains.git"), anyString(), anyMap())).thenReturn(tagsRoot);
+    VcsRootInstanceEntry entry = entry(14L);
+    when(buildType.getVcsRootInstanceEntryForParent(tagsRoot)).thenReturn(null, entry);
+
+    VcsSyncResult result = publisher.applyVcsToBuild(
+        mirror(), gitInfo("https://github.com/org/repo.git", "abc123", "refs/remotes/origin/v1.0"));
+
+    verify(project).createVcsRoot(eq("jetbrains.git"), anyString(), anyMap());
+    assertEquals(1, result.getNumberOfAttachedRepositories());
   }
 
   @Test

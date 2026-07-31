@@ -1,9 +1,15 @@
 package com.jetbrains.teamcity.jenkinsbridge.util;
 
 import com.google.gson.JsonObject;
+import com.jetbrains.teamcity.jenkinsbridge.feature.BridgeBuildFeatureConstants;
 import jetbrains.buildServer.serverSide.ProjectManager;
+import jetbrains.buildServer.serverSide.SBuildFeatureDescriptor;
 import jetbrains.buildServer.serverSide.SBuildType;
 import org.junit.Test;
+
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Map;
 
 import static org.junit.Assert.*;
 import static org.mockito.Mockito.mock;
@@ -157,6 +163,38 @@ public class UtilitiesTest {
     assertFalse(Utilities.looksLikePullOrMergeRequestBranch("main"));
     assertFalse(Utilities.looksLikePullOrMergeRequestBranch("PR-123a"));
     assertFalse(Utilities.looksLikePullOrMergeRequestBranch("PR-123-headd"));
+  }
+
+  @Test
+  public void isBuildConfigMultibranchReturnsFalseWhenNoJenkinsBridgeFeatureIsPresent() {
+    SBuildType buildType = mock(SBuildType.class);
+    Collection<SBuildFeatureDescriptor> noFeatures = Collections.emptyList();
+    when(buildType.getBuildFeaturesOfType(BridgeBuildFeatureConstants.TYPE)).thenReturn(noFeatures);
+
+    assertFalse(Utilities.isBuildConfigMultibranch(buildType));
+  }
+
+  @Test
+  public void isBuildConfigMultibranchReturnsFalseWhenFeatureDoesNotMarkMultibranch() {
+    SBuildType buildType = mock(SBuildType.class);
+    SBuildFeatureDescriptor feature = mock(SBuildFeatureDescriptor.class);
+    when(feature.getParameters()).thenReturn(Collections.emptyMap());
+    when(buildType.getBuildFeaturesOfType(BridgeBuildFeatureConstants.TYPE))
+        .thenReturn(Collections.singletonList(feature));
+
+    assertFalse(Utilities.isBuildConfigMultibranch(buildType));
+  }
+
+  @Test
+  public void isBuildConfigMultibranchReturnsTrueWhenFeatureMarksMultibranch() {
+    SBuildType buildType = mock(SBuildType.class);
+    SBuildFeatureDescriptor feature = mock(SBuildFeatureDescriptor.class);
+    when(feature.getParameters()).thenReturn(
+        Map.of(BridgeBuildFeatureConstants.PARAM_IN_MULTIBRANCH, "true"));
+    when(buildType.getBuildFeaturesOfType(BridgeBuildFeatureConstants.TYPE))
+        .thenReturn(Collections.singletonList(feature));
+
+    assertTrue(Utilities.isBuildConfigMultibranch(buildType));
   }
 
   @Test

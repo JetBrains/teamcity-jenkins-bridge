@@ -11,7 +11,6 @@ import org.jetbrains.annotations.Nullable;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.Objects;
 
 import static com.jetbrains.teamcity.jenkinsbridge.util.Utilities.findBuildType;
 import static com.jetbrains.teamcity.jenkinsbridge.util.Utilities.lastPathSegment;
@@ -83,12 +82,12 @@ public class TeamCityBuildQueuer {
                                           @Nullable JenkinsVcsInfo vcsInfo) {
     String branchName = null;
     Map<String, String> pullRequestParameters = Collections.emptyMap();
-    SBuildFeatureDescriptor feature = buildType.getBuildFeaturesOfType(BridgeBuildFeatureConstants.TYPE).stream().findFirst().orElse(null);
-    if (feature != null && Objects.equals("true", feature.getParameters().get(BridgeBuildFeatureConstants.PARAM_IN_MULTIBRANCH))) {
+    if (Utilities.isBuildConfigMultibranch(buildType)) {
       // Check the name of the nested branch job for the branch name
       String job = properties.get("jenkins.job");
       if (job == null || job.trim().isEmpty()) {
-        job = feature.getParameters().get(BridgeBuildFeatureConstants.PARAM_JENKINS_JOB);
+        SBuildFeatureDescriptor feature = buildType.getBuildFeaturesOfType(BridgeBuildFeatureConstants.TYPE).stream().findFirst().orElse(null);
+        job = feature != null ? feature.getParameters().get(BridgeBuildFeatureConstants.PARAM_JENKINS_JOB) : null;
       }
       if (job != null && !job.trim().isEmpty()) {
         job = job.trim();
