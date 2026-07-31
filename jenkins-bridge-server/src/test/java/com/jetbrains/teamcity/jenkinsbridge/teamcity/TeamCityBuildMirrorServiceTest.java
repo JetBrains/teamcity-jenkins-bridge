@@ -497,7 +497,7 @@ public class TeamCityBuildMirrorServiceTest {
     final VcsSyncResult result = new VcsSyncResult();
 
     CapturingVcsPublisher() {
-      super(null, null, null);
+      super(null, null, null, null);
     }
 
     @Override

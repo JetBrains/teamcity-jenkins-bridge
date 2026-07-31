@@ -11,6 +11,7 @@ import com.jetbrains.teamcity.jenkinsbridge.http.BridgeHttpResponse;
 import com.jetbrains.teamcity.jenkinsbridge.model.*;
 import com.jetbrains.teamcity.jenkinsbridge.settings.JenkinsBridgeSettings;
 import com.jetbrains.teamcity.jenkinsbridge.settings.JenkinsBridgeSettingsProvider;
+import com.jetbrains.teamcity.jenkinsbridge.vcs.VcsRefType;
 import com.jetbrains.teamcity.jenkinsbridge.vcs.constants.GitConstants;
 import com.jetbrains.teamcity.jenkinsbridge.xml.JaxbUnmarshaller;
 import org.jetbrains.annotations.NotNull;
@@ -868,6 +869,26 @@ public class JenkinsClient {
     } catch (BridgeHttpException e) {
       LOG.warn("Failed to read the config of branch job " + jobName, e);
       return Optional.empty();
+    }
+  }
+
+  /**
+   * Reads whether a multibranch pipeline branch job's config.xml is for a tag.
+   * Defaults to {@link VcsRefType#HEADS} when the config cannot be read.
+   */
+  @NotNull
+  public VcsRefType getBranchRefType(String jobName) {
+    JenkinsBridgeSettings settings = settingsProvider.load();
+    String url = settings.getJenkinsUrl()
+        + jenkinsJobPath(jobName)
+        + "/config.xml";
+
+    try {
+      String response = httpClient.get(url, settings.getJenkinsUser(), settings.getJenkinsToken(), "application/xml");
+      return JenkinsBranchHead.refType(response, xmlUnmarshaller);
+    } catch (BridgeHttpException e) {
+      LOG.warn("Failed to read the config of branch job " + jobName, e);
+      return VcsRefType.HEADS;
     }
   }
 

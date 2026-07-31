@@ -21,6 +21,18 @@ public record TeamCityBranch(String ref, String displayName) {
   }
 
   /**
+   * Rewrites {@code refs/heads/...} into {@code refs/tags/...}.
+   */
+  public TeamCityBranch asTag() {
+    final String REFS_HEADS = "refs/heads/";
+    final String REFS_TAGS = "refs/tags/";
+    if (isDefault() || !ref.startsWith(REFS_HEADS)) {
+      return this;
+    }
+    return new TeamCityBranch(REFS_TAGS + ref.substring(REFS_HEADS.length()), displayName);
+  }
+
+  /**
    * Translates a branch name Jenkins gives for a git branch into
    * the format expected by TeamCity.
    */
