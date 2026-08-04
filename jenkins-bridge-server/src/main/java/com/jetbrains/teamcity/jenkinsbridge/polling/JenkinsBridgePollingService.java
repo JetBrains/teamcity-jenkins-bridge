@@ -506,7 +506,7 @@ public class JenkinsBridgePollingService {
           mirrorStore.markBuildError(mirror, e);
         }
         LOG.warn("Failed to sync Jenkins build " + job + "#" + buildNumber, e);
-      }
+g      }
     }
   }
 
