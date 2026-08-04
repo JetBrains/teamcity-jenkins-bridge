@@ -23,21 +23,22 @@ public class JenkinsBridgeSettingsProvider {
     );
 
     ParametersSource buildTypeSettings = ParametersSource.from(findBuildType(teamCityBuildTypeId, projectManager));
-    return new JenkinsBridgeSettings(
-        readBooleanSetting(buildTypeSettings, rootProjectSettings, "jenkins.bridge.enabled", "JENKINS_BRIDGE_ENABLED", true),
-        readStringSetting(buildTypeSettings, rootProjectSettings, "jenkins.bridge.jenkinsUrl", "JENKINS_URL", "http://localhost:8080"),
-        readStringSetting(buildTypeSettings, rootProjectSettings, "jenkins.bridge.jenkinsUser", "JENKINS_USER", "Ahmed"),
-        readStringSetting(buildTypeSettings, rootProjectSettings, "jenkins.bridge.jenkinsToken", "JENKINS_TOKEN", ""),
-        readStringSetting(buildTypeSettings, rootProjectSettings, "jenkins.bridge.jenkinsJob", "JENKINS_JOB", "tc-test"),
-        readStringSetting(buildTypeSettings, rootProjectSettings, "jenkins.bridge.teamCityUrl", "TEAMCITY_URL", "http://localhost:8111/bs/httpAuth"),
-        readStringSetting(buildTypeSettings, rootProjectSettings, "jenkins.bridge.teamCityUser", "TEAMCITY_USER", "Ahmed"),
-        readStringSetting(buildTypeSettings, rootProjectSettings, "jenkins.bridge.teamCityPassword", "TEAMCITY_PASSWORD", "test"),
-        teamCityBuildTypeId,
-        readIntSetting(buildTypeSettings, rootProjectSettings, "jenkins.bridge.pollSeconds", "BRIDGE_POLL_SECONDS", 10),
-        readIntSetting(buildTypeSettings, rootProjectSettings, "jenkins.bridge.recentBuildLimit", "RECENT_BUILDS_LIMIT", 1),
-        readStringSetting(buildTypeSettings, rootProjectSettings, "jenkins.bridge.timeZone", "TIMEZONE", "Europe/Berlin"),
-        readStringSetting(buildTypeSettings, rootProjectSettings, "jenkins.bridge.stateFile", "BRIDGE_STATE_FILE", "")
-    );
+    return JenkinsBridgeSettings.builder()
+        .enabled(readBooleanSetting(buildTypeSettings, rootProjectSettings, "jenkins.bridge.enabled", "JENKINS_BRIDGE_ENABLED", true))
+        .jenkinsUrl(readStringSetting(buildTypeSettings, rootProjectSettings, "jenkins.bridge.jenkinsUrl", "JENKINS_URL", "http://localhost:8080"))
+        .jenkinsUser(readStringSetting(buildTypeSettings, rootProjectSettings, "jenkins.bridge.jenkinsUser", "JENKINS_USER", "Ahmed"))
+        .jenkinsToken(readStringSetting(buildTypeSettings, rootProjectSettings, "jenkins.bridge.jenkinsToken", "JENKINS_TOKEN", ""))
+        .jenkinsJob(readStringSetting(buildTypeSettings, rootProjectSettings, "jenkins.bridge.jenkinsJob", "JENKINS_JOB", "tc-test"))
+        .teamCityUrl(readStringSetting(buildTypeSettings, rootProjectSettings, "jenkins.bridge.teamCityUrl", "TEAMCITY_URL", "http://localhost:8111/bs/httpAuth"))
+        .teamCityUser(readStringSetting(buildTypeSettings, rootProjectSettings, "jenkins.bridge.teamCityUser", "TEAMCITY_USER", "Ahmed"))
+        .teamCityPassword(readStringSetting(buildTypeSettings, rootProjectSettings, "jenkins.bridge.teamCityPassword", "TEAMCITY_PASSWORD", "test"))
+        .teamCityBuildTypeId(teamCityBuildTypeId)
+        .pollSeconds(readIntSetting(buildTypeSettings, rootProjectSettings, "jenkins.bridge.pollSeconds", "BRIDGE_POLL_SECONDS", 10))
+        .recentBuildLimit(readIntSetting(buildTypeSettings, rootProjectSettings, "jenkins.bridge.recentBuildLimit", "RECENT_BUILDS_LIMIT", 1))
+        .pendingTriggerTimeoutMinutes(readIntSetting(buildTypeSettings, rootProjectSettings,
+            "jenkins.bridge.pendingTriggerTimeoutMinutes", "PENDING_TRIGGER_TIMEOUT_MINUTES", 1440))
+        .stateFile(readStringSetting(buildTypeSettings, rootProjectSettings, "jenkins.bridge.stateFile", "BRIDGE_STATE_FILE", ""))
+        .build();
   }
 
   private static String readRootProjectSetting(

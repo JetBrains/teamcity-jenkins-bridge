@@ -2,13 +2,15 @@ package com.jetbrains.teamcity.jenkinsbridge.persistence;
 
 /**
  * A TeamCity-first run that has triggered Jenkins, but has not yet been assigned a Jenkins build
- * number. The Jenkins queue item URL is the v1 correlation handle.
+ * number. The Jenkins queue id is the authoritative correlation handle.
  */
 public class PendingTrigger {
   private long teamCityPromotionId;
   private String jenkinsJob;
   private String teamCityBuildTypeExternalId;
   private String queueItemUrl;
+  private long jenkinsQueueId = -1L;
+  private String jenkinsController;
   private String createdAt;
 
   public PendingTrigger() {
@@ -21,10 +23,24 @@ public class PendingTrigger {
       String queueItemUrl,
       String createdAt
   ) {
+    this(teamCityPromotionId, jenkinsJob, teamCityBuildTypeExternalId, queueItemUrl, -1L, "", createdAt);
+  }
+
+  public PendingTrigger(
+      long teamCityPromotionId,
+      String jenkinsJob,
+      String teamCityBuildTypeExternalId,
+      String queueItemUrl,
+      long jenkinsQueueId,
+      String jenkinsController,
+      String createdAt
+  ) {
     this.teamCityPromotionId = teamCityPromotionId;
     this.jenkinsJob = jenkinsJob;
     this.teamCityBuildTypeExternalId = teamCityBuildTypeExternalId;
     this.queueItemUrl = queueItemUrl;
+    this.jenkinsQueueId = jenkinsQueueId;
+    this.jenkinsController = jenkinsController;
     this.createdAt = createdAt;
   }
 
@@ -42,6 +58,14 @@ public class PendingTrigger {
 
   public String getQueueItemUrl() {
     return queueItemUrl;
+  }
+
+  public long getJenkinsQueueId() {
+    return jenkinsQueueId;
+  }
+
+  public String getJenkinsController() {
+    return jenkinsController;
   }
 
   public String getCreatedAt() {

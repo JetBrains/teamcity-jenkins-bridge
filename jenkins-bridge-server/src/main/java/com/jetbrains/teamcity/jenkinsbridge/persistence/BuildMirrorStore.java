@@ -21,8 +21,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.time.ZonedDateTime;
-import java.time.format.DateTimeFormatter;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -105,7 +104,31 @@ public class BuildMirrorStore {
 
   public synchronized void savePendingTrigger(PendingTrigger pendingTrigger) throws IOException {
     ensureStateIsLoaded();
+    PendingTrigger existing = findPendingTriggerInternal(pendingTrigger.getJenkinsController(), pendingTrigger.getJenkinsQueueId());
+    if (pendingTrigger.getJenkinsQueueId() >= 0 && existing != null
+        && existing.getTeamCityPromotionId() != pendingTrigger.getTeamCityPromotionId()) {
+      throw new IllegalStateException("Jenkins queue item " + pendingTrigger.getJenkinsQueueId()
+          + " is already owned by TeamCity promotion " + existing.getTeamCityPromotionId());
+    }
     state.putPendingTrigger(pendingTriggerKey(pendingTrigger.getTeamCityPromotionId()), pendingTrigger);
+  }
+
+  public synchronized PendingTrigger findPendingTrigger(String controller, long queueId) throws IOException {
+    ensureStateIsLoaded();
+    return findPendingTriggerInternal(controller, queueId);
+  }
+
+  private PendingTrigger findPendingTriggerInternal(String controller, long queueId) {
+    if (queueId < 0) {
+      return null;
+    }
+    for (PendingTrigger pending : state.getPendingTriggers().values()) {
+      if (queueId == pending.getJenkinsQueueId()
+          && nullToEmpty(controller).equals(nullToEmpty(pending.getJenkinsController()))) {
+        return pending;
+      }
+    }
+    return null;
   }
 
   public synchronized List<PendingTrigger> getPendingTriggers() throws IOException {
@@ -392,7 +415,7 @@ public class BuildMirrorStore {
   }
 
   private String now() {
-    return ZonedDateTime.now(settings().getZoneId()).format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);
+    return Instant.now().toString();
   }
 
   private JenkinsBridgeSettings settings() {

@@ -754,7 +754,7 @@ public class TeamCityBuildMirrorService {
 
   private String formatTeamCityFinishDate(Date finishTime) {
     SimpleDateFormat formatter = new SimpleDateFormat("yyyyMMdd'T'HHmmssZ");
-    formatter.setTimeZone(TimeZone.getTimeZone(settingsProvider.load().getZoneId()));
+    formatter.setTimeZone(TimeZone.getTimeZone("UTC"));
     return formatter.format(finishTime);
   }
 

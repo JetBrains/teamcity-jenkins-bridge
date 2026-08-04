@@ -58,11 +58,11 @@ public class MirroredJobTest {
     Constructor<JenkinsBridgeSettings> constructor = JenkinsBridgeSettings.class.getDeclaredConstructor(
         boolean.class, String.class, String.class, String.class, String.class,
         String.class, String.class, String.class, String.class,
-        int.class, int.class, String.class, String.class);
+        int.class, int.class, String.class);
     constructor.setAccessible(true);
     return constructor.newInstance(
         true, "http://jenkins", "user", "token", job,
         "http://teamcity", "tc-user", "tc-pass", buildTypeId,
-        10, 1, "Europe/Berlin", "");
+        10, 1, "");
   }
 }

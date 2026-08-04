@@ -242,7 +242,7 @@ public class JenkinsClientTest {
 
     List<JenkinsBuildInfo> builds = client.getBuilds("folder/job");
 
-    assertEquals("http://jenkins/job/folder/job/job/api/json?tree=builds%5Bnumber%2Ctimestamp%2Curl%5D", httpClient.url);
+    assertEquals("http://jenkins/job/folder/job/job/api/json?tree=builds%5Bnumber%2Ctimestamp%2Curl%2CqueueId%5D", httpClient.url);
     assertEquals(2, builds.size());
     assertEquals(50, builds.get(0).getNumber());
     assertEquals(1710000000050L, builds.get(0).getTimestamp());
@@ -269,7 +269,7 @@ public class JenkinsClientTest {
 
     List<JenkinsBuildInfo> builds = client.getAllBuilds("job");
 
-    assertEquals("http://jenkins/job/job/api/json?tree=allBuilds%5Bnumber%2Ctimestamp%2Curl%5D", httpClient.url);
+    assertEquals("http://jenkins/job/job/api/json?tree=allBuilds%5Bnumber%2Ctimestamp%2Curl%2CqueueId%5D", httpClient.url);
     assertEquals(1, builds.size());
     assertEquals(2, builds.get(0).getNumber());
     assertEquals(1710000000002L, builds.get(0).getTimestamp());
@@ -846,7 +846,6 @@ public class JenkinsClientTest {
             String.class,
             int.class,
             int.class,
-            String.class,
             String.class
         );
         constructor.setAccessible(true);
@@ -862,7 +861,6 @@ public class JenkinsClientTest {
             "buildType",
             10,
             1,
-            "Europe/Berlin",
             ""
         );
       } catch (Exception e) {

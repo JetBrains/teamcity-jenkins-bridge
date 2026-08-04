@@ -5,6 +5,8 @@ import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClient;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsJobParameters;
 import com.jetbrains.teamcity.jenkinsbridge.persistence.BuildMirrorStore;
 import com.jetbrains.teamcity.jenkinsbridge.persistence.PendingTrigger;
+import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsTriggerResponse;
+import com.jetbrains.teamcity.jenkinsbridge.polling.JenkinsJobCoordinator;
 import com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityBuildParameters;
 import jetbrains.buildServer.serverSide.BuildPromotion;
 import jetbrains.buildServer.serverSide.BuildQueue;
@@ -16,8 +18,7 @@ import jetbrains.buildServer.serverSide.SQueuedBuild;
 import jetbrains.buildServer.util.EventDispatcher;
 
 import java.io.IOException;
-import java.time.ZonedDateTime;
-import java.time.format.DateTimeFormatter;
+import java.time.Instant;
 import java.util.Date;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -35,6 +36,7 @@ public class JenkinsTriggerOnRunListener {
   private final JenkinsClient jenkinsClient;
   private final BuildMirrorStore mirrorStore;
   private final BuildQueue buildQueue;
+  private final JenkinsJobCoordinator jobCoordinator = new JenkinsJobCoordinator();
   private final BuildServerListener listener = new BuildServerAdapter() {
     @Override
     public void buildTypeAddedToQueue(SBuildType buildType) {
@@ -105,25 +107,47 @@ public class JenkinsTriggerOnRunListener {
       return;
     }
 
-    JenkinsJobParameters parameterDefinitions = jenkinsClient.getJobParameters(job);
-    Map<String, String> parameters = jenkinsParameters(parameterDefinitions, promotion);
-    String queueItemUrl = jenkinsClient.triggerBuild(job, parameters);
-    if (queueItemUrl == null || queueItemUrl.trim().isEmpty()) {
-      throw new IllegalStateException("Jenkins did not return a queue item URL");
-    }
+    synchronized (jobCoordinator.lockFor(jenkinsClient.getControllerIdentity(), job)) {
+      // The callback can be delivered more than once. Re-check after acquiring the same lock used
+      // by discovery so a duplicate callback cannot submit a second Jenkins request.
+      if (hasPendingTrigger(promotion.getId())) {
+        return;
+      }
+      String controller = jenkinsClient.getControllerIdentity();
+      // Persist an unresolved intent before POST. If TeamCity dies after Jenkins accepts the
+      // request but before the queue id can be saved, startup will find this record and cancel the
+      // original TeamCity promotion; Jenkins discovery will then import the accepted run normally.
+      PendingTrigger provisional = new PendingTrigger(
+          promotion.getId(), job, buildType.getExternalId(), "", -1L, controller, now());
+      mirrorStore.savePendingTrigger(provisional);
 
-    PendingTrigger pendingTrigger = new PendingTrigger(
-        promotion.getId(),
-        job,
-        buildType.getExternalId(),
-        queueItemUrl,
-        now());
-    // If the plugin crashes after Jenkins accepts the POST but before this write, the Jenkins build
-    // can only be recovered by the existing pull flow and the user promotion remains queued. A future
-    // correlation parameter can close that gap without changing the mirror binding model.
-    mirrorStore.savePendingTrigger(pendingTrigger);
-    LOG.info("Jenkins Bridge triggered " + job + " from TeamCity promotion " + promotion.getId()
-        + " via Jenkins queue item " + queueItemUrl);
+      JenkinsTriggerResponse trigger;
+      try {
+        JenkinsJobParameters parameterDefinitions = jenkinsClient.getJobParameters(job);
+        Map<String, String> parameters = jenkinsParameters(parameterDefinitions, promotion);
+        trigger = jenkinsClient.triggerBuildWithQueueId(job, parameters);
+      } catch (Exception e) {
+        mirrorStore.removePendingTrigger(promotion.getId());
+        throw e;
+      }
+      if (trigger.getQueueId() < 0 || trigger.getQueueItemUrl().trim().isEmpty()) {
+        mirrorStore.removePendingTrigger(promotion.getId());
+        removeFromQueueQuietly(queued, "Jenkins Bridge could not correlate the Jenkins trigger request");
+        throw new IllegalStateException("Jenkins did not return a valid queue item Location");
+      }
+
+      PendingTrigger pendingTrigger = new PendingTrigger(
+          promotion.getId(),
+          job,
+          buildType.getExternalId(),
+          trigger.getQueueItemUrl(),
+          trigger.getQueueId(),
+          controller,
+          now());
+      mirrorStore.savePendingTrigger(pendingTrigger);
+      LOG.info("Jenkins Bridge triggered " + job + " from TeamCity promotion " + promotion.getId()
+          + " via Jenkins queue item " + trigger.getQueueItemUrl());
+    }
   }
 
   private SQueuedBuild latestQueuedBuild(SBuildType buildType) {
@@ -182,7 +206,8 @@ public class JenkinsTriggerOnRunListener {
 
   private Map<String, String> jenkinsParameters(JenkinsJobParameters parameterDefinitions, BuildPromotion promotion) {
     Map<String, String> result = new LinkedHashMap<String, String>();
-    result.putAll(promotion.getParameters());
+    result.putAll(promotion.getDefaultParameters());
+    result.putAll(promotion.getCustomParameters());
     result.remove(BridgeBuildFeatureConstants.JENKINS_BUILD_KEY_PARAM);
     result.remove(TeamCityBuildParameters.AGENTLESS_BUILD_PROPERTY);
     return JenkinsParameterPayloadBuilder.build(parameterDefinitions, result);
@@ -199,7 +224,7 @@ public class JenkinsTriggerOnRunListener {
   }
 
   private static String now() {
-    return DateTimeFormatter.ISO_OFFSET_DATE_TIME.format(ZonedDateTime.now());
+    return Instant.now().toString();
   }
 
   private static String message(Exception e) {

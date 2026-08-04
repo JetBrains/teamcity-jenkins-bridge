@@ -70,6 +70,9 @@
         class="com.jetbrains.teamcity.jenkinsbridge.feature.JenkinsTriggerOnRunListener"
         destroy-method="dispose"/>
 
+  <bean id="jenkinsQueueAgentlessPreprocessor"
+        class="com.jetbrains.teamcity.jenkinsbridge.feature.JenkinsQueueAgentlessPreprocessor"/>
+
   <bean id="jenkinsJobImporter"
         class="com.jetbrains.teamcity.jenkinsbridge.feature.JenkinsJobImporter"/>
 

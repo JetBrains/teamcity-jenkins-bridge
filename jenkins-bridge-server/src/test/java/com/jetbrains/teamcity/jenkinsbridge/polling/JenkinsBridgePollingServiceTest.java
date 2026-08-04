@@ -14,6 +14,7 @@ import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsTestReport;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsVcsInfo;
 import com.jetbrains.teamcity.jenkinsbridge.persistence.BuildMirror;
 import com.jetbrains.teamcity.jenkinsbridge.persistence.BuildMirrorStore;
+import com.jetbrains.teamcity.jenkinsbridge.persistence.PendingTrigger;
 import com.jetbrains.teamcity.jenkinsbridge.persistence.SyncState;
 import com.jetbrains.teamcity.jenkinsbridge.settings.JenkinsBridgeSettings;
 import com.jetbrains.teamcity.jenkinsbridge.settings.JenkinsBridgeSettingsProvider;
@@ -29,6 +30,7 @@ import java.io.File;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.util.Map;
+import java.time.Instant;
 
 import static com.jetbrains.teamcity.jenkinsbridge.persistence.BuildMirrorStoreTest.buildMockProjectManager;
 import static org.junit.Assert.assertEquals;
@@ -37,6 +39,18 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 public class JenkinsBridgePollingServiceTest {
+  @Test
+  public void pendingTriggerExpiryUsesConfiguredLifetime() {
+    PendingTrigger trigger = new PendingTrigger(
+        7L, "job", "buildType", "http://jenkins/queue/item/1/", 1L,
+        "http://jenkins", "2026-08-04T10:00:00Z");
+
+    assertTrue(JenkinsBridgePollingService.isPendingTriggerExpired(
+        trigger, 1440, Instant.parse("2026-08-05T10:00:00Z")));
+    assertTrue(!JenkinsBridgePollingService.isPendingTriggerExpired(
+        trigger, 1440, Instant.parse("2026-08-05T09:59:59Z")));
+  }
+
   @Test
   public void pollPipelineProcessesBuildNumberResetByTimestampedIdentity() throws Exception {
     JenkinsBridgeSettingsProvider provider = providerWithTempStateFile();
@@ -220,12 +234,12 @@ public class JenkinsBridgePollingServiceTest {
           Constructor<JenkinsBridgeSettings> constructor = JenkinsBridgeSettings.class.getDeclaredConstructor(
               boolean.class, String.class, String.class, String.class, String.class,
               String.class, String.class, String.class, String.class,
-              int.class, int.class, String.class, String.class);
+              int.class, int.class, String.class);
           constructor.setAccessible(true);
           return constructor.newInstance(
               true, "http://jenkins", "user", "token", "job",
               "http://teamcity", "tc-user", "tc-pass", "buildType",
-              10, 1, "Europe/Berlin", path);
+              10, 1, path);
         } catch (Exception e) {
           throw new AssertionError(e);
         }

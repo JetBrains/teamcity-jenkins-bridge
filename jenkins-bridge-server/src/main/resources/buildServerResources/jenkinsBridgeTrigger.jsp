@@ -18,7 +18,13 @@
     </tr>
   </table>
 
+  <h3 class="noBorder" style="margin-top: 1em;">Jenkins build parameters</h3>
+  <p class="grayNote">Sent to the Jenkins job when you trigger a build.</p>
   <div id="jbtParams" style="margin: 0.5em 0;"></div>
+
+  <h3 class="noBorder" style="margin-top: 1em;">TeamCity configuration parameters</h3>
+  <p class="grayNote">Applied to the TeamCity build; not sent to Jenkins.</p>
+  <div id="jbtConfigParams" style="margin: 0.5em 0;"></div>
 
   <div style="margin: 0.5em 0;">
     <input type="button" class="btn" id="jbtReloadBtn" value="Reload parameters"/>
@@ -37,6 +43,7 @@
 
     var jobEl = document.getElementById('jbtJob');
     var paramsDiv = document.getElementById('jbtParams');
+    var configParamsDiv = document.getElementById('jbtConfigParams');
     var reloadBtn = document.getElementById('jbtReloadBtn');
     var triggerBtn = document.getElementById('jbtTriggerBtn');
     var status = document.getElementById('jbtStatus');
@@ -88,6 +95,20 @@
       triggerBtn.disabled = false;
     }
 
+    function renderConfigParams(configParams) {
+      var list = configParams || [];
+      if (!list.length) {
+        configParamsDiv.innerHTML = '<p class="grayNote">No TeamCity configuration parameters.</p>';
+        return;
+      }
+      var html = '<table class="runnerFormTable">';
+      for (var i = 0; i < list.length; i++) {
+        html += '<tr><th>' + esc(list[i].name) + '</th><td><code>' + esc(list[i].value) + '</code></td></tr>';
+      }
+      html += '</table>';
+      configParamsDiv.innerHTML = html;
+    }
+
     function collectValues() {
       var params = '';
       for (var i = 0; i < currentParams.length; i++) {
@@ -106,6 +127,7 @@
 
     function loadParams() {
       paramsDiv.innerHTML = '';
+      configParamsDiv.innerHTML = '';
       resultDiv.innerHTML = '';
       triggerBtn.disabled = true;
       setStatus('Loading parameters…');
@@ -116,7 +138,8 @@
           if (!data) { setStatus('HTTP ' + transport.status + ' @ ' + url); return; }
           if (data.error) { setStatus('Error: ' + data.error); return; }
           setStatus('');
-          renderParams(data);
+          renderParams(data.jenkinsParameters);
+          renderConfigParams(data.configParameters);
         }
       });
     }
