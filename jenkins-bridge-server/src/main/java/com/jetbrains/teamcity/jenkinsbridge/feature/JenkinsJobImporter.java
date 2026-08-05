@@ -1,6 +1,8 @@
 package com.jetbrains.teamcity.jenkinsbridge.feature;
 
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClient;
+import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsJobParameters;
+import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsParameterDefinition;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsJob;
 import jetbrains.buildServer.serverSide.BuildTypeOptions;
 import jetbrains.buildServer.serverSide.DuplicateBuildTypeNameException;
@@ -36,6 +38,9 @@ public class JenkinsJobImporter {
   // Configuration parameter that marks a build as agentless (matches TeamCityBuildQueuer). Imported
   // configs carry it by default, so a manual run is also agentless rather than waiting for an agent.
   private static final String AGENTLESS_PARAM = "teamcity.build.agentLess";
+  // Hidden display so this technical parameter does not clutter the Run Custom Build dialog; hiding
+  // affects only the dialog, not the value (isAgentLessBuild() still reads it).
+  private static final String HIDDEN_SPEC = "text display='hidden'";
 
   private final ProjectManager projectManager;
   private final ParameterFactory parameterFactory;
@@ -54,7 +59,8 @@ public class JenkinsJobImporter {
       throw new IllegalArgumentException("Target project not found: " + targetProjectExternalId);
     }
 
-    Set<String> alreadyMirrored = collectMirroredJobs(project);
+    Set<String> alreadyMirroredJobs = collectMirroredJobs(project);
+    Map<String, SBuildType> alreadyMirroredBuildTypes = collectMirroredBuildTypes(project);
     ImportResult result = new ImportResult();
 
     for (String rawFullName : jenkinsJobFullNames) {
@@ -62,11 +68,28 @@ public class JenkinsJobImporter {
       if (fullName.isEmpty()) {
         continue;
       }
+      SBuildType existingBuildType = alreadyMirroredBuildTypes.get(fullName);
+      if (existingBuildType != null) {
+        try {
+          int importedParameters = importJenkinsParameters(existingBuildType, fullName);
+          ensureAgentlessHidden(existingBuildType);
+          existingBuildType.persist();
+          if (importedParameters > 0) {
+            result.addSkipped(fullName, "already imported; refreshed " + importedParameters + " Jenkins parameter(s)");
+          } else {
+            result.addSkipped(fullName, "already imported");
+          }
+        } catch (Exception e) {
+          result.addFailed(fullName, e.getClass().getSimpleName()
+              + (e.getMessage() == null ? "" : ": " + e.getMessage()));
+        }
+        continue;
+      }
 
       try {
         // TODO: Check if this API call is needed, or if we can fetch the class from elsewhere
         boolean isMultiBranch = JenkinsJob.isMultibranchClass(jenkinsClient.getJobClass(fullName));
-        importJob(project, fullName, isMultiBranch, alreadyMirrored, result);
+        importJob(project, fullName, isMultiBranch, alreadyMirroredJobs, result);
       } catch (Exception e) {
         result.addFailed(fullName, describeException(e));
       }
@@ -76,7 +99,7 @@ public class JenkinsJobImporter {
   }
 
   private void importJob(SProject project, String fullName, boolean isMultibranch,
-                         Set<String> alreadyMirrored, ImportResult result) {
+                         Set<String> alreadyMirrored, ImportResult result) throws Exception {
     if (alreadyMirrored.contains(fullName)) {
       result.addSkipped(fullName, "already imported");
       return;
@@ -87,7 +110,8 @@ public class JenkinsJobImporter {
   }
 
   // Creates a mirror configuration for a single Jenkins job and returns its external id.
-  private String createMirrorConfig(SProject project, String fullName, boolean inMultibranchPipeline) {
+  private String createMirrorConfig(SProject project, String fullName, boolean inMultibranchPipeline)
+      throws Exception {
     String externalId = ExternalIdGenerator.resolveUnique(
         ExternalIdGenerator.baseExternalId(project.getExternalId(), fullName),
         candidate -> projectManager.findBuildTypeByExternalId(candidate) != null);
@@ -100,7 +124,8 @@ public class JenkinsJobImporter {
       featureParams.put(BridgeBuildFeatureConstants.PARAM_IN_MULTIBRANCH, "true");
     }
     buildType.addBuildFeature(BridgeBuildFeatureConstants.TYPE, featureParams);
-    buildType.addConfigParameter(parameterFactory.createSimpleParameter(AGENTLESS_PARAM, "true"));
+    buildType.addConfigParameter(parameterFactory.createTypedParameter(AGENTLESS_PARAM, "true", HIDDEN_SPEC));
+    importJenkinsParameters(buildType, fullName);
     buildType.setOption(BuildTypeOptions.BT_FAIL_IF_TESTS_FAIL, false); // Let Jenkins decide if failing tests fail the build. Not the case for "unstable" builds.
     buildType.persist();
     return externalId;
@@ -124,15 +149,59 @@ public class JenkinsJobImporter {
 
   private Set<String> collectMirroredJobs(SProject project) {
     Set<String> jobs = new HashSet<>();
+    jobs.addAll(collectMirroredBuildTypes(project).keySet());
+    return jobs;
+  }
+
+  private Map<String, SBuildType> collectMirroredBuildTypes(SProject project) {
+    Set<String> jobs = new HashSet<String>();
+    Map<String, SBuildType> buildTypes = new LinkedHashMap<String, SBuildType>();
     for (SBuildType buildType : project.getBuildTypes()) {
       for (SBuildFeatureDescriptor descriptor
           : buildType.getBuildFeaturesOfType(BridgeBuildFeatureConstants.TYPE)) {
         String job = descriptor.getParameters().get(BridgeBuildFeatureConstants.PARAM_JENKINS_JOB);
         if (job != null && !job.trim().isEmpty()) {
-          jobs.add(job.trim());
+          String normalizedJob = job.trim();
+          if (jobs.add(normalizedJob)) {
+            buildTypes.put(normalizedJob, buildType);
+          }
         }
       }
     }
-    return jobs;
+    return buildTypes;
+  }
+
+  private int importJenkinsParameters(SBuildType buildType, String fullName) throws Exception {
+    JenkinsJobParameters parameters = jenkinsClient.getJobParameters(fullName);
+    int imported = 0;
+    for (JenkinsParameterDefinition definition : parameters.getParameters()) {
+      String name = definition.getName();
+      if (!JenkinsTeamCityRunParameterFactory.canImport(definition)) {
+        continue;
+      }
+      if (buildType.getParametersProvider().get(name) != null) {
+        buildType.removeParameter(name);
+      }
+      buildType.addParameter(JenkinsTeamCityRunParameterFactory.create(parameterFactory, definition));
+      imported++;
+    }
+    return imported;
+  }
+
+  /**
+   * Ensures the agentless marker is present and hidden from the Run Custom Build dialog. Re-applies
+   * the hidden spec so configs imported before this behavior existed (agentless shown as a normal
+   * config parameter) are upgraded on re-import.
+   */
+  private void ensureAgentlessHidden(SBuildType buildType) throws Exception {
+    if (buildType.getParametersProvider().get(AGENTLESS_PARAM) != null) {
+      buildType.removeParameter(AGENTLESS_PARAM);
+    }
+    buildType.addConfigParameter(parameterFactory.createTypedParameter(AGENTLESS_PARAM, "true", HIDDEN_SPEC));
+  }
+
+  private static String leafName(String fullName) {
+    int slash = fullName.lastIndexOf('/');
+    return slash >= 0 && slash < fullName.length() - 1 ? fullName.substring(slash + 1) : fullName;
   }
 }

@@ -57,11 +57,21 @@
   <bean id="buildMirrorStore"
         class="com.jetbrains.teamcity.jenkinsbridge.persistence.BuildMirrorStore"/>
 
+  <bean id="buildMirrorResolver"
+        class="com.jetbrains.teamcity.jenkinsbridge.persistence.BuildMirrorResolver"/>
+
   <bean id="bridgeBuildFeature"
         class="com.jetbrains.teamcity.jenkinsbridge.feature.BridgeBuildFeature"/>
 
   <bean id="mirroredJobProvider"
         class="com.jetbrains.teamcity.jenkinsbridge.feature.MirroredJobProvider"/>
+
+  <bean id="jenkinsTriggerOnRunListener"
+        class="com.jetbrains.teamcity.jenkinsbridge.feature.JenkinsTriggerOnRunListener"
+        destroy-method="dispose"/>
+
+  <bean id="jenkinsQueueAgentlessPreprocessor"
+        class="com.jetbrains.teamcity.jenkinsbridge.feature.JenkinsQueueAgentlessPreprocessor"/>
 
   <bean id="jenkinsJobImporter"
         class="com.jetbrains.teamcity.jenkinsbridge.feature.JenkinsJobImporter"/>

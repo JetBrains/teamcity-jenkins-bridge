@@ -33,6 +33,8 @@ public class JenkinsClient {
   // so the (line-bounded) non-greedy match is safe; a note split across two progressive fetches is a
   // rare edge that can leak one partial note at the boundary.
   private static final Pattern CONSOLE_NOTE = Pattern.compile("\\[8m.*?\\[0m");
+  private static final Pattern QUEUE_ITEM_LOCATION =
+      Pattern.compile("(?:^|/)queue/item/([0-9]+)/?(?:$|[?#])");
   private static final Logger LOG = Logger.getInstance(JenkinsClient.class.getName());
 
   private final JenkinsBridgeSettingsProvider settingsProvider;
@@ -46,6 +48,10 @@ public class JenkinsClient {
     this.settingsProvider = settingsProvider;
     this.httpClient = httpClient;
     this.xmlUnmarshaller = xmlUnmarshaller;
+  }
+
+  public String getControllerIdentity() {
+    return settingsProvider == null ? "" : settingsProvider.load().getJenkinsUrl();
   }
 
   /**
@@ -113,7 +119,7 @@ public class JenkinsClient {
 
   private List<JenkinsBuildInfo> fetchBuildInfos(String jobName, String collection) throws BridgeHttpException {
     JenkinsBridgeSettings settings = settingsProvider.load();
-    String tree = collection + "[number,timestamp,url]";
+    String tree = collection + "[number,timestamp,url,queueId]";
     String url = settings.getJenkinsUrl()
         + jenkinsJobPath(jobName)
         + "/api/json?tree="
@@ -138,7 +144,7 @@ public class JenkinsClient {
 
   public JenkinsBuildInfo getBuildInfo(String jobName, int buildNumber) throws BridgeHttpException {
     JenkinsBridgeSettings settings = settingsProvider.load();
-    String tree = "number,building,result,timestamp,duration,estimatedDuration,url";
+    String tree = "number,queueId,building,result,timestamp,duration,estimatedDuration,url";
     String url = settings.getJenkinsUrl()
         + jenkinsJobPath(jobName)
         + "/"
@@ -965,6 +971,11 @@ public class JenkinsClient {
    * Jenkins assigns a build number.
    */
   public String triggerBuild(String jobName, Map<String, String> parameters) throws BridgeHttpException {
+    return triggerBuildWithQueueId(jobName, parameters).getQueueItemUrl();
+  }
+
+  public JenkinsTriggerResponse triggerBuildWithQueueId(String jobName, Map<String, String> parameters)
+      throws BridgeHttpException {
     JenkinsBridgeSettings settings = settingsProvider.load();
     boolean parameterized = parameters != null && !parameters.isEmpty();
 
@@ -981,12 +992,76 @@ public class JenkinsClient {
       headers.put(crumb.getField(), crumb.getValue());
     }
 
-    BridgeHttpResponse response = httpClient.postResponse(
+    BridgeHttpResponse response = httpClient.postResponseNoRedirect(
         url, settings.getJenkinsUser(), settings.getJenkinsToken(),
         body, "application/x-www-form-urlencoded", "application/json", headers);
 
     String location = response.getHeader("Location");
-    return location == null ? "" : location;
+    String normalizedLocation = normalizeQueueItemUrl(location, settings.getJenkinsUrl());
+    long queueId = parseQueueId(normalizedLocation);
+    return new JenkinsTriggerResponse(normalizedLocation, queueId);
+  }
+
+  /** Returns the numeric queue id in a Jenkins queue-item URL, or -1 for an invalid URL. */
+  public static long parseQueueId(String location) {
+    if (location == null) {
+      return -1L;
+    }
+    java.util.regex.Matcher matcher = QUEUE_ITEM_LOCATION.matcher(location.trim());
+    if (!matcher.find()) {
+      return -1L;
+    }
+    try {
+      return Long.parseLong(matcher.group(1));
+    } catch (NumberFormatException e) {
+      return -1L;
+    }
+  }
+
+  private static String normalizeQueueItemUrl(String location, String jenkinsUrl) {
+    if (location == null || location.trim().isEmpty()) {
+      return "";
+    }
+    String value = location.trim();
+    try {
+      if (value.startsWith("/")) {
+        return new java.net.URL(new java.net.URL(jenkinsUrl + "/"), value).toString();
+      }
+      return new java.net.URL(value).toString();
+    } catch (java.net.MalformedURLException e) {
+      return value;
+    }
+  }
+
+  public JenkinsQueueBuildResolution resolveQueuedBuildNumber(String queueItemUrl) throws BridgeHttpException {
+    if (queueItemUrl == null || queueItemUrl.trim().isEmpty()) {
+      return JenkinsQueueBuildResolution.pending();
+    }
+
+    JenkinsBridgeSettings settings = settingsProvider.load();
+    String url = appendApiJson(queueItemUrl.trim());
+    String response = httpClient.get(url, settings.getJenkinsUser(), settings.getJenkinsToken(), "application/json");
+    JsonObject root = jsonParser.parse(response).getAsJsonObject();
+
+    JsonElement executable = root.get("executable");
+    if (executable != null && executable.isJsonObject()) {
+      JsonElement number = executable.getAsJsonObject().get("number");
+      if (number != null && !number.isJsonNull()) {
+        return JenkinsQueueBuildResolution.resolved(number.getAsInt());
+      }
+    }
+
+    JsonElement cancelled = root.get("cancelled");
+    if (cancelled != null && !cancelled.isJsonNull() && cancelled.getAsBoolean()) {
+      return JenkinsQueueBuildResolution.cancelled();
+    }
+
+    return JenkinsQueueBuildResolution.pending();
+  }
+
+  private static String appendApiJson(String queueItemUrl) {
+    String normalized = queueItemUrl.endsWith("/") ? queueItemUrl : queueItemUrl + "/";
+    return normalized + "api/json";
   }
 
   private static String encodeForm(Map<String, String> parameters) {

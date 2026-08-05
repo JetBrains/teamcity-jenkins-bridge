@@ -25,6 +25,13 @@ public final class BridgeBuildFeatureConstants {
    */
   public static final String PARAM_IN_MULTIBRANCH = "inMultibranchPipeline";
 
+  /**
+   * TC build parameter stamped onto Jenkins-first mirror builds (the Jenkins build key,
+   * e.g. {@code "myjob#42@1710000000042"}). Absent on TC-first promotions, which are created by the
+   * user before Jenkins runs — those are resolved via mirror binding, not this parameter.
+   */
+  public static final String JENKINS_BUILD_KEY_PARAM = "jenkins.build.key";
+
   private BridgeBuildFeatureConstants() {
   }
 }

@@ -4,7 +4,10 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 
 public class JenkinsBuildInfo {
+  public static final long UNKNOWN_QUEUE_ID = -1L;
   private int number;
+  // queueId is not a uinqure identifier for the specific build, It is used in TC first runs to avoid duplicate builds
+  private long queueId = UNKNOWN_QUEUE_ID;
   private String url;
   private boolean building;
   private String result;
@@ -15,6 +18,7 @@ public class JenkinsBuildInfo {
   public static JenkinsBuildInfo fromJson(JsonObject json) {
     JenkinsBuildInfo info = new JenkinsBuildInfo();
     info.number = getInt(json, "number", 0);
+    info.queueId = getLong(json, "queueId", UNKNOWN_QUEUE_ID);
     info.url = getString(json, "url", "");
     info.building = getBoolean(json, "building", false);
     info.result = getString(json, "result", null);
@@ -26,6 +30,10 @@ public class JenkinsBuildInfo {
 
   public int getNumber() {
     return number;
+  }
+
+  public long getQueueId() {
+    return queueId;
   }
 
   public String getUrl() {

@@ -48,7 +48,14 @@ public class BridgeHttpClient {
   public BridgeHttpResponse postResponse(
       String url, String user, String password, String body, String contentType, String accept,
       Map<String, String> headers) throws BridgeHttpException {
-    return request("POST", url, user, password, body, contentType, accept, headers);
+    return request("POST", url, user, password, body, contentType, accept, headers, 5000, 15000, false);
+  }
+
+  /** Trigger-specific POST: preserve Jenkins' original 201/303 Location and fail fast. */
+  public BridgeHttpResponse postResponseNoRedirect(
+      String url, String user, String password, String body, String contentType, String accept,
+      Map<String, String> headers) throws BridgeHttpException {
+    return postResponse(url, user, password, body, contentType, accept, headers);
   }
 
   public String put(String url, String user, String password, String body, String contentType, String accept) throws BridgeHttpException {
@@ -65,13 +72,30 @@ public class BridgeHttpClient {
       String accept,
       Map<String, String> headers
   ) throws BridgeHttpException {
+    return request(method, url, user, password, body, contentType, accept, headers, 30000, 30000, true);
+  }
+
+  private BridgeHttpResponse request(
+      String method,
+      String url,
+      String user,
+      String password,
+      String body,
+      String contentType,
+      String accept,
+      Map<String, String> headers,
+      int connectTimeout,
+      int readTimeout,
+      boolean followRedirects
+  ) throws BridgeHttpException {
     HttpURLConnection connection = null;
 
     try {
       connection = (HttpURLConnection)new URL(url).openConnection();
       connection.setRequestMethod(method);
-      connection.setConnectTimeout(30000);
-      connection.setReadTimeout(30000);
+      connection.setConnectTimeout(connectTimeout);
+      connection.setReadTimeout(readTimeout);
+      connection.setInstanceFollowRedirects(followRedirects);
 
       if (isNotBlank(user)) {
         String token = user + ":" + nullToEmpty(password);
@@ -109,7 +133,8 @@ public class BridgeHttpClient {
       int status = connection.getResponseCode();
       String responseBody = readResponseBody(connection, status);
 
-      if (status < 200 || status >= 300) {
+      boolean acceptedRedirect = method.equals("POST") && !followRedirects && status == 303;
+      if ((status < 200 || status >= 300) && !acceptedRedirect) {
         throw new BridgeHttpException(method, url, status, responseBody);
       }
 
