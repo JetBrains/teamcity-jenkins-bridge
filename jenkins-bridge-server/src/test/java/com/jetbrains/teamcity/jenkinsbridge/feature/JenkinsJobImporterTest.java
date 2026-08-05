@@ -2,6 +2,8 @@ package com.jetbrains.teamcity.jenkinsbridge.feature;
 
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClient;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClientFactory;
+import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsJobParameters;
+import jetbrains.buildServer.parameters.ParametersProvider;
 import jetbrains.buildServer.serverSide.Parameter;
 import jetbrains.buildServer.serverSide.ProjectManager;
 import jetbrains.buildServer.serverSide.SBuildFeatureDescriptor;
@@ -37,13 +39,14 @@ public class JenkinsJobImporterTest {
       new JenkinsJobImporter(projectManager, parameterFactory, jenkinsClientFactory);
 
   @Before
-  public void setUp() {
+  public void setUp() throws Exception {
     when(jenkinsClientFactory.forConnectionId(targetProject, "conn1")).thenReturn(jenkinsClient);
     when(projectManager.findProjectByExternalId("TeamA")).thenReturn(targetProject);
     when(targetProject.getExternalId()).thenReturn("TeamA");
     when(targetProject.getBuildTypes()).thenReturn(Collections.emptyList());
     when(targetProject.createBuildType(anyString(), anyString())).thenReturn(buildType);
     when(jenkinsClient.jobUrl(anyString())).thenReturn("http://jenkins/job/x/");
+    when(jenkinsClient.getJobParameters(anyString())).thenReturn(JenkinsJobParameters.empty());
     when(parameterFactory.createSimpleParameter(anyString(), anyString()))
         .thenReturn(mock(Parameter.class));
   }
@@ -70,6 +73,7 @@ public class JenkinsJobImporterTest {
     SBuildType existing = mock(SBuildType.class);
     when(existing.getBuildFeaturesOfType(BridgeBuildFeatureConstants.TYPE))
         .thenReturn(Collections.singletonList(existingFeature));
+    when(existing.getParametersProvider()).thenReturn(mock(ParametersProvider.class));
     when(targetProject.getBuildTypes()).thenReturn(Collections.singletonList(existing));
     when(jenkinsClient.getJobClass("pipeline")).thenReturn(MULTIBRANCH_CLASS);
 

@@ -23,7 +23,8 @@ public class JenkinsBridgeSettingsProvider {
     return new JenkinsBridgeSettings(
         readBooleanSetting(rootProjectSettings, "jenkins.bridge.enabled", "JENKINS_BRIDGE_ENABLED", true),
         readIntSetting(rootProjectSettings, "jenkins.bridge.pollSeconds", "BRIDGE_POLL_SECONDS", 10),
-        readStringSetting(rootProjectSettings, "jenkins.bridge.timeZone", "TIMEZONE", "Europe/Berlin"),
+        readIntSetting(rootProjectSettings, "jenkins.bridge.pendingTriggerTimeoutMinutes",
+            "PENDING_TRIGGER_TIMEOUT_MINUTES", 1440),
         readStringSetting(rootProjectSettings, "jenkins.bridge.stateFile", "BRIDGE_STATE_FILE", ""),
         // Legacy, only used by the deprecated TeamCityClient. Never read from project parameters.
         getString("jenkins.bridge.teamCityUrl", "TEAMCITY_URL", ""),

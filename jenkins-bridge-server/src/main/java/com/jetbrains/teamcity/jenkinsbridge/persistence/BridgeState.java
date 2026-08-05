@@ -16,6 +16,7 @@ public class BridgeState {
   private static final Gson OUR_GSON = new GsonBuilder().setPrettyPrinting().create();
   private static final String VERSION_KEY = "version";
   private static final String BUILD_KEY_PREFIX = "build-";
+  private static final String PENDING_TRIGGER_KEY_PREFIX = "pending-trigger-";
   private static final String LAST_SEEN_BUILD_NUMBER_KEY_PREFIX = "last-seen-build-number-";
   private static final String LAST_POLL_TIME_KEY = "last-poll-time";
   private static final String LAST_ERROR_KEY = "last-error";
@@ -70,6 +71,34 @@ public class BridgeState {
         .map(key -> BUILD_KEY_PREFIX + key)
         .collect(Collectors.toSet());
     myStorage.updateValues(Collections.emptyMap(), storageKeys);
+  }
+
+  @NotNull
+  public Map<String, PendingTrigger> getPendingTriggers() {
+    Map<String, String> stateMap = myStorage.getValues();
+    if (stateMap == null) {
+      return new LinkedHashMap<>();
+    }
+    return stateMap
+        .entrySet()
+        .stream()
+        .filter(entry -> entry.getKey().startsWith(PENDING_TRIGGER_KEY_PREFIX))
+        .filter(entry -> entry.getValue() != null)
+        .collect(Collectors.toMap(
+            entry -> entry.getKey().substring(PENDING_TRIGGER_KEY_PREFIX.length()),
+            entry -> OUR_GSON.fromJson(entry.getValue(), PendingTrigger.class),
+            (a, b) -> b,
+            LinkedHashMap::new));
+  }
+
+  public void putPendingTrigger(@NotNull String key, @NotNull PendingTrigger pendingTrigger) {
+    myStorage.putValue(PENDING_TRIGGER_KEY_PREFIX + key, OUR_GSON.toJson(pendingTrigger));
+  }
+
+  public void removePendingTrigger(@NotNull String key) {
+    myStorage.updateValues(
+        Collections.emptyMap(),
+        Collections.singleton(PENDING_TRIGGER_KEY_PREFIX + key));
   }
 
   @NotNull

@@ -2,8 +2,6 @@ package com.jetbrains.teamcity.jenkinsbridge.settings;
 
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.time.DateTimeException;
-import java.time.ZoneId;
 
 import static com.jetbrains.teamcity.jenkinsbridge.util.Utilities.nullToEmpty;
 
@@ -14,7 +12,7 @@ import static com.jetbrains.teamcity.jenkinsbridge.util.Utilities.nullToEmpty;
 public class JenkinsBridgeSettings {
   private final boolean enabled;
   private final int pollSeconds;
-  private final String timeZone;
+  private final int pendingTriggerTimeoutMinutes;
   private final String stateFile;
   private final String teamCityUrl;
   private final String teamCityUser;
@@ -23,7 +21,7 @@ public class JenkinsBridgeSettings {
   JenkinsBridgeSettings(
       boolean enabled,
       int pollSeconds,
-      String timeZone,
+      int pendingTriggerTimeoutMinutes,
       String stateFile,
       String teamCityUrl,
       String teamCityUser,
@@ -31,7 +29,7 @@ public class JenkinsBridgeSettings {
   ) {
     this.enabled = enabled;
     this.pollSeconds = Math.max(1, pollSeconds);
-    this.timeZone = nullToEmpty(timeZone);
+    this.pendingTriggerTimeoutMinutes = Math.max(1, pendingTriggerTimeoutMinutes);
     this.stateFile = nullToEmpty(stateFile);
     this.teamCityUrl = trimTrailingSlash(teamCityUrl);
     this.teamCityUser = nullToEmpty(teamCityUser);
@@ -64,12 +62,8 @@ public class JenkinsBridgeSettings {
     return teamCityPassword;
   }
 
-  public ZoneId getZoneId() {
-    try {
-      return ZoneId.of(timeZone);
-    } catch (DateTimeException e) {
-      return ZoneId.systemDefault();
-    }
+  public int getPendingTriggerTimeoutMinutes() {
+    return pendingTriggerTimeoutMinutes;
   }
 
   public boolean hasCustomStateFile() {
@@ -83,7 +77,7 @@ public class JenkinsBridgeSettings {
   public String describeForLog() {
     return "enabled=" + enabled
         + ", pollSeconds=" + pollSeconds
-        + ", timeZone=" + timeZone
+        + ", pendingTriggerTimeoutMinutes=" + pendingTriggerTimeoutMinutes
         + ", stateFile=" + stateFile;
   }
 

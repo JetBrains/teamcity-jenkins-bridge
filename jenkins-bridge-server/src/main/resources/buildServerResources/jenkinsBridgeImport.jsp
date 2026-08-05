@@ -9,8 +9,9 @@
   <h2 class="noBorder">Import Jenkins jobs</h2>
   <p class="grayNote">
     Lists the top-level jobs at a Jenkins folder path (blank = server root) and creates one build
-    configuration per selected pipeline in this project. Folders and already-imported jobs cannot be
-    selected.
+    configuration per selected job in this project. Selecting an already-imported job refreshes
+    Jenkins parameters on the existing build configuration. Folders cannot be selected, and
+    multibranch projects are expanded by the importer.
   </p>
 
 <%-- TODO: Select the Jenkins connection and add the search bar --%>
@@ -27,7 +28,7 @@
 
   <div style="margin: 0.5em 0;">
     <input type="button" class="btn" id="jbListBtn" value="List jobs"/>
-    <input type="button" class="btn btn_primary" id="jbImportBtn" value="Import selected" disabled="disabled"/>
+    <input type="button" class="btn btn_primary" id="jbImportBtn" value="Import / refresh selected" disabled="disabled"/>
     <span id="jbStatus" class="grayNote" style="margin-left: 1em;"></span>
   </div>
 
@@ -65,8 +66,8 @@
       var html = '<table class="parametersTable" style="width:auto;"><tr><th></th><th>Job</th><th>Type</th></tr>';
       for (var i = 0; i < jobs.length; i++) {
         var j = jobs[i];
-        var selectable = (j.importable || j.isMultibranch) && !j.alreadyImported;
-        var note = j.alreadyImported ? ' <span class="grayNote">(already imported)</span>'
+        var selectable = j.importable || j.isMultibranch;
+        var note = j.alreadyImported ? ' <span class="grayNote">(already imported; refresh parameters)</span>'
           : (j.isMultibranch ? ' <span class="grayNote">(multibranch pipeline)</span>'
           : (!j.importable ? ' <span class="grayNote">(folder)</span>' : ''));
         html += '<tr>'
