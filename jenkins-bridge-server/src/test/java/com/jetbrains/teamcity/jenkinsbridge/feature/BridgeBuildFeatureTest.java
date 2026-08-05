@@ -3,11 +3,14 @@ package com.jetbrains.teamcity.jenkinsbridge.feature;
 import jetbrains.buildServer.serverSide.InvalidProperty;
 import jetbrains.buildServer.serverSide.PropertiesProcessor;
 import jetbrains.buildServer.web.openapi.PluginDescriptor;
+import org.jetbrains.annotations.NotNull;
 import org.junit.Test;
 
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -22,41 +25,64 @@ public class BridgeBuildFeatureTest {
     assertEquals("Jenkins Bridge", feature.getDisplayName());
     assertFalse(feature.isMultipleFeaturesPerBuildTypeAllowed());
     assertFalse(feature.isRequiresAgent());
-    assertEquals("plugins/jenkins-bridge/editJenkinsBridge.jsp", feature.getEditParametersUrl());
+    assertEquals("plugins/jenkins-bridge/editJenkinsBridge.html", feature.getEditParametersUrl());
   }
 
   @Test
-  public void rejectsMissingJobPath() {
+  public void getParametersProcessorRejectsMissingConnectionAndJobPath() {
     Collection<InvalidProperty> errors = process(new HashMap<String, String>());
-    assertEquals(1, errors.size());
-    assertEquals("jenkinsJob", errors.iterator().next().getPropertyName());
+    assertEquals(2, errors.size());
+    assertEquals(Set.of("connectionId", "jenkinsJob"), propertyNames(errors));
   }
 
   @Test
-  public void acceptsJobPathAlone() {
-    Map<String, String> props = new HashMap<String, String>();
+  public void getParametersProcessorRejectsMissingConnection() {
+    Map<String, String> props = new HashMap<>();
     props.put("jenkinsJob", "team/pipeline");
-    assertTrue(process(props).isEmpty());
+
+    Collection<InvalidProperty> errors = process(props);
+
+    assertEquals(1, errors.size());
+    assertEquals("connectionId", errors.iterator().next().getPropertyName());
   }
 
   @Test
-  public void acceptsBlankRecentLimitButRejectsNonPositiveInteger() {
-    Map<String, String> blank = new HashMap<String, String>();
-    blank.put("jenkinsJob", "job");
-    blank.put("recentBuildLimit", "");
-    assertTrue(process(blank).isEmpty());
+  public void getParametersProcessorAcceptsConnectionAndJobPath() {
+    assertTrue(process(feature("team/pipeline", null)).isEmpty());
+  }
 
-    Map<String, String> bad = new HashMap<String, String>();
-    bad.put("jenkinsJob", "job");
-    bad.put("recentBuildLimit", "abc");
-    Collection<InvalidProperty> errors = process(bad);
+  @Test
+  public void getParametersProcessorAcceptsBlankZeroAndPositiveRecentLimits() {
+    assertTrue(process(feature("job", "")).isEmpty());
+    assertTrue(process(feature("job", "0")).isEmpty());
+    assertTrue(process(feature("job", "5")).isEmpty());
+  }
+
+  @Test
+  public void getParametersProcessorRejectsANegativeOrUnparseableRecentLimit() {
+    Collection<InvalidProperty> errors = process(feature("job", "abc"));
     assertEquals(1, errors.size());
     assertEquals("recentBuildLimit", errors.iterator().next().getPropertyName());
 
-    Map<String, String> good = new HashMap<String, String>();
-    good.put("jenkinsJob", "job");
-    good.put("recentBuildLimit", "5");
-    assertTrue(process(good).isEmpty());
+    assertEquals(1, process(feature("job", "-1")).size());
+  }
+
+  private static Map<String, String> feature(String jobPath, String recentLimit) {
+    Map<String, String> props = new HashMap<>();
+    props.put("connectionId", "PROJECT_EXT_1_OAuthProvider_1");
+    props.put("jenkinsJob", jobPath);
+    if (recentLimit != null) {
+      props.put("recentBuildLimit", recentLimit);
+    }
+    return props;
+  }
+
+  private static Set<String> propertyNames(Collection<InvalidProperty> errors) {
+    Set<String> names = new HashSet<>();
+    for (InvalidProperty error : errors) {
+      names.add(error.getPropertyName());
+    }
+    return names;
   }
 
   private Collection<InvalidProperty> process(Map<String, String> props) {
@@ -66,16 +92,19 @@ public class BridgeBuildFeatureTest {
 
   private static PluginDescriptor stubPluginDescriptor() {
     return new PluginDescriptor() {
+      @NotNull
       @Override
       public String getPluginResourcesPath() {
         return "plugins/jenkins-bridge/";
       }
 
+      @NotNull
       @Override
       public String getPluginResourcesPath(String path) {
         return "plugins/jenkins-bridge/" + path;
       }
 
+      @NotNull
       @Override
       public String getPluginName() {
         return "jenkins-bridge";

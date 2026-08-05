@@ -2,6 +2,7 @@ package com.jetbrains.teamcity.jenkinsbridge.feature;
 
 import com.intellij.openapi.diagnostic.Logger;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClient;
+import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClientFactory;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsJobParameters;
 import com.jetbrains.teamcity.jenkinsbridge.persistence.BuildMirrorStore;
 import com.jetbrains.teamcity.jenkinsbridge.persistence.PendingTrigger;
@@ -33,7 +34,7 @@ public class JenkinsTriggerOnRunListener {
   private static final String TRIGGERED_BY_BRIDGE = "Jenkins Bridge";
 
   private final EventDispatcher<BuildServerListener> eventDispatcher;
-  private final JenkinsClient jenkinsClient;
+  private final JenkinsClientFactory jenkinsClientFactory;
   private final BuildMirrorStore mirrorStore;
   private final BuildQueue buildQueue;
   private final JenkinsJobCoordinator jobCoordinator = new JenkinsJobCoordinator();
@@ -51,12 +52,12 @@ public class JenkinsTriggerOnRunListener {
 
   public JenkinsTriggerOnRunListener(
       EventDispatcher<BuildServerListener> eventDispatcher,
-      JenkinsClient jenkinsClient,
+      JenkinsClientFactory jenkinsClientFactory,
       BuildMirrorStore mirrorStore,
       BuildQueue buildQueue
   ) {
     this.eventDispatcher = eventDispatcher;
-    this.jenkinsClient = jenkinsClient;
+    this.jenkinsClientFactory = jenkinsClientFactory;
     this.mirrorStore = mirrorStore;
     this.buildQueue = buildQueue;
     this.eventDispatcher.addListener(listener);
@@ -106,6 +107,9 @@ public class JenkinsTriggerOnRunListener {
     if (job == null || job.trim().isEmpty()) {
       return;
     }
+
+    // The Jenkins server is whichever connection this build configuration mirrors from.
+    JenkinsClient jenkinsClient = jenkinsClientFactory.forBuildType(buildType);
 
     synchronized (jobCoordinator.lockFor(jenkinsClient.getControllerIdentity(), job)) {
       // The callback can be delivered more than once. Re-check after acquiring the same lock used

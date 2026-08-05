@@ -1,7 +1,7 @@
 package com.jetbrains.teamcity.jenkinsbridge.teamcity;
 
 import com.jetbrains.teamcity.jenkinsbridge.feature.BridgeBuildFeatureConstants;
-import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClient;
+import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClientFactory;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsVcsInfo;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsVcsRepository;
 import com.jetbrains.teamcity.jenkinsbridge.util.Utilities;
@@ -20,16 +20,16 @@ public class TeamCityBuildQueuer {
 
   private final ProjectManager projectManager;
   private final BuildCustomizerFactory buildCustomizerFactory;
-  private final JenkinsClient jenkinsClient;
+  private final JenkinsClientFactory jenkinsClientFactory;
 
   public TeamCityBuildQueuer(
       ProjectManager projectManager,
       BuildCustomizerFactory buildCustomizerFactory,
-      JenkinsClient jenkinsClient
+      JenkinsClientFactory jenkinsClientFactory
   ) {
     this.projectManager = projectManager;
     this.buildCustomizerFactory = buildCustomizerFactory;
-    this.jenkinsClient = jenkinsClient;
+    this.jenkinsClientFactory = jenkinsClientFactory;
   }
 
   public long queueAgentlessBuild(
@@ -93,7 +93,7 @@ public class TeamCityBuildQueuer {
         job = job.trim();
         branchName = lastPathSegment(job);
         if (Utilities.looksLikePullOrMergeRequestBranch(branchName)) {
-          var pullRequestInfoResult = jenkinsClient.getPullRequestInfo(job);
+          var pullRequestInfoResult = jenkinsClientFactory.forBuildType(buildType).getPullRequestInfo(job);
           if (pullRequestInfoResult.isPresent()) {
             var pullRequestInfo = pullRequestInfoResult.get();
             branchName = pullRequestInfo.sourceBranch();

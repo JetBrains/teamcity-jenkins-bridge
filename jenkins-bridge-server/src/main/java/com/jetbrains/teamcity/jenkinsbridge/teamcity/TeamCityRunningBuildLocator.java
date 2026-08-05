@@ -2,10 +2,19 @@ package com.jetbrains.teamcity.jenkinsbridge.teamcity;
 
 import jetbrains.buildServer.serverSide.BuildPromotion;
 import jetbrains.buildServer.serverSide.BuildPromotionManager;
+import jetbrains.buildServer.serverSide.BuildQueryOptions;
 import jetbrains.buildServer.serverSide.BuildsManager;
+import jetbrains.buildServer.serverSide.ProjectManager;
 import jetbrains.buildServer.serverSide.RunningBuildEx;
 import jetbrains.buildServer.serverSide.SBuild;
+import jetbrains.buildServer.serverSide.SBuildType;
 import jetbrains.buildServer.serverSide.SRunningBuild;
+import org.jetbrains.annotations.Nullable;
+
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
+
+import static com.jetbrains.teamcity.jenkinsbridge.util.Utilities.findBuildType;
 
 /**
  * Resolves a TeamCity running build / promotion from the id the bridge stores as
@@ -18,12 +27,63 @@ import jetbrains.buildServer.serverSide.SRunningBuild;
  * that was previously duplicated across the build adapters (R6 in RELIABILITY_AND_PERFORMANCE.md).
  */
 public class TeamCityRunningBuildLocator {
+  /** Build parameter carrying the bridge identity of the mirrored Jenkins build. */
+  public static final String JENKINS_BUILD_KEY_PARAM = "jenkins.build.key";
+
+  /**
+   * How many builds of a configuration to look at when recovering a lost mirror.
+   */
+  private static final int RECOVERY_SCAN_LIMIT = 1000;
+
   private final BuildsManager buildsManager;
   private final BuildPromotionManager buildPromotionManager;
+  private final ProjectManager projectManager;
 
-  public TeamCityRunningBuildLocator(BuildsManager buildsManager, BuildPromotionManager buildPromotionManager) {
+  public TeamCityRunningBuildLocator(BuildsManager buildsManager, BuildPromotionManager buildPromotionManager,
+                                     ProjectManager projectManager) {
     this.buildsManager = buildsManager;
     this.buildPromotionManager = buildPromotionManager;
+    this.projectManager = projectManager;
+  }
+
+  /**
+   * Finds a mirror build that already exists in TeamCity but is no longer recorded in the bridge's
+   * own state, by matching the {@code jenkins.build.key} parameter the bridge sets when it queues a
+   * mirror. Scans at most {@link #RECOVERY_SCAN_LIMIT} builds of the configuration.
+   *
+   * @param buildTypeId     external or internal id of the mirroring build configuration
+   * @param jenkinsBuildKey bridge identity of the Jenkins build
+   * @return the promotion id of the matching build, or null when there is none
+   */
+  @Nullable
+  public Long recoverBuildId(@Nullable String buildTypeId, @Nullable String jenkinsBuildKey) {
+    if (jenkinsBuildKey == null || jenkinsBuildKey.trim().isEmpty()) {
+      return null;
+    }
+    SBuildType buildType = findBuildType(buildTypeId, projectManager);
+    if (buildType == null) {
+      return null;
+    }
+
+    BuildQueryOptions options = new BuildQueryOptions()
+        .setBuildTypeId(buildType.getBuildTypeId())
+        .setMatchAllBranches(true)
+        .setIncludeRunning(true)
+        .setIncludeFinished(true)
+        .setIncludeCanceled(true)
+        .setOrderByChanges(false);
+
+    AtomicLong found = new AtomicLong(0L);
+    AtomicInteger scanned = new AtomicInteger(0);
+    buildsManager.processBuilds(options, build -> {
+      if (jenkinsBuildKey.equals(build.getBuildPromotion().getParameterValue(JENKINS_BUILD_KEY_PARAM))) {
+        found.set(build.getBuildPromotion().getId());
+        return false;
+      }
+      return scanned.incrementAndGet() < RECOVERY_SCAN_LIMIT;
+    });
+
+    return found.get() == 0L ? null : found.get();
   }
 
   /**

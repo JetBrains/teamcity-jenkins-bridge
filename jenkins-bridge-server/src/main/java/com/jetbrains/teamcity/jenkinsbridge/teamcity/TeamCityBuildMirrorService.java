@@ -1,5 +1,6 @@
 package com.jetbrains.teamcity.jenkinsbridge.teamcity;
 
+import com.jetbrains.teamcity.jenkinsbridge.connection.JenkinsConnectionConstants;
 import com.jetbrains.teamcity.jenkinsbridge.http.BridgeHttpClient;
 import com.jetbrains.teamcity.jenkinsbridge.http.BridgeHttpException;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClient;
@@ -52,7 +53,7 @@ public class TeamCityBuildMirrorService {
   );
 
   private final JenkinsBridgeSettingsProvider settingsProvider;
-  private final TeamCityClient teamCityClient;
+  private final TeamCityRunningBuildLocator teamCityBuildLocator;
   private final TeamCityBuildQueuer teamCityBuildQueuer;
   private final TeamCityBuildStarter teamCityBuildStarter;
   private final TeamCityBuildLogger teamCityBuildLogger;
@@ -67,7 +68,7 @@ public class TeamCityBuildMirrorService {
 
   public TeamCityBuildMirrorService(
       JenkinsBridgeSettingsProvider settingsProvider,
-      TeamCityClient teamCityClient,
+      TeamCityRunningBuildLocator teamCityBuildLocator,
       TeamCityBuildQueuer teamCityBuildQueuer,
       TeamCityBuildStarter teamCityBuildStarter,
       TeamCityBuildLogger teamCityBuildLogger,
@@ -81,7 +82,7 @@ public class TeamCityBuildMirrorService {
       BuildMirrorStore mirrorStore
   ) {
     this.settingsProvider = settingsProvider;
-    this.teamCityClient = teamCityClient;
+    this.teamCityBuildLocator = teamCityBuildLocator;
     this.teamCityBuildQueuer = teamCityBuildQueuer;
     this.teamCityBuildStarter = teamCityBuildStarter;
     this.teamCityBuildLogger = teamCityBuildLogger;
@@ -99,6 +100,7 @@ public class TeamCityBuildMirrorService {
   // May need better naming
   public long ensureTeamCityBuild(
       BuildMirror mirror,
+      String connectionId,
       JenkinsBuildInfo jenkinsInfo,
       JenkinsPipelineGraph graph,
       JenkinsVcsInfo vcsInfo
@@ -137,10 +139,11 @@ public class TeamCityBuildMirrorService {
       }
     }
 
-    Long restoredBuildId = teamCityClient.findBuildIdByJenkinsBuildKey(mirror.getJenkinsBuildKey());
+    String buildTypeId = mirror.getTeamCityBuildTypeId();
+    Long restoredBuildId = teamCityBuildLocator.recoverBuildId(buildTypeId, mirror.getJenkinsBuildKey());
     String legacyBuildKey = BuildMirrorStore.legacyBuildKey(mirror.getJenkinsBuildKey());
     if (restoredBuildId == null && !legacyBuildKey.equals(mirror.getJenkinsBuildKey())) {
-      restoredBuildId = teamCityClient.findBuildIdByJenkinsBuildKey(legacyBuildKey);
+      restoredBuildId = teamCityBuildLocator.recoverBuildId(buildTypeId, legacyBuildKey);
     }
 
     // If there already exists a build with the same Jenkins build key, use it
@@ -156,7 +159,7 @@ public class TeamCityBuildMirrorService {
     // Else create a new build (with the build queuer) and return the build ID
 
 
-    Map<String, String> properties = bridgeBuildParameters(mirror, jenkinsInfo);
+    Map<String, String> properties = bridgeBuildParameters(mirror, connectionId, jenkinsInfo);
 
     long buildId = teamCityBuildQueuer.queueAgentlessBuild(
         mirror.getTeamCityBuildTypeId(),
@@ -170,8 +173,9 @@ public class TeamCityBuildMirrorService {
     return buildId;
   }
 
-  Map<String, String> bridgeBuildParameters(BuildMirror mirror, JenkinsBuildInfo jenkinsInfo) {
+  Map<String, String> bridgeBuildParameters(BuildMirror mirror, String connectionId, JenkinsBuildInfo jenkinsInfo) {
     Map<String, String> properties = new LinkedHashMap<String, String>();
+    properties.put(JenkinsConnectionConstants.BUILD_PARAM_CONNECTION_ID, nullToEmpty(connectionId));
     properties.put("jenkins.job", mirror.getJenkinsJob());
     properties.put("jenkins.build.number", String.valueOf(mirror.getJenkinsBuildNumber()));
     properties.put("jenkins.build.timestamp", String.valueOf(mirror.getJenkinsBuildTimestamp()));

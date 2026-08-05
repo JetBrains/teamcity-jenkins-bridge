@@ -1,7 +1,5 @@
 package com.jetbrains.teamcity.jenkinsbridge.feature;
 
-import com.jetbrains.teamcity.jenkinsbridge.settings.JenkinsBridgeSettings;
-import com.jetbrains.teamcity.jenkinsbridge.settings.JenkinsBridgeSettingsProvider;
 import com.jetbrains.teamcity.jenkinsbridge.settings.MirroredJob;
 import com.jetbrains.teamcity.jenkinsbridge.util.Utilities;
 import jetbrains.buildServer.serverSide.ProjectManager;
@@ -14,19 +12,13 @@ import java.util.Map;
 
 /**
  * Discovers the jobs to mirror by scanning every active build configuration for the
- * {@link BridgeBuildFeature}. When no configuration carries the feature, it falls back to a single
- * mirrored job synthesized from the global settings, so the legacy single-job setup keeps working.
+ * {@link BridgeBuildFeature}. Each discovered job names the Jenkins connection it is mirrored from.
  */
 public class MirroredJobProvider {
   private final ProjectManager projectManager;
-  private final JenkinsBridgeSettingsProvider settingsProvider;
 
-  public MirroredJobProvider(
-      ProjectManager projectManager,
-      JenkinsBridgeSettingsProvider settingsProvider
-  ) {
+  public MirroredJobProvider(ProjectManager projectManager) {
     this.projectManager = projectManager;
-    this.settingsProvider = settingsProvider;
   }
 
   public List<MirroredJob> discoverMirroredJobs() {
@@ -38,41 +30,27 @@ public class MirroredJobProvider {
         jobs.add(toMirroredJob(buildType, descriptor));
       }
     }
-
-    if (jobs.isEmpty()) {
-      MirroredJob legacy = legacyJobOrNull();
-      if (legacy != null) {
-        jobs.add(legacy);
-      }
-    }
     return jobs;
   }
 
   private MirroredJob toMirroredJob(SBuildType buildType, SBuildFeatureDescriptor descriptor) {
     Map<String, String> params = descriptor.getParameters();
+    String connectionId = params.get(BridgeBuildFeatureConstants.PARAM_CONNECTION_ID);
     String job = params.get(BridgeBuildFeatureConstants.PARAM_JENKINS_JOB);
-    int limit = parsePositiveInt(params.get(BridgeBuildFeatureConstants.PARAM_RECENT_LIMIT));
+    int limit = parseRecentBuildLimit(params.get(BridgeBuildFeatureConstants.PARAM_RECENT_LIMIT));
     boolean isMultibranch = Utilities.isBuildConfigMultibranch(buildType);
-    return new MirroredJob(job, buildType.getExternalId(), buildType.getFullName(), limit, false, isMultibranch);
+    return new MirroredJob(
+        connectionId, job, buildType.getExternalId(), buildType.getFullName(), limit, isMultibranch);
   }
 
-  private MirroredJob legacyJobOrNull() {
-    JenkinsBridgeSettings settings = settingsProvider.load();
-    if (!settings.hasMinimumConfiguration()) {
-      return null;
-    }
-    return MirroredJob.fromGlobalSettings(settings);
-  }
-
-  private static int parsePositiveInt(String value) {
-    if (value == null) {
-      return 0;
+  private static int parseRecentBuildLimit(String value) {
+    if (value == null || value.trim().isEmpty()) {
+      return BridgeBuildFeatureConstants.DEFAULT_RECENT_LIMIT;
     }
     try {
-      int parsed = Integer.parseInt(value.trim());
-      return Math.max(parsed, 0);
+      return Math.max(0, Integer.parseInt(value.trim()));
     } catch (NumberFormatException e) {
-      return 0;
+      return BridgeBuildFeatureConstants.DEFAULT_RECENT_LIMIT;
     }
   }
 }

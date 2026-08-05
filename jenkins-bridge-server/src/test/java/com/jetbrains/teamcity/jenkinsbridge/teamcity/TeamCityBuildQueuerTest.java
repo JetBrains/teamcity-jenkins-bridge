@@ -3,6 +3,7 @@ package com.jetbrains.teamcity.jenkinsbridge.teamcity;
 import com.google.gson.JsonParser;
 import com.jetbrains.teamcity.jenkinsbridge.feature.BridgeBuildFeatureConstants;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClient;
+import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClientFactory;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsPullRequestInfo;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsVcsInfo;
 import jetbrains.buildServer.parameters.ParametersProvider;
@@ -31,15 +32,17 @@ public class TeamCityBuildQueuerTest {
   private final ProjectManager projectManager = mock(ProjectManager.class);
   private final BuildCustomizerFactory customizerFactory = mock(BuildCustomizerFactory.class);
   private final JenkinsClient jenkinsClient = mock(JenkinsClient.class);
+  private final JenkinsClientFactory jenkinsClientFactory = mock(JenkinsClientFactory.class);
   private final SBuildType buildType = mock(SBuildType.class);
   private final BuildCustomizerEx customizer = mock(BuildCustomizerEx.class);
 
   private final BuildPromotionEx promotion = mock(BuildPromotionEx.class);
-  private final TeamCityBuildQueuer queuer = new TeamCityBuildQueuer(projectManager, customizerFactory, jenkinsClient);
+  private final TeamCityBuildQueuer queuer = new TeamCityBuildQueuer(projectManager, customizerFactory, jenkinsClientFactory);
 
   @Before
   public void setUp() {
     when(projectManager.findBuildTypeByExternalId(BUILD_TYPE_ID)).thenReturn(buildType);
+    when(jenkinsClientFactory.forBuildType(buildType)).thenReturn(jenkinsClient);
     ParametersProvider parametersProvider = mock(ParametersProvider.class);
     when(parametersProvider.getAll()).thenReturn(Collections.emptyMap());
     when(buildType.getParametersProvider()).thenReturn(parametersProvider);

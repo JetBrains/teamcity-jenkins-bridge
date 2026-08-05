@@ -1,7 +1,7 @@
 package com.jetbrains.teamcity.jenkinsbridge.teamcity;
 
 import com.intellij.openapi.diagnostic.Logger;
-import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClient;
+import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClientFactory;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsVcsInfo;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsVcsRepository;
 import com.jetbrains.teamcity.jenkinsbridge.persistence.BuildMirror;
@@ -38,14 +38,15 @@ public class TeamCityVcsPublisher {
     private final ProjectManager myProjectManager;
     private final TeamCityRunningBuildLocator myBuildLocator;
     private final BuildChainChangesCollector myChangesCollector;
-    private final JenkinsClient myJenkinsClient;
+    private final JenkinsClientFactory myJenkinsClientFactory;
 
     public TeamCityVcsPublisher(ProjectManager projectManager, TeamCityRunningBuildLocator buildLocator,
-                                 BuildChainChangesCollector changesCollector, JenkinsClient jenkinsClient) {
+                                 BuildChainChangesCollector changesCollector,
+                                 JenkinsClientFactory jenkinsClientFactory) {
         myProjectManager = projectManager;
         myBuildLocator = buildLocator;
         myChangesCollector = changesCollector;
-        myJenkinsClient = jenkinsClient;
+        myJenkinsClientFactory = jenkinsClientFactory;
     }
 
     public VcsSyncResult applyVcsToBuild(BuildMirror mirror, JenkinsVcsInfo vcsInfo) {
@@ -61,7 +62,7 @@ public class TeamCityVcsPublisher {
         }
         SProject project = buildType.getProject();
 
-        VcsRefType refType = myJenkinsClient.getBranchRefType(mirror.getJenkinsJob());
+        VcsRefType refType = myJenkinsClientFactory.forBuildType(buildType).getBranchRefType(mirror.getJenkinsJob());
         List<AttachedRepository> attached = ensureVcsRootsAttached(project, buildType, vcsInfo, result, refType);
 
         Map<Long, RepositoryVersion> revisions = new LinkedHashMap<>();

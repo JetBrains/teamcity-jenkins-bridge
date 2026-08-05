@@ -8,11 +8,13 @@
 <div class="jenkinsBridgeImport">
   <h2 class="noBorder">Import Jenkins jobs</h2>
   <p class="grayNote">
-    Lists the top-level jobs at a Jenkins folder path (blank = server root) using the globally
-    configured Jenkins connection, and creates one build configuration per selected job in this
-    project. Selecting an already-imported job refreshes Jenkins parameters on the existing build
-    configuration. Folders cannot be selected; multibranch projects are expanded by the importer.
+    Lists the top-level jobs at a Jenkins folder path (blank = server root) and creates one build
+    configuration per selected job in this project. Selecting an already-imported job refreshes
+    Jenkins parameters on the existing build configuration. Folders cannot be selected, and
+    multibranch projects are expanded by the importer.
   </p>
+
+<%-- TODO: Select the Jenkins connection and add the search bar --%>
 
   <table class="runnerFormTable">
     <tr>
