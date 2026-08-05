@@ -16,6 +16,10 @@ import java.util.Map;
 
 import static com.jetbrains.teamcity.jenkinsbridge.util.Utilities.nullToEmpty;
 
+/**
+ * @deprecated use the in-process TeamCity server API instead.
+ */
+@Deprecated
 public class TeamCityClient {
   private static final String APPLICATION_JSON = "application/json";
   private static final String TEXT_PLAIN = "text/plain";
@@ -31,7 +35,12 @@ public class TeamCityClient {
   }
 
 
+  /**
+   * @deprecated use {@link TeamCityRunningBuildLocator#recoverBuildId(String, String)}, which
+   * needs no TeamCity credentials.
+   */
   // Returns Null if no builds found
+  @Deprecated
   public Long findBuildIdByJenkinsBuildKey(String jenkinsBuildKey) throws BridgeHttpException {
     JenkinsBridgeSettings settings = settingsProvider.load();
     String locator = "property:(name:jenkins.build.key,value:" + jenkinsBuildKey + "),count:1,defaultFilter:false";

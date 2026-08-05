@@ -1,6 +1,7 @@
 package com.jetbrains.teamcity.jenkinsbridge.feature;
 
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClient;
+import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClientFactory;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsJob;
 import jetbrains.buildServer.serverSide.BuildTypeOptions;
 import jetbrains.buildServer.serverSide.DuplicateBuildTypeNameException;
@@ -39,20 +40,30 @@ public class JenkinsJobImporter {
 
   private final ProjectManager projectManager;
   private final ParameterFactory parameterFactory;
-  private final JenkinsClient jenkinsClient;
+  private final JenkinsClientFactory jenkinsClientFactory;
 
   public JenkinsJobImporter(ProjectManager projectManager, ParameterFactory parameterFactory,
-                            JenkinsClient jenkinsClient) {
+                            JenkinsClientFactory jenkinsClientFactory) {
     this.projectManager = projectManager;
     this.parameterFactory = parameterFactory;
-    this.jenkinsClient = jenkinsClient;
+    this.jenkinsClientFactory = jenkinsClientFactory;
   }
 
-  public ImportResult importJobs(String targetProjectExternalId, List<String> jenkinsJobFullNames) {
+  /**
+   * Creates one build configuration per selected Jenkins job.
+   *
+   * @param targetProjectExternalId project the configurations are created in
+   * @param connectionId            id of the Jenkins connection the jobs are read from
+   * @param jenkinsJobFullNames     Jenkins job paths to import
+   * @return what was created, skipped and failed
+   */
+  public ImportResult importJobs(String targetProjectExternalId, String connectionId,
+                                 List<String> jenkinsJobFullNames) {
     SProject project = projectManager.findProjectByExternalId(targetProjectExternalId);
     if (project == null) {
       throw new IllegalArgumentException("Target project not found: " + targetProjectExternalId);
     }
+    JenkinsClient jenkinsClient = jenkinsClientFactory.forConnectionId(project, connectionId);
 
     Set<String> alreadyMirrored = collectMirroredJobs(project);
     ImportResult result = new ImportResult();
@@ -66,7 +77,7 @@ public class JenkinsJobImporter {
       try {
         // TODO: Check if this API call is needed, or if we can fetch the class from elsewhere
         boolean isMultiBranch = JenkinsJob.isMultibranchClass(jenkinsClient.getJobClass(fullName));
-        importJob(project, fullName, isMultiBranch, alreadyMirrored, result);
+        importJob(project, connectionId, jenkinsClient, fullName, isMultiBranch, alreadyMirrored, result);
       } catch (Exception e) {
         result.addFailed(fullName, describeException(e));
       }
@@ -75,25 +86,27 @@ public class JenkinsJobImporter {
     return result;
   }
 
-  private void importJob(SProject project, String fullName, boolean isMultibranch,
-                         Set<String> alreadyMirrored, ImportResult result) {
+  private void importJob(SProject project, String connectionId, JenkinsClient jenkinsClient, String fullName,
+                         boolean isMultibranch, Set<String> alreadyMirrored, ImportResult result) {
     if (alreadyMirrored.contains(fullName)) {
       result.addSkipped(fullName, "already imported");
       return;
     }
-    String externalId = createMirrorConfig(project, fullName, isMultibranch);
+    String externalId = createMirrorConfig(project, connectionId, jenkinsClient, fullName, isMultibranch);
     alreadyMirrored.add(fullName);
     result.addCreated(fullName, externalId);
   }
 
   // Creates a mirror configuration for a single Jenkins job and returns its external id.
-  private String createMirrorConfig(SProject project, String fullName, boolean inMultibranchPipeline) {
+  private String createMirrorConfig(SProject project, String connectionId, JenkinsClient jenkinsClient,
+                                    String fullName, boolean inMultibranchPipeline) {
     String externalId = ExternalIdGenerator.resolveUnique(
         ExternalIdGenerator.baseExternalId(project.getExternalId(), fullName),
         candidate -> projectManager.findBuildTypeByExternalId(candidate) != null);
 
     SBuildType buildType = createBuildType(project, externalId, fullName);
     Map<String, String> featureParams = new LinkedHashMap<>();
+    featureParams.put(BridgeBuildFeatureConstants.PARAM_CONNECTION_ID, connectionId);
     featureParams.put(BridgeBuildFeatureConstants.PARAM_JENKINS_JOB, fullName);
     featureParams.put(BridgeBuildFeatureConstants.PARAM_JENKINS_URL, jenkinsClient.jobUrl(fullName));
     if (inMultibranchPipeline) {

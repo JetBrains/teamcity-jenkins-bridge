@@ -8,17 +8,29 @@ package com.jetbrains.teamcity.jenkinsbridge.feature;
 public final class BridgeBuildFeatureConstants {
   public static final String TYPE = "jenkinsBridge";
 
+  /**
+   * Required. Id of the "Jenkins" project connection that says which Jenkins server to mirror from.
+   */
+  public static final String PARAM_CONNECTION_ID = "connectionId";
+
   /** Required. Jenkins job path (folders separated by {@code /}), e.g. {@code team/my-pipeline}. */
   public static final String PARAM_JENKINS_JOB = "jenkinsJob";
 
   /**
-   * Optional, informational. Absolute Jenkins job URL recorded at import time (e.g. for linking).
-   * The poller does not use it — it reaches Jenkins via the global connection plus the job path.
+   * Read-only, informational. Absolute Jenkins job URL, composed from the selected connection and
+   * the job path. The poller does not use it, it builds the URL from the connection at poll time.
    */
   public static final String PARAM_JENKINS_URL = "jenkinsUrl";
 
-  /** Optional. Per-config cold-start backfill depth; blank falls back to the global default. */
+  /**
+   * Optional. How many of the most recent Jenkins builds to mirror the first time this configuration
+   * is polled, where zero mirrors no historical build. Has no effect once the job has been polled at
+   * least once (for multibranch, this happens once per branch since each branch is a job).
+   */
   public static final String PARAM_RECENT_LIMIT = "recentBuildLimit";
+
+  /** Value prefilled in the UI and used when {@link #PARAM_RECENT_LIMIT} is blank. */
+  public static final int DEFAULT_RECENT_LIMIT = 1;
 
   /**
    * Optional, {@code "true"} when set. Marks the configuration as mirroring a multibranch pipeline.

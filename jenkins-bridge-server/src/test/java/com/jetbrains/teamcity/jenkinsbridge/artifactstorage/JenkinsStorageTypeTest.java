@@ -1,6 +1,6 @@
 package com.jetbrains.teamcity.jenkinsbridge.artifactstorage;
 
-import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClient;
+import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClientFactory;
 import jetbrains.buildServer.serverSide.artifacts.ArtifactStorageTypeRegistry;
 import jetbrains.buildServer.web.openapi.PluginDescriptor;
 import org.junit.Test;
@@ -10,11 +10,11 @@ import static org.mockito.Mockito.mock;
 
 public class JenkinsStorageTypeTest {
 
-  private final JenkinsClient jenkinsClient = mock(JenkinsClient.class);
+  private final JenkinsClientFactory jenkinsClientFactory = mock(JenkinsClientFactory.class);
   private final JenkinsArtifactInfoUtils utils = new JenkinsArtifactInfoUtils();
   private final JenkinsArtifactDownloadSigner signer = new JenkinsArtifactDownloadSigner();
-  private final JenkinsArtifactDownloadProcessor downloadProcessor = new JenkinsArtifactDownloadProcessor(utils, signer, jenkinsClient);
-  private final JenkinsArtifactContentProvider contentProvider = new JenkinsArtifactContentProvider(jenkinsClient, utils);
+  private final JenkinsArtifactDownloadProcessor downloadProcessor = new JenkinsArtifactDownloadProcessor(utils, signer, jenkinsClientFactory);
+  private final JenkinsArtifactContentProvider contentProvider = new JenkinsArtifactContentProvider(jenkinsClientFactory, utils);
   private final JenkinsStorageType storageType = new JenkinsStorageType(mock(ArtifactStorageTypeRegistry.class), mock(PluginDescriptor.class));
 
 

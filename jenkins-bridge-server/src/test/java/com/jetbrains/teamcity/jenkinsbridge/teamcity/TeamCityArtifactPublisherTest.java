@@ -130,7 +130,7 @@ public class TeamCityArtifactPublisherTest {
     private final RunningBuildEx runningBuild;
 
     FixedLocator(RunningBuildEx runningBuild) {
-      super(null, null);
+      super(null, null, null);
       this.runningBuild = runningBuild;
     }
 

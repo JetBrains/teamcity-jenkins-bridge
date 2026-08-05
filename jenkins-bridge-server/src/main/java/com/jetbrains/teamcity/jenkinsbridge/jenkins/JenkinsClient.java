@@ -8,9 +8,8 @@ import com.google.gson.JsonParser;
 import com.jetbrains.teamcity.jenkinsbridge.http.BridgeHttpClient;
 import com.jetbrains.teamcity.jenkinsbridge.http.BridgeHttpException;
 import com.jetbrains.teamcity.jenkinsbridge.http.BridgeHttpResponse;
+import com.jetbrains.teamcity.jenkinsbridge.connection.JenkinsConnection;
 import com.jetbrains.teamcity.jenkinsbridge.model.*;
-import com.jetbrains.teamcity.jenkinsbridge.settings.JenkinsBridgeSettings;
-import com.jetbrains.teamcity.jenkinsbridge.settings.JenkinsBridgeSettingsProvider;
 import com.jetbrains.teamcity.jenkinsbridge.vcs.VcsRefType;
 import com.jetbrains.teamcity.jenkinsbridge.vcs.constants.GitConstants;
 import com.jetbrains.teamcity.jenkinsbridge.xml.JaxbUnmarshaller;
@@ -26,6 +25,10 @@ import java.util.regex.Pattern;
 import static com.jetbrains.teamcity.jenkinsbridge.util.Utilities.nullToEmpty;
 import static com.jetbrains.teamcity.jenkinsbridge.util.Utilities.stringValue;
 
+/**
+ * Talks to one Jenkins server, the one described by the {@link JenkinsConnection} it was created
+ * with. Instances are cheap and are built per connection by {@link JenkinsClientFactory}.
+ */
 public class JenkinsClient {
   // Jenkins embeds invisible ConsoleNote annotations in the raw console as an ANSI "conceal" block:
   // ESC[8m + "ha:" + base64 payload + ESC[0m. Jenkins' own UI hides them; the bridge must strip them
@@ -35,17 +38,23 @@ public class JenkinsClient {
   private static final Pattern CONSOLE_NOTE = Pattern.compile("\\[8m.*?\\[0m");
   private static final Logger LOG = Logger.getInstance(JenkinsClient.class.getName());
 
-  private final JenkinsBridgeSettingsProvider settingsProvider;
+  private final JenkinsConnection myConnection;
   private final BridgeHttpClient httpClient;
   private final JaxbUnmarshaller xmlUnmarshaller;
   private final JsonParser jsonParser = new JsonParser();
 
-  public JenkinsClient(JenkinsBridgeSettingsProvider settingsProvider,
-                       BridgeHttpClient httpClient,
-                       JaxbUnmarshaller xmlUnmarshaller) {
-    this.settingsProvider = settingsProvider;
+  public JenkinsClient(@NotNull JenkinsConnection connection,
+                       @NotNull BridgeHttpClient httpClient,
+                       @NotNull JaxbUnmarshaller xmlUnmarshaller) {
+    this.myConnection = connection;
     this.httpClient = httpClient;
     this.xmlUnmarshaller = xmlUnmarshaller;
+  }
+
+  /** The Jenkins server this client is bound to. */
+  @NotNull
+  public JenkinsConnection getConnection() {
+    return myConnection;
   }
 
   /**
@@ -83,14 +92,13 @@ public class JenkinsClient {
   }
 
   private List<Integer> fetchBuildNumbers(String jobName, String collection) throws BridgeHttpException {
-    JenkinsBridgeSettings settings = settingsProvider.load();
     String tree = collection + "[number]";
-    String url = settings.getJenkinsUrl()
+    String url = myConnection.getUrl()
         + jenkinsJobPath(jobName)
         + "/api/json?tree="
         + encodeQueryValue(tree);
 
-    String response = httpClient.get(url, settings.getJenkinsUser(), settings.getJenkinsToken(), "application/json");
+    String response = httpClient.get(url, myConnection.getUser(), myConnection.getToken(), "application/json");
     JsonObject root = jsonParser.parse(response).getAsJsonObject();
     JsonArray builds = root.getAsJsonArray(collection);
     List<Integer> numbers = new ArrayList<Integer>();
@@ -112,14 +120,13 @@ public class JenkinsClient {
   }
 
   private List<JenkinsBuildInfo> fetchBuildInfos(String jobName, String collection) throws BridgeHttpException {
-    JenkinsBridgeSettings settings = settingsProvider.load();
     String tree = collection + "[number,timestamp,url]";
-    String url = settings.getJenkinsUrl()
+    String url = myConnection.getUrl()
         + jenkinsJobPath(jobName)
         + "/api/json?tree="
         + encodeQueryValue(tree);
 
-    String response = httpClient.get(url, settings.getJenkinsUser(), settings.getJenkinsToken(), "application/json");
+    String response = httpClient.get(url, myConnection.getUser(), myConnection.getToken(), "application/json");
     JsonObject root = jsonParser.parse(response).getAsJsonObject();
     JsonArray builds = root.getAsJsonArray(collection);
     List<JenkinsBuildInfo> result = new ArrayList<JenkinsBuildInfo>();
@@ -137,28 +144,26 @@ public class JenkinsClient {
   }
 
   public JenkinsBuildInfo getBuildInfo(String jobName, int buildNumber) throws BridgeHttpException {
-    JenkinsBridgeSettings settings = settingsProvider.load();
     String tree = "number,building,result,timestamp,duration,estimatedDuration,url";
-    String url = settings.getJenkinsUrl()
+    String url = myConnection.getUrl()
         + jenkinsJobPath(jobName)
         + "/"
         + buildNumber
         + "/api/json?tree="
         + encodeQueryValue(tree);
 
-    String response = httpClient.get(url, settings.getJenkinsUser(), settings.getJenkinsToken(), "application/json");
+    String response = httpClient.get(url, myConnection.getUser(), myConnection.getToken(), "application/json");
     return JenkinsBuildInfo.fromJson(jsonParser.parse(response).getAsJsonObject());
   }
 
   @NotNull
   public JenkinsVcsInfo getBuildVcs(String jobName, int buildNumber) throws BridgeHttpException {
-    JenkinsBridgeSettings settings = settingsProvider.load();
     String tree = "actions[_class,"
         + GitConstants.API_FIELDS
 //      + ','
 //      + MercurialConstants.API_FIELDS
         + ']';
-    String url = settings.getJenkinsUrl()
+    String url = myConnection.getUrl()
         + jenkinsJobPath(jobName)
         + "/"
         + buildNumber
@@ -166,7 +171,7 @@ public class JenkinsClient {
         + encodeQueryValue(tree);
 
     try {
-      String response = httpClient.get(url, settings.getJenkinsUser(), settings.getJenkinsToken(), "application/json");
+      String response = httpClient.get(url, myConnection.getUser(), myConnection.getToken(), "application/json");
       return JenkinsVcsInfo.fromJson(JsonParser.parseString(response).getAsJsonObject());
     } catch (BridgeHttpException e) {
       if (e.getStatusCode() == 404) {
@@ -181,9 +186,8 @@ public class JenkinsClient {
    * progressive log API, instead of re-downloading the whole console each poll.
    */
   public JenkinsLogChunk getProgressiveLog(String jobName, int buildNumber, long start) throws BridgeHttpException {
-    JenkinsBridgeSettings settings = settingsProvider.load();
     long safeStart = Math.max(0L, start);
-    String url = settings.getJenkinsUrl()
+    String url = myConnection.getUrl()
         + jenkinsJobPath(jobName)
         + "/"
         + buildNumber
@@ -191,7 +195,7 @@ public class JenkinsClient {
         + safeStart;
 
     BridgeHttpResponse response = httpClient.getResponse(
-        url, settings.getJenkinsUser(), settings.getJenkinsToken(), "text/plain");
+        url, myConnection.getUser(), myConnection.getToken(), "text/plain");
 
     String rawBody = response.getBody();
     // X-Text-Size is the new total byte size; fall back to advancing by the raw body length if
@@ -224,9 +228,8 @@ public class JenkinsClient {
   }
 
   public JenkinsTestReport getTestReport(String jobName, int buildNumber) throws BridgeHttpException {
-    JenkinsBridgeSettings settings = settingsProvider.load();
     String tree = "suites[name,cases[className,name,status,duration,errorDetails,errorStackTrace,skippedMessage,stdout,stderr]]";
-    String url = settings.getJenkinsUrl()
+    String url = myConnection.getUrl()
         + jenkinsJobPath(jobName)
         + "/"
         + buildNumber
@@ -234,7 +237,7 @@ public class JenkinsClient {
         + encodeQueryValue(tree);
 
     try {
-      String response = httpClient.get(url, settings.getJenkinsUser(), settings.getJenkinsToken(), "application/json");
+      String response = httpClient.get(url, myConnection.getUser(), myConnection.getToken(), "application/json");
       return JenkinsTestReport.fromJson(jsonParser.parse(response).getAsJsonObject());
     } catch (BridgeHttpException e) {
       if (e.getStatusCode() == 404) {
@@ -245,9 +248,8 @@ public class JenkinsClient {
   }
 
   public JenkinsArtifacts getArtifacts(String jobName, int buildNumber) throws BridgeHttpException {
-    JenkinsBridgeSettings settings = settingsProvider.load();
     String tree = "artifacts[fileName,relativePath]";
-    String buildUrl = settings.getJenkinsUrl()
+    String buildUrl = myConnection.getUrl()
         + jenkinsJobPath(jobName)
         + "/"
         + buildNumber;
@@ -256,7 +258,7 @@ public class JenkinsClient {
         + encodeQueryValue(tree);
 
     try {
-      String response = httpClient.get(url, settings.getJenkinsUser(), settings.getJenkinsToken(), "application/json");
+      String response = httpClient.get(url, myConnection.getUser(), myConnection.getToken(), "application/json");
       JenkinsArtifacts artifacts = JenkinsArtifacts.fromJson(JsonParser.parseString(response).getAsJsonObject());
       List<JenkinsArtifact> sizedArtifacts = new ArrayList<>();
       for (JenkinsArtifact artifact : artifacts.getArtifacts()) {
@@ -265,7 +267,7 @@ public class JenkinsClient {
         // TODO: Alternatively, the /artifact HTML page can be scraped to get the sizes
         int size = 0;
         try {
-          String sizeString = httpClient.head(artifactUrl, settings.getJenkinsUser(), settings.getJenkinsToken(), "*/*").getHeader("Content-Length");
+          String sizeString = httpClient.head(artifactUrl, myConnection.getUser(), myConnection.getToken(), "*/*").getHeader("Content-Length");
           size = Integer.parseInt(sizeString);
         } catch (BridgeHttpException e) {
           LOG.warn("Failed to get artifact size for " + artifactUrl, e);
@@ -286,8 +288,7 @@ public class JenkinsClient {
    * {@code <jenkinsUrl>/job/<job>/<buildNumber>/artifact/<relativePath>}.
    */
   public String artifactUrl(String jobName, int buildNumber, String relativePath) {
-    JenkinsBridgeSettings settings = settingsProvider.load();
-    return settings.getJenkinsUrl()
+    return myConnection.getUrl()
         + jenkinsJobPath(jobName)
         + "/"
         + buildNumber
@@ -301,25 +302,23 @@ public class JenkinsClient {
       String relativePath,
       BridgeHttpClient.StreamHandler handler
   ) throws BridgeHttpException {
-    JenkinsBridgeSettings settings = settingsProvider.load();
     String url = artifactUrl(jobName, buildNumber, relativePath);
-    httpClient.getStream(url, settings.getJenkinsUser(), settings.getJenkinsToken(), "*/*", handler);
+    httpClient.getStream(url, myConnection.getUser(), myConnection.getToken(), "*/*", handler);
   }
 
   /**
    * Lists the top-level jobs at {@code folderPath} (blank = Jenkins root). Does not recurse into
    * folders or expand multibranch projects; folder/multibranch entries are returned but marked
-   * non-importable. Reuses the global Jenkins connection.
+   * non-importable. Reads from this client's Jenkins connection.
    */
   public List<JenkinsJob> listJobs(String folderPath) throws BridgeHttpException {
-    JenkinsBridgeSettings settings = settingsProvider.load();
     String tree = "jobs[name,fullName,url,_class,buildable,color]";
-    String url = settings.getJenkinsUrl()
+    String url = myConnection.getUrl()
         + jenkinsJobPath(folderPath == null ? "" : folderPath)
         + "/api/json?tree="
         + encodeQueryValue(tree);
 
-    String response = httpClient.get(url, settings.getJenkinsUser(), settings.getJenkinsToken(), "application/json");
+    String response = httpClient.get(url, myConnection.getUser(), myConnection.getToken(), "application/json");
     JsonObject root = JsonParser.parseString(response).getAsJsonObject();
     JsonArray jobs = root.getAsJsonArray("jobs");
     List<JenkinsJob> result = new ArrayList<JenkinsJob>();
@@ -339,14 +338,13 @@ public class JenkinsClient {
    * Maps each branch job's {@code fullName} to its builds.
    */
   public Map<String, List<JenkinsBuildInfo>> listBranchBuilds(String pipelinePath) throws BridgeHttpException {
-    JenkinsBridgeSettings settings = settingsProvider.load();
     String tree = "jobs[fullName,builds[number,timestamp,url]]";
-    String url = settings.getJenkinsUrl()
+    String url = myConnection.getUrl()
         + jenkinsJobPath(pipelinePath == null ? "" : pipelinePath)
         + "/api/json?tree="
         + encodeQueryValue(tree);
 
-    String response = httpClient.get(url, settings.getJenkinsUser(), settings.getJenkinsToken(), "application/json");
+    String response = httpClient.get(url, myConnection.getUser(), myConnection.getToken(), "application/json");
     JsonObject root = JsonParser.parseString(response).getAsJsonObject();
     JsonArray jobs = root.getAsJsonArray("jobs");
     Map<String, List<JenkinsBuildInfo>> result = new LinkedHashMap<>();
@@ -382,22 +380,21 @@ public class JenkinsClient {
    */
   @NotNull
   public String getJobClass(String fullName) throws BridgeHttpException {
-    JenkinsBridgeSettings settings = settingsProvider.load();
-    String url = settings.getJenkinsUrl()
+    String url = myConnection.getUrl()
         + jenkinsJobPath(fullName == null ? "" : fullName)
         + "/api/json?tree="
         + encodeQueryValue("_class");
 
-    String response = httpClient.get(url, settings.getJenkinsUser(), settings.getJenkinsToken(), "application/json");
+    String response = httpClient.get(url, myConnection.getUser(), myConnection.getToken(), "application/json");
     JsonObject root = JsonParser.parseString(response).getAsJsonObject();
     return stringValue(root, "_class");
   }
 
   /**
-   * Absolute Jenkins job page URL for {@code fullName}, derived from the global base URL.
+   * Absolute Jenkins job page URL for {@code fullName}, derived from the connection's base URL.
    */
   public String jobUrl(String fullName) {
-    return settingsProvider.load().getJenkinsUrl()
+    return myConnection.getUrl()
         + jenkinsJobPath(fullName == null ? "" : fullName)
         + "/";
   }
@@ -408,15 +405,14 @@ public class JenkinsClient {
    * fall back to the flat console log.
    */
   public JenkinsStages getStages(String jobName, int buildNumber) throws BridgeHttpException {
-    JenkinsBridgeSettings settings = settingsProvider.load();
-    String url = settings.getJenkinsUrl()
+    String url = myConnection.getUrl()
         + jenkinsJobPath(jobName)
         + "/"
         + buildNumber
         + "/wfapi/describe";
 
     try {
-      String response = httpClient.get(url, settings.getJenkinsUser(), settings.getJenkinsToken(), "application/json");
+      String response = httpClient.get(url, myConnection.getUser(), myConnection.getToken(), "application/json");
       return JenkinsStages.fromJson(jsonParser.parse(response).getAsJsonObject());
     } catch (BridgeHttpException e) {
       if (e.getStatusCode() == 404) {
@@ -454,8 +450,7 @@ public class JenkinsClient {
       String flowIdPrefix,
       List<String> previousDiagnostics
   ) throws BridgeHttpException {
-    JenkinsBridgeSettings settings = settingsProvider.load();
-    String url = settings.getJenkinsUrl()
+    String url = myConnection.getUrl()
         + jenkinsJobPath(jobName)
         + "/"
         + buildNumber
@@ -468,7 +463,7 @@ public class JenkinsClient {
     JsonObject root;
     JenkinsStages stages;
     try {
-      String response = httpClient.get(url, settings.getJenkinsUser(), settings.getJenkinsToken(), "application/json");
+      String response = httpClient.get(url, myConnection.getUser(), myConnection.getToken(), "application/json");
       root = jsonParser.parse(response).getAsJsonObject();
       stages = JenkinsStages.fromJson(root);
     } catch (BridgeHttpException e) {
@@ -503,8 +498,7 @@ public class JenkinsClient {
   ) throws BridgeHttpException {
     List<String> diagnostics = new ArrayList<String>();
 
-    JenkinsBridgeSettings settings = settingsProvider.load();
-    String url = settings.getJenkinsUrl()
+    String url = myConnection.getUrl()
         + "/blue/rest/organizations/jenkins"
         + blueOceanPipelinePath(jobName)
         + "/runs/"
@@ -513,7 +507,7 @@ public class JenkinsClient {
 
     JsonArray nodes;
     try {
-      String response = httpClient.get(url, settings.getJenkinsUser(), settings.getJenkinsToken(), "application/json");
+      String response = httpClient.get(url, myConnection.getUser(), myConnection.getToken(), "application/json");
       JsonElement parsed = jsonParser.parse(response);
       if (parsed.isJsonArray()) {
         nodes = parsed.getAsJsonArray();
@@ -794,8 +788,7 @@ public class JenkinsClient {
 
   private JsonObject getStageNodeDescribe(String jobName, int buildNumber, String stageId, List<String> diagnostics)
       throws BridgeHttpException {
-    JenkinsBridgeSettings settings = settingsProvider.load();
-    String url = settings.getJenkinsUrl()
+    String url = myConnection.getUrl()
         + jenkinsJobPath(jobName)
         + "/"
         + buildNumber
@@ -804,7 +797,7 @@ public class JenkinsClient {
         + "/wfapi/describe";
 
     try {
-      String response = httpClient.get(url, settings.getJenkinsUser(), settings.getJenkinsToken(), "application/json");
+      String response = httpClient.get(url, myConnection.getUser(), myConnection.getToken(), "application/json");
       return jsonParser.parse(response).getAsJsonObject();
     } catch (BridgeHttpException e) {
       if (e.getStatusCode() == 404) {
@@ -822,8 +815,7 @@ public class JenkinsClient {
    * ConsoleNote annotations stripped. A {@code 404} (node not yet materialized) yields empty text.
    */
   JenkinsStageLog getNodeLog(String jobName, int buildNumber, String nodeId) throws BridgeHttpException {
-    JenkinsBridgeSettings settings = settingsProvider.load();
-    String url = settings.getJenkinsUrl()
+    String url = myConnection.getUrl()
         + jenkinsJobPath(jobName)
         + "/"
         + buildNumber
@@ -832,7 +824,7 @@ public class JenkinsClient {
         + "/wfapi/log";
 
     try {
-      String response = httpClient.get(url, settings.getJenkinsUser(), settings.getJenkinsToken(), "application/json");
+      String response = httpClient.get(url, myConnection.getUser(), myConnection.getToken(), "application/json");
       JenkinsStageLog log = JenkinsStageLog.fromJson(jsonParser.parse(response).getAsJsonObject());
       return JenkinsStageLog.of(stripConsoleNotes(log.getText()));
     } catch (BridgeHttpException e) {
@@ -850,13 +842,12 @@ public class JenkinsClient {
    */
   @NotNull
   public Optional<JenkinsPullRequestInfo> getPullRequestInfo(String jobName) {
-    JenkinsBridgeSettings settings = settingsProvider.load();
-    String url = settings.getJenkinsUrl()
+    String url = myConnection.getUrl()
         + jenkinsJobPath(jobName)
         + "/config.xml";
 
     try {
-      String response = httpClient.get(url, settings.getJenkinsUser(), settings.getJenkinsToken(), "application/xml");
+      String response = httpClient.get(url, myConnection.getUser(), myConnection.getToken(), "application/xml");
       var infoResult = JenkinsPullRequestInfo.fromConfigXml(response, xmlUnmarshaller);
       if (infoResult.isPresent()) {
         var info = infoResult.get();
@@ -878,13 +869,12 @@ public class JenkinsClient {
    */
   @NotNull
   public VcsRefType getBranchRefType(String jobName) {
-    JenkinsBridgeSettings settings = settingsProvider.load();
-    String url = settings.getJenkinsUrl()
+    String url = myConnection.getUrl()
         + jenkinsJobPath(jobName)
         + "/config.xml";
 
     try {
-      String response = httpClient.get(url, settings.getJenkinsUser(), settings.getJenkinsToken(), "application/xml");
+      String response = httpClient.get(url, myConnection.getUser(), myConnection.getToken(), "application/xml");
       return JenkinsBranchHead.refType(response, xmlUnmarshaller);
     } catch (BridgeHttpException e) {
       LOG.warn("Failed to read the config of branch job " + jobName, e);
@@ -897,15 +887,14 @@ public class JenkinsClient {
    * {@code 404}). Drives the TeamCity trigger form and validates which values are accepted.
    */
   public JenkinsJobParameters getJobParameters(String jobName) throws BridgeHttpException {
-    JenkinsBridgeSettings settings = settingsProvider.load();
     String tree = "property[parameterDefinitions[name,type,defaultParameterValue[value],choices]]";
-    String url = settings.getJenkinsUrl()
+    String url = myConnection.getUrl()
         + jenkinsJobPath(jobName)
         + "/api/json?tree="
         + encodeQueryValue(tree);
 
     try {
-      String response = httpClient.get(url, settings.getJenkinsUser(), settings.getJenkinsToken(), "application/json");
+      String response = httpClient.get(url, myConnection.getUser(), myConnection.getToken(), "application/json");
       return JenkinsJobParameters.fromJson(jsonParser.parse(response).getAsJsonObject());
     } catch (BridgeHttpException e) {
       if (e.getStatusCode() == 404) {
@@ -920,9 +909,8 @@ public class JenkinsClient {
    * non-parameterized builds, builds whose ParametersAction is absent, or a {@code 404}.
    */
   public JenkinsBuildParameters getBuildParameters(String jobName, int buildNumber) throws BridgeHttpException {
-    JenkinsBridgeSettings settings = settingsProvider.load();
     String tree = "actions[parameters[name,value,_class]]";
-    String url = settings.getJenkinsUrl()
+    String url = myConnection.getUrl()
         + jenkinsJobPath(jobName)
         + "/"
         + buildNumber
@@ -930,7 +918,7 @@ public class JenkinsClient {
         + encodeQueryValue(tree);
 
     try {
-      String response = httpClient.get(url, settings.getJenkinsUser(), settings.getJenkinsToken(), "application/json");
+      String response = httpClient.get(url, myConnection.getUser(), myConnection.getToken(), "application/json");
       return JenkinsBuildParameters.fromJson(jsonParser.parse(response).getAsJsonObject());
     } catch (BridgeHttpException e) {
       if (e.getStatusCode() == 404) {
@@ -945,10 +933,9 @@ public class JenkinsClient {
    * {@link JenkinsCrumb#disabled()} is returned and no crumb header is sent on the trigger POST.
    */
   public JenkinsCrumb getCrumb() throws BridgeHttpException {
-    JenkinsBridgeSettings settings = settingsProvider.load();
-    String url = settings.getJenkinsUrl() + "/crumbIssuer/api/json";
+    String url = myConnection.getUrl() + "/crumbIssuer/api/json";
     try {
-      String response = httpClient.get(url, settings.getJenkinsUser(), settings.getJenkinsToken(), "application/json");
+      String response = httpClient.get(url, myConnection.getUser(), myConnection.getToken(), "application/json");
       return JenkinsCrumb.fromJson(jsonParser.parse(response).getAsJsonObject());
     } catch (BridgeHttpException e) {
       if (e.getStatusCode() == 404) {
@@ -965,10 +952,9 @@ public class JenkinsClient {
    * Jenkins assigns a build number.
    */
   public String triggerBuild(String jobName, Map<String, String> parameters) throws BridgeHttpException {
-    JenkinsBridgeSettings settings = settingsProvider.load();
     boolean parameterized = parameters != null && !parameters.isEmpty();
 
-    String url = settings.getJenkinsUrl()
+    String url = myConnection.getUrl()
         + jenkinsJobPath(jobName)
         + "/"
         + (parameterized ? "buildWithParameters" : "build");
@@ -982,7 +968,7 @@ public class JenkinsClient {
     }
 
     BridgeHttpResponse response = httpClient.postResponse(
-        url, settings.getJenkinsUser(), settings.getJenkinsToken(),
+        url, myConnection.getUser(), myConnection.getToken(),
         body, "application/x-www-form-urlencoded", "application/json", headers);
 
     String location = response.getHeader("Location");

@@ -4,11 +4,13 @@ import com.jetbrains.teamcity.jenkinsbridge.artifactstorage.ExpiringSignature;
 import com.jetbrains.teamcity.jenkinsbridge.artifactstorage.JenkinsArtifactContentProvider;
 import com.jetbrains.teamcity.jenkinsbridge.artifactstorage.JenkinsArtifactDownloadSigner;
 import com.jetbrains.teamcity.jenkinsbridge.artifactstorage.JenkinsArtifactInfoUtils;
+import com.jetbrains.teamcity.jenkinsbridge.connection.JenkinsConnection;
 import com.jetbrains.teamcity.jenkinsbridge.http.BridgeHttpClient;
 import com.jetbrains.teamcity.jenkinsbridge.http.BridgeHttpException;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClient;
-import com.jetbrains.teamcity.jenkinsbridge.settings.JenkinsBridgeSettings;
-import com.jetbrains.teamcity.jenkinsbridge.settings.JenkinsBridgeSettingsProvider;
+import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClientFactory;
+import jetbrains.buildServer.serverSide.BuildPromotion;
+import jetbrains.buildServer.serverSide.BuildPromotionManager;
 import jetbrains.buildServer.web.openapi.WebControllerManager;
 import org.junit.Test;
 import org.springframework.web.servlet.ModelAndView;
@@ -25,26 +27,24 @@ import java.nio.charset.StandardCharsets;
 
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertNull;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 public class JenkinsArtifactSignedDownloadControllerTest {
   private static final Charset OUR_CHARSET = StandardCharsets.UTF_8;
+  private static final long BUILD_ID = 4242L;
+
   private final JenkinsArtifactDownloadSigner signer = new JenkinsArtifactDownloadSigner();
-  private final JenkinsBridgeSettings settings = mock(JenkinsBridgeSettings.class);
-  private final JenkinsBridgeSettingsProvider settingsProvider = mock(JenkinsBridgeSettingsProvider.class);
+  private final JenkinsClientFactory jenkinsClientFactory = mock(JenkinsClientFactory.class);
+  private final BuildPromotionManager buildPromotionManager = mock(BuildPromotionManager.class);
 
   @Test
   public void streamsTheArtifactWhenTheSignatureIsValid() throws Exception {
-    when(settings.getJenkinsUrl()).thenReturn("http://jenkins.instance");
-    when(settingsProvider.load()).thenReturn(settings);
-    JenkinsClient jenkinsClient = new JenkinsClient(settingsProvider, new StubStreamHttpClient("artifact bytes"), null);
-    JenkinsArtifactContentProvider contentProvider = new JenkinsArtifactContentProvider(jenkinsClient, new JenkinsArtifactInfoUtils());
-    JenkinsArtifactSignedDownloadController controller = new JenkinsArtifactSignedDownloadController(
-        mock(WebControllerManager.class), contentProvider, signer);
+    JenkinsArtifactSignedDownloadController controller = controller("artifact bytes");
 
-    ExpiringSignature signed = signer.sign("job", 7, "target/app.jar");
+    ExpiringSignature signed = signer.sign(BUILD_ID, "job", 7, "target/app.jar");
     HttpServletRequest request = requestWith("job", "7", "target/app.jar", signed.expiry(), signed.signature());
     HttpServletResponse response = mock(HttpServletResponse.class);
     FakeOutputStream out = new FakeOutputStream();
@@ -59,16 +59,11 @@ public class JenkinsArtifactSignedDownloadControllerTest {
 
   @Test
   public void rejectsAnInvalidSignatureWith403() throws Exception {
-    JenkinsClient jenkinsClient = new JenkinsClient(settingsProvider, new StubStreamHttpClient("artifact bytes"), null);
-    JenkinsArtifactContentProvider contentProvider = new JenkinsArtifactContentProvider(jenkinsClient, new JenkinsArtifactInfoUtils());
-    JenkinsArtifactSignedDownloadController controller = new JenkinsArtifactSignedDownloadController(
-        mock(WebControllerManager.class), contentProvider, signer);
+    JenkinsArtifactSignedDownloadController controller = controller("artifact bytes");
 
-    long expiry = signer.sign("job", 7, "target/app.jar").expiry();
+    long expiry = signer.sign(BUILD_ID, "job", 7, "target/app.jar").expiry();
     HttpServletRequest request = requestWith("job", "7", "target/app.jar", expiry, "not-the-real-signature");
-    HttpServletResponse response = mock(HttpServletResponse.class);
-    StringWriter body = new StringWriter();
-    when(response.getWriter()).thenReturn(new PrintWriter(body));
+    HttpServletResponse response = responseCollectingBody();
 
     controller.doHandle(request, response);
 
@@ -77,17 +72,24 @@ public class JenkinsArtifactSignedDownloadControllerTest {
 
   @Test
   public void rejectsAnExpiredSignatureWith403() throws Exception {
-    JenkinsClient jenkinsClient = new JenkinsClient(settingsProvider, new StubStreamHttpClient("artifact bytes"), null);
-    JenkinsArtifactContentProvider contentProvider = new JenkinsArtifactContentProvider(jenkinsClient, new JenkinsArtifactInfoUtils());
-    JenkinsArtifactSignedDownloadController controller = new JenkinsArtifactSignedDownloadController(
-        mock(WebControllerManager.class), contentProvider, signer);
+    JenkinsArtifactSignedDownloadController controller = controller("artifact bytes");
 
-    long expiry = 0L;
-    ExpiringSignature signed = signer.sign("job", 7, "target/app.jar");
-    HttpServletRequest request = requestWith("job", "7", "target/app.jar", expiry, signed.signature());
-    HttpServletResponse response = mock(HttpServletResponse.class);
-    StringWriter body = new StringWriter();
-    when(response.getWriter()).thenReturn(new PrintWriter(body));
+    ExpiringSignature signed = signer.sign(BUILD_ID, "job", 7, "target/app.jar");
+    HttpServletRequest request = requestWith("job", "7", "target/app.jar", 0L, signed.signature());
+    HttpServletResponse response = responseCollectingBody();
+
+    controller.doHandle(request, response);
+
+    verify(response).setStatus(403);
+  }
+
+  @Test
+  public void rejectsASignatureIssuedForAnotherBuildWith403() throws Exception {
+    JenkinsArtifactSignedDownloadController controller = controller("artifact bytes");
+
+    ExpiringSignature signed = signer.sign(BUILD_ID + 1, "job", 7, "target/app.jar");
+    HttpServletRequest request = requestWith("job", "7", "target/app.jar", signed.expiry(), signed.signature());
+    HttpServletResponse response = responseCollectingBody();
 
     controller.doHandle(request, response);
 
@@ -96,19 +98,34 @@ public class JenkinsArtifactSignedDownloadControllerTest {
 
   @Test
   public void respondsWith400WhenParametersAreMissing() throws Exception {
-    JenkinsClient jenkinsClient = new JenkinsClient(settingsProvider, new StubStreamHttpClient("artifact bytes"), null);
-    JenkinsArtifactContentProvider contentProvider = new JenkinsArtifactContentProvider(jenkinsClient, new JenkinsArtifactInfoUtils());
-    JenkinsArtifactSignedDownloadController controller = new JenkinsArtifactSignedDownloadController(
-        mock(WebControllerManager.class), contentProvider, signer);
+    JenkinsArtifactSignedDownloadController controller = controller("artifact bytes");
 
     HttpServletRequest request = mock(HttpServletRequest.class);
-    HttpServletResponse response = mock(HttpServletResponse.class);
-    StringWriter body = new StringWriter();
-    when(response.getWriter()).thenReturn(new PrintWriter(body));
+    HttpServletResponse response = responseCollectingBody();
 
     controller.doHandle(request, response);
 
     verify(response).setStatus(400);
+  }
+
+  private JenkinsArtifactSignedDownloadController controller(String artifactContent) {
+    JenkinsClient jenkinsClient = new JenkinsClient(
+        new JenkinsConnection("http://jenkins.instance", "user", "token"),
+        new StubStreamHttpClient(artifactContent),
+        null);
+    when(jenkinsClientFactory.forBuildPromotion(any(BuildPromotion.class))).thenReturn(jenkinsClient);
+    when(buildPromotionManager.findPromotionOrReplacement(BUILD_ID)).thenReturn(mock(BuildPromotion.class));
+
+    JenkinsArtifactContentProvider contentProvider =
+        new JenkinsArtifactContentProvider(jenkinsClientFactory, new JenkinsArtifactInfoUtils());
+    return new JenkinsArtifactSignedDownloadController(
+        mock(WebControllerManager.class), contentProvider, signer, buildPromotionManager, jenkinsClientFactory);
+  }
+
+  private static HttpServletResponse responseCollectingBody() throws Exception {
+    HttpServletResponse response = mock(HttpServletResponse.class);
+    when(response.getWriter()).thenReturn(new PrintWriter(new StringWriter()));
+    return response;
   }
 
   private static HttpServletRequest requestWith(
@@ -119,6 +136,7 @@ public class JenkinsArtifactSignedDownloadControllerTest {
     when(request.getParameter("path")).thenReturn(path);
     when(request.getParameter("expires")).thenReturn(String.valueOf(expiry));
     when(request.getParameter("signature")).thenReturn(signature);
+    when(request.getParameter("buildId")).thenReturn(String.valueOf(BUILD_ID));
     return request;
   }
 

@@ -1,6 +1,7 @@
 package com.jetbrains.teamcity.jenkinsbridge.artifactstorage;
 
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClient;
+import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClientFactory;
 import com.jetbrains.teamcity.jenkinsbridge.web.JenkinsArtifactSignedDownloadController;
 import jetbrains.buildServer.artifacts.ArtifactData;
 import jetbrains.buildServer.serverSide.BuildPromotion;
@@ -18,15 +19,23 @@ import java.util.Map;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentCaptor.forClass;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 public class JenkinsArtifactDownloadProcessorTest {
+  private static final long BUILD_ID = 4242L;
+
   private final JenkinsArtifactDownloadSigner signer = new JenkinsArtifactDownloadSigner();
   private final JenkinsClient jenkinsClient = mock(JenkinsClient.class);
+  private final JenkinsClientFactory jenkinsClientFactory = mock(JenkinsClientFactory.class);
   private final JenkinsArtifactDownloadProcessor processor =
-      new JenkinsArtifactDownloadProcessor(new JenkinsArtifactInfoUtils(), signer, jenkinsClient);
+      new JenkinsArtifactDownloadProcessor(new JenkinsArtifactInfoUtils(), signer, jenkinsClientFactory);
+
+  public JenkinsArtifactDownloadProcessorTest() {
+    when(jenkinsClientFactory.forBuildPromotion(any(BuildPromotion.class))).thenReturn(jenkinsClient);
+  }
 
   @Test
   public void processDownloadRedirectsToTheSignedDownloadControllerForAnAgentRequest() throws IOException {
@@ -46,7 +55,9 @@ public class JenkinsArtifactDownloadProcessorTest {
     assertEquals("folder/job", params.get("job"));
     assertEquals("7", params.get("build"));
     assertEquals("target/app.jar", params.get("path"));
+    assertEquals(String.valueOf(BUILD_ID), params.get("buildId"));
     assertTrue(signer.isValid(
+        Long.parseLong(params.get("buildId")),
         params.get("job"),
         Integer.parseInt(params.get("build")),
         params.get("path"),
@@ -97,6 +108,7 @@ public class JenkinsArtifactDownloadProcessorTest {
 
   private static StoredBuildArtifactInfo artifactInfo(String job, String buildNumber, String relativePath) {
     BuildPromotion promotion = mock(BuildPromotion.class);
+    when(promotion.getId()).thenReturn(BUILD_ID);
     when(promotion.getParameterValue("jenkins.job")).thenReturn(job);
     when(promotion.getParameterValue("jenkins.build.number")).thenReturn(buildNumber);
 

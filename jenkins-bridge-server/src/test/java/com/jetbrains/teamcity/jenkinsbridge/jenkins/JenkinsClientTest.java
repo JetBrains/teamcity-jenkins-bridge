@@ -4,14 +4,12 @@ import com.jetbrains.teamcity.jenkinsbridge.http.BridgeHttpClient;
 import com.jetbrains.teamcity.jenkinsbridge.http.BridgeHttpException;
 import com.jetbrains.teamcity.jenkinsbridge.http.BridgeHttpResponse;
 import com.jetbrains.teamcity.jenkinsbridge.model.*;
-import com.jetbrains.teamcity.jenkinsbridge.settings.JenkinsBridgeSettings;
-import com.jetbrains.teamcity.jenkinsbridge.settings.JenkinsBridgeSettingsProvider;
+import com.jetbrains.teamcity.jenkinsbridge.connection.JenkinsConnection;
 import com.jetbrains.teamcity.jenkinsbridge.xml.JaxbUnmarshaller;
 import com.jetbrains.teamcity.jenkinsbridge.xml.XmlReaderFactory;
 import org.junit.Test;
 
 import java.io.InputStream;
-import java.lang.reflect.Constructor;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -29,7 +27,7 @@ public class JenkinsClientTest {
   @Test
   public void returnsEmptyReportWhenJenkinsHasNoTestReport() throws Exception {
     NotFoundHttpClient httpClient = new NotFoundHttpClient();
-    JenkinsClient client = new JenkinsClient(new StaticSettingsProvider(), httpClient, newJaxbUnmarshaller());
+    JenkinsClient client = new JenkinsClient(testConnection(), httpClient, newJaxbUnmarshaller());
 
     JenkinsTestReport report = client.getTestReport("folder/job", 7);
 
@@ -44,7 +42,7 @@ public class JenkinsClientTest {
         + "{\"fileName\":\"app.jar\",\"relativePath\":\"target/app.jar\"},"
         + "{\"fileName\":\"report.txt\",\"relativePath\":\"reports/unit/report.txt\"}"
         + "]}";
-    JenkinsClient client = new JenkinsClient(new StaticSettingsProvider(), httpClient, newJaxbUnmarshaller());
+    JenkinsClient client = new JenkinsClient(testConnection(), httpClient, newJaxbUnmarshaller());
 
     JenkinsArtifacts artifacts = client.getArtifacts("folder/job", 7);
 
@@ -59,7 +57,7 @@ public class JenkinsClientTest {
   public void getArtifactsReturnsEmptyWhenArrayMissing() throws Exception {
     StubResponseHttpClient httpClient = new StubResponseHttpClient();
     httpClient.body = "{}";
-    JenkinsClient client = new JenkinsClient(new StaticSettingsProvider(), httpClient, newJaxbUnmarshaller());
+    JenkinsClient client = new JenkinsClient(testConnection(), httpClient, newJaxbUnmarshaller());
 
     assertTrue(client.getArtifacts("job", 3).isEmpty());
   }
@@ -78,7 +76,7 @@ public class JenkinsClientTest {
         + "\"branch\":[{\"name\":\"refs/remotes/origin/master\"}]},"
         + "\"remoteUrls\":[\"https://github.com/org/other-repo.git\"]}"
         + "]}";
-    JenkinsClient client = new JenkinsClient(new StaticSettingsProvider(), httpClient, newJaxbUnmarshaller());
+    JenkinsClient client = new JenkinsClient(testConnection(), httpClient, newJaxbUnmarshaller());
 
     JenkinsVcsInfo vcsInfo = client.getBuildVcs("folder/job", 7);
 
@@ -99,7 +97,7 @@ public class JenkinsClientTest {
   @Test
   public void getBuildVcsReturnsEmptyOn404() throws Exception {
     NotFoundHttpClient httpClient = new NotFoundHttpClient();
-    JenkinsClient client = new JenkinsClient(new StaticSettingsProvider(), httpClient, newJaxbUnmarshaller());
+    JenkinsClient client = new JenkinsClient(testConnection(), httpClient, newJaxbUnmarshaller());
 
     assertTrue(client.getBuildVcs("job", 5).repositories().isEmpty());
   }
@@ -108,7 +106,7 @@ public class JenkinsClientTest {
   public void streamArtifactEncodesEachPathSegment() throws Exception {
     StubResponseHttpClient httpClient = new StubResponseHttpClient();
     httpClient.streamText = "bytes";
-    JenkinsClient client = new JenkinsClient(new StaticSettingsProvider(), httpClient, newJaxbUnmarshaller());
+    JenkinsClient client = new JenkinsClient(testConnection(), httpClient, newJaxbUnmarshaller());
     final StringBuilder captured = new StringBuilder();
 
     client.streamArtifact("folder/job", 7, "dir with space/report #1.txt",
@@ -128,7 +126,7 @@ public class JenkinsClientTest {
 
   @Test(expected = BridgeHttpException.class)
   public void streamArtifactPropagatesHttpFailures() throws Exception {
-    JenkinsClient client = new JenkinsClient(new StaticSettingsProvider(), new NotFoundHttpClient(), newJaxbUnmarshaller());
+    JenkinsClient client = new JenkinsClient(testConnection(), new NotFoundHttpClient(), newJaxbUnmarshaller());
 
     client.streamArtifact("job", 7, "missing.bin", new BridgeHttpClient.StreamHandler() {
       public void handle(InputStream inputStream) {
@@ -143,7 +141,7 @@ public class JenkinsClientTest {
     httpClient.body = "new log line\n";
     httpClient.headers.put("X-Text-Size", "2048");
     httpClient.headers.put("X-More-Data", "true");
-    JenkinsClient client = new JenkinsClient(new StaticSettingsProvider(), httpClient, newJaxbUnmarshaller());
+    JenkinsClient client = new JenkinsClient(testConnection(), httpClient, newJaxbUnmarshaller());
 
     JenkinsLogChunk chunk = client.getProgressiveLog("folder/job", 7, 1024);
 
@@ -157,7 +155,7 @@ public class JenkinsClientTest {
   public void progressiveLogFallsBackToBodyLengthWhenSizeHeaderMissing() throws Exception {
     StubResponseHttpClient httpClient = new StubResponseHttpClient();
     httpClient.body = "abcde";
-    JenkinsClient client = new JenkinsClient(new StaticSettingsProvider(), httpClient, newJaxbUnmarshaller());
+    JenkinsClient client = new JenkinsClient(testConnection(), httpClient, newJaxbUnmarshaller());
 
     JenkinsLogChunk chunk = client.getProgressiveLog("job", 3, 100);
 
@@ -170,7 +168,7 @@ public class JenkinsClientTest {
     StubResponseHttpClient httpClient = new StubResponseHttpClient();
     httpClient.body = "";
     httpClient.headers.put("x-more-data", "TRUE");
-    JenkinsClient client = new JenkinsClient(new StaticSettingsProvider(), httpClient, newJaxbUnmarshaller());
+    JenkinsClient client = new JenkinsClient(testConnection(), httpClient, newJaxbUnmarshaller());
 
     JenkinsLogChunk chunk = client.getProgressiveLog("job", 3, 0);
 
@@ -183,7 +181,7 @@ public class JenkinsClientTest {
     StubResponseHttpClient httpClient = new StubResponseHttpClient();
     httpClient.body = esc + "[8mha:////AAAA==" + esc + "[0m[Pipeline] Start of Pipeline\nplain line\n";
     httpClient.headers.put("X-Text-Size", "5000");
-    JenkinsClient client = new JenkinsClient(new StaticSettingsProvider(), httpClient, newJaxbUnmarshaller());
+    JenkinsClient client = new JenkinsClient(testConnection(), httpClient, newJaxbUnmarshaller());
 
     JenkinsLogChunk chunk = client.getProgressiveLog("job", 7, 100);
 
@@ -208,7 +206,7 @@ public class JenkinsClientTest {
   public void getBuildNumbersUsesBuildsTreeAndParsesNumbers() throws Exception {
     StubResponseHttpClient httpClient = new StubResponseHttpClient();
     httpClient.body = "{\"builds\":[{\"number\":50},{\"number\":49},{\"number\":48}]}";
-    JenkinsClient client = new JenkinsClient(new StaticSettingsProvider(), httpClient, newJaxbUnmarshaller());
+    JenkinsClient client = new JenkinsClient(testConnection(), httpClient, newJaxbUnmarshaller());
 
     List<Integer> numbers = client.getBuildNumbers("folder/job");
 
@@ -223,7 +221,7 @@ public class JenkinsClientTest {
         + "{\"number\":50,\"timestamp\":1710000000050,\"url\":\"http://jenkins/job/job/50/\"},"
         + "{\"number\":49,\"timestamp\":1710000000049,\"url\":\"http://jenkins/job/job/49/\"}"
         + "]}";
-    JenkinsClient client = new JenkinsClient(new StaticSettingsProvider(), httpClient, newJaxbUnmarshaller());
+    JenkinsClient client = new JenkinsClient(testConnection(), httpClient, newJaxbUnmarshaller());
 
     List<JenkinsBuildInfo> builds = client.getBuilds("folder/job");
 
@@ -238,7 +236,7 @@ public class JenkinsClientTest {
   public void getAllBuildNumbersUsesAllBuildsTree() throws Exception {
     StubResponseHttpClient httpClient = new StubResponseHttpClient();
     httpClient.body = "{\"allBuilds\":[{\"number\":2},{\"number\":1}]}";
-    JenkinsClient client = new JenkinsClient(new StaticSettingsProvider(), httpClient, newJaxbUnmarshaller());
+    JenkinsClient client = new JenkinsClient(testConnection(), httpClient, newJaxbUnmarshaller());
 
     List<Integer> numbers = client.getAllBuildNumbers("job");
 
@@ -250,7 +248,7 @@ public class JenkinsClientTest {
   public void getAllBuildsUsesAllBuildsTreeAndParsesIdentityMetadata() throws Exception {
     StubResponseHttpClient httpClient = new StubResponseHttpClient();
     httpClient.body = "{\"allBuilds\":[{\"number\":2,\"timestamp\":1710000000002}]}";
-    JenkinsClient client = new JenkinsClient(new StaticSettingsProvider(), httpClient, newJaxbUnmarshaller());
+    JenkinsClient client = new JenkinsClient(testConnection(), httpClient, newJaxbUnmarshaller());
 
     List<JenkinsBuildInfo> builds = client.getAllBuilds("job");
 
@@ -265,7 +263,7 @@ public class JenkinsClientTest {
   public void listJobsBuildsRootUrlWhenFolderBlank() throws Exception {
     StubResponseHttpClient httpClient = new StubResponseHttpClient();
     httpClient.body = "{\"jobs\":[]}";
-    JenkinsClient client = new JenkinsClient(new StaticSettingsProvider(), httpClient, newJaxbUnmarshaller());
+    JenkinsClient client = new JenkinsClient(testConnection(), httpClient, newJaxbUnmarshaller());
 
     client.listJobs("");
 
@@ -280,7 +278,7 @@ public class JenkinsClientTest {
         + "{\"name\":\"free\",\"fullName\":\"team/free\",\"_class\":\"hudson.model.FreeStyleProject\"},"
         + "{\"name\":\"sub\",\"fullName\":\"team/sub\",\"_class\":\"com.cloudbees.hudson.plugins.folder.Folder\"}"
         + "]}";
-    JenkinsClient client = new JenkinsClient(new StaticSettingsProvider(), httpClient, newJaxbUnmarshaller());
+    JenkinsClient client = new JenkinsClient(testConnection(), httpClient, newJaxbUnmarshaller());
 
     List<JenkinsJob> jobs = client.listJobs("team");
 
@@ -294,7 +292,7 @@ public class JenkinsClientTest {
 
   @Test
   public void jobUrlBuildsAbsoluteJobPageUrlFromGlobalBase() {
-    JenkinsClient client = new JenkinsClient(new StaticSettingsProvider(), new StubResponseHttpClient(), newJaxbUnmarshaller());
+    JenkinsClient client = new JenkinsClient(testConnection(), new StubResponseHttpClient(), newJaxbUnmarshaller());
 
     assertEquals("http://jenkins/job/multi-test/", client.jobUrl("multi-test"));
     assertEquals("http://jenkins/job/team/job/my-pipeline/", client.jobUrl("team/my-pipeline"));
@@ -302,7 +300,7 @@ public class JenkinsClientTest {
 
   @Test
   public void artifactUrlBuildsAbsoluteDownloadUrlFromGlobalBase() {
-    JenkinsClient client = new JenkinsClient(new StaticSettingsProvider(), new StubResponseHttpClient(), newJaxbUnmarshaller());
+    JenkinsClient client = new JenkinsClient(testConnection(), new StubResponseHttpClient(), newJaxbUnmarshaller());
 
     assertEquals("http://jenkins/job/job/7/artifact/target/app.jar",
         client.artifactUrl("job", 7, "target/app.jar"));
@@ -310,7 +308,7 @@ public class JenkinsClientTest {
 
   @Test
   public void artifactUrlBuildsUrlForFolderedJob() {
-    JenkinsClient client = new JenkinsClient(new StaticSettingsProvider(), new StubResponseHttpClient(), newJaxbUnmarshaller());
+    JenkinsClient client = new JenkinsClient(testConnection(), new StubResponseHttpClient(), newJaxbUnmarshaller());
 
     assertEquals("http://jenkins/job/folder/job/job/7/artifact/target/app.jar",
         client.artifactUrl("folder/job", 7, "target/app.jar"));
@@ -318,7 +316,7 @@ public class JenkinsClientTest {
 
   @Test
   public void artifactUrlEncodesEachPathSegment() {
-    JenkinsClient client = new JenkinsClient(new StaticSettingsProvider(), new StubResponseHttpClient(), newJaxbUnmarshaller());
+    JenkinsClient client = new JenkinsClient(testConnection(), new StubResponseHttpClient(), newJaxbUnmarshaller());
 
     assertEquals("http://jenkins/job/folder/job/job/7/artifact/dir%20with%20space/report%20%231.txt",
         client.artifactUrl("folder/job", 7, "dir with space/report #1.txt"));
@@ -331,7 +329,7 @@ public class JenkinsClientTest {
         + "{\"id\":\"6\",\"name\":\"Build\",\"status\":\"SUCCESS\",\"startTimeMillis\":1000,\"durationMillis\":500},"
         + "{\"id\":\"12\",\"name\":\"Test\",\"status\":\"IN_PROGRESS\",\"startTimeMillis\":2000,\"durationMillis\":0}"
         + "]}";
-    JenkinsClient client = new JenkinsClient(new StaticSettingsProvider(), httpClient, newJaxbUnmarshaller());
+    JenkinsClient client = new JenkinsClient(testConnection(), httpClient, newJaxbUnmarshaller());
 
     JenkinsStages stages = client.getStages("folder/job", 7);
 
@@ -346,7 +344,7 @@ public class JenkinsClientTest {
   @Test
   public void getStagesReturnsNotPipelineOn404() throws Exception {
     NotFoundHttpClient httpClient = new NotFoundHttpClient();
-    JenkinsClient client = new JenkinsClient(new StaticSettingsProvider(), httpClient, newJaxbUnmarshaller());
+    JenkinsClient client = new JenkinsClient(testConnection(), httpClient, newJaxbUnmarshaller());
 
     JenkinsStages stages = client.getStages("job", 3);
 
@@ -363,7 +361,7 @@ public class JenkinsClientTest {
         + "{\"id\":\"8\",\"_links\":{\"log\":{\"href\":\"b\"}}},"
         + "{\"id\":\"99\",\"_links\":{\"self\":{\"href\":\"c\"}}}"
         + "]}";
-    JenkinsClient client = new JenkinsClient(new StaticSettingsProvider(), httpClient, newJaxbUnmarshaller());
+    JenkinsClient client = new JenkinsClient(testConnection(), httpClient, newJaxbUnmarshaller());
 
     JenkinsStageNodes nodes = client.getStageNodes("folder/job", 7, "6");
 
@@ -379,7 +377,7 @@ public class JenkinsClientTest {
             + "{\"id\":\"8\",\"_links\":{\"log\":{\"href\":\"b\"}}}]}");
     httpClient.responses.put("/execution/node/7/wfapi/log", "{\"text\":\"executing step 1\\n\"}");
     httpClient.responses.put("/execution/node/8/wfapi/log", "{\"text\":\"+ sleep 10\\n\"}");
-    JenkinsClient client = new JenkinsClient(new StaticSettingsProvider(), httpClient, newJaxbUnmarshaller());
+    JenkinsClient client = new JenkinsClient(testConnection(), httpClient, newJaxbUnmarshaller());
 
     JenkinsStageLog log = client.getStageLog("job", 26, "6");
 
@@ -391,7 +389,7 @@ public class JenkinsClientTest {
     String esc = "";
     StubResponseHttpClient httpClient = new StubResponseHttpClient();
     httpClient.body = "{\"text\":\"" + esc + "[8mha:AAA==" + esc + "[0m+ mvn test\\nok\\n\"}";
-    JenkinsClient client = new JenkinsClient(new StaticSettingsProvider(), httpClient, newJaxbUnmarshaller());
+    JenkinsClient client = new JenkinsClient(testConnection(), httpClient, newJaxbUnmarshaller());
 
     JenkinsStageLog log = client.getNodeLog("folder/job", 7, "8");
 
@@ -415,7 +413,7 @@ public class JenkinsClientTest {
         "{\"id\":\"9\",\"name\":\"Test\",\"status\":\"IN_PROGRESS\",\"parentNodes\":[{\"id\":\"6\"}],"
             + "\"stageFlowNodes\":[{\"id\":\"10\",\"name\":\"sh\",\"parentNodes\":[{\"id\":\"9\"}],"
             + "\"_links\":{\"log\":{\"href\":\"y\"}}}]}");
-    JenkinsClient client = new JenkinsClient(new StaticSettingsProvider(), httpClient, newJaxbUnmarshaller());
+    JenkinsClient client = new JenkinsClient(testConnection(), httpClient, newJaxbUnmarshaller());
 
     JenkinsPipelineGraph graph = client.getPipelineGraph("job", 26, "job#26");
 
@@ -451,7 +449,7 @@ public class JenkinsClientTest {
             + "{\"id\":\"15\",\"displayName\":\"Windows Tests\",\"type\":\"PARALLEL\",\"result\":\"SUCCESS\",\"edges\":[{\"id\":\"18\"}]},"
             + "{\"id\":\"18\",\"displayName\":\"Deploy\",\"type\":\"STAGE\",\"result\":\"NOT_BUILT\",\"edges\":[]}"
             + "]");
-    JenkinsClient client = new JenkinsClient(new StaticSettingsProvider(), httpClient, newJaxbUnmarshaller());
+    JenkinsClient client = new JenkinsClient(testConnection(), httpClient, newJaxbUnmarshaller());
 
     JenkinsPipelineGraph graph = client.getPipelineGraph("job", 42, "job#42");
 
@@ -472,7 +470,7 @@ public class JenkinsClientTest {
             + "]}");
     httpClient.responses.put("/execution/node/6/wfapi/describe", "{\"id\":\"6\",\"parentNodes\":[]}");
     httpClient.responses.put("/execution/node/9/wfapi/describe", "{\"id\":\"9\",\"parentNodes\":[]}");
-    JenkinsClient client = new JenkinsClient(new StaticSettingsProvider(), httpClient, newJaxbUnmarshaller());
+    JenkinsClient client = new JenkinsClient(testConnection(), httpClient, newJaxbUnmarshaller());
 
     JenkinsPipelineGraph graph = client.getPipelineGraph("job", 43, "job#43");
 
@@ -485,7 +483,7 @@ public class JenkinsClientTest {
   @Test
   public void getPipelineGraphReturnsUnavailableOnWfapi404() throws Exception {
     NotFoundHttpClient httpClient = new NotFoundHttpClient();
-    JenkinsClient client = new JenkinsClient(new StaticSettingsProvider(), httpClient, newJaxbUnmarshaller());
+    JenkinsClient client = new JenkinsClient(testConnection(), httpClient, newJaxbUnmarshaller());
 
     JenkinsPipelineGraph graph = client.getPipelineGraph("job", 3);
 
@@ -497,7 +495,7 @@ public class JenkinsClientTest {
   @Test
   public void getStageLogReturnsEmptyWhenStageNotMaterialized() throws Exception {
     NotFoundHttpClient httpClient = new NotFoundHttpClient();
-    JenkinsClient client = new JenkinsClient(new StaticSettingsProvider(), httpClient, newJaxbUnmarshaller());
+    JenkinsClient client = new JenkinsClient(testConnection(), httpClient, newJaxbUnmarshaller());
 
     JenkinsStageLog log = client.getStageLog("job", 3, "9");
 
@@ -508,7 +506,7 @@ public class JenkinsClientTest {
   public void getCrumbParsesFieldAndValue() throws Exception {
     StubResponseHttpClient httpClient = new StubResponseHttpClient();
     httpClient.body = "{\"crumbRequestField\":\"Jenkins-Crumb\",\"crumb\":\"abc123\"}";
-    JenkinsClient client = new JenkinsClient(new StaticSettingsProvider(), httpClient, newJaxbUnmarshaller());
+    JenkinsClient client = new JenkinsClient(testConnection(), httpClient, newJaxbUnmarshaller());
 
     JenkinsCrumb crumb = client.getCrumb();
 
@@ -521,7 +519,7 @@ public class JenkinsClientTest {
   @Test
   public void getCrumbReturnsDisabledOn404() throws Exception {
     NotFoundHttpClient httpClient = new NotFoundHttpClient();
-    JenkinsClient client = new JenkinsClient(new StaticSettingsProvider(), httpClient, newJaxbUnmarshaller());
+    JenkinsClient client = new JenkinsClient(testConnection(), httpClient, newJaxbUnmarshaller());
 
     assertFalse(client.getCrumb().isPresent());
   }
@@ -541,7 +539,7 @@ public class JenkinsClientTest {
         + "</jenkins.scm.api.metadata.ObjectMetadataAction></actions>"
         + "</branch></org.jenkinsci.plugins.workflow.multibranch.BranchJobProperty>"
         + "</properties></flow-definition>";
-    JenkinsClient client = new JenkinsClient(new StaticSettingsProvider(), httpClient, newJaxbUnmarshaller());
+    JenkinsClient client = new JenkinsClient(testConnection(), httpClient, newJaxbUnmarshaller());
 
     var infoResult =
         client.getPullRequestInfo("multibranch-pipeline/PR-1");
@@ -559,7 +557,7 @@ public class JenkinsClientTest {
   @Test
   public void getPullRequestInfoReturnsEmptyOn404() {
     NotFoundHttpClient httpClient = new NotFoundHttpClient();
-    JenkinsClient client = new JenkinsClient(new StaticSettingsProvider(), httpClient, newJaxbUnmarshaller());
+    JenkinsClient client = new JenkinsClient(testConnection(), httpClient, newJaxbUnmarshaller());
 
     assertFalse(client.getPullRequestInfo("folder/job/PR-1").isPresent());
   }
@@ -571,7 +569,7 @@ public class JenkinsClientTest {
         + "{\"name\":\"BRANCH\",\"type\":\"StringParameterDefinition\",\"defaultParameterValue\":{\"value\":\"main\"}},"
         + "{\"name\":\"ENV\",\"type\":\"ChoiceParameterDefinition\",\"defaultParameterValue\":{\"value\":\"dev\"},\"choices\":[\"dev\",\"prod\"]}"
         + "]}]}";
-    JenkinsClient client = new JenkinsClient(new StaticSettingsProvider(), httpClient, newJaxbUnmarshaller());
+    JenkinsClient client = new JenkinsClient(testConnection(), httpClient, newJaxbUnmarshaller());
 
     JenkinsJobParameters params = client.getJobParameters("folder/job");
 
@@ -595,7 +593,7 @@ public class JenkinsClientTest {
         + "{\"_class\":\"custom.ComplexParameterValue\",\"name\":\"COMPLEX\",\"value\":{\"nested\":\"ignored\"}},"
         + "{\"_class\":\"hudson.model.StringParameterValue\",\"name\":\"EMPTY\",\"value\":null}"
         + "]}]}";
-    JenkinsClient client = new JenkinsClient(new StaticSettingsProvider(), httpClient, newJaxbUnmarshaller());
+    JenkinsClient client = new JenkinsClient(testConnection(), httpClient, newJaxbUnmarshaller());
 
     JenkinsBuildParameters params = client.getBuildParameters("folder/job", 12);
 
@@ -615,7 +613,7 @@ public class JenkinsClientTest {
   public void getBuildParametersReturnsEmptyWhenNoParametersActionExists() throws Exception {
     StubResponseHttpClient httpClient = new StubResponseHttpClient();
     httpClient.body = "{\"actions\":[{},{}]}";
-    JenkinsClient client = new JenkinsClient(new StaticSettingsProvider(), httpClient, newJaxbUnmarshaller());
+    JenkinsClient client = new JenkinsClient(testConnection(), httpClient, newJaxbUnmarshaller());
 
     assertTrue(client.getBuildParameters("job", 5).isEmpty());
   }
@@ -623,7 +621,7 @@ public class JenkinsClientTest {
   @Test
   public void getBuildParametersReturnsEmptyOn404() throws Exception {
     NotFoundHttpClient httpClient = new NotFoundHttpClient();
-    JenkinsClient client = new JenkinsClient(new StaticSettingsProvider(), httpClient, newJaxbUnmarshaller());
+    JenkinsClient client = new JenkinsClient(testConnection(), httpClient, newJaxbUnmarshaller());
 
     assertTrue(client.getBuildParameters("job", 5).isEmpty());
     assertEquals("http://jenkins/job/job/5/api/json?tree=actions%5Bparameters%5Bname%2Cvalue%2C_class%5D%5D",
@@ -633,7 +631,7 @@ public class JenkinsClientTest {
   @Test
   public void triggerBuildWithParametersPostsFormAndAttachesCrumb() throws Exception {
     TriggerHttpClient httpClient = new TriggerHttpClient();
-    JenkinsClient client = new JenkinsClient(new StaticSettingsProvider(), httpClient, newJaxbUnmarshaller());
+    JenkinsClient client = new JenkinsClient(testConnection(), httpClient, newJaxbUnmarshaller());
 
     Map<String, String> values = new LinkedHashMap<String, String>();
     values.put("BRANCH", "feature/x");
@@ -650,7 +648,7 @@ public class JenkinsClientTest {
   @Test
   public void triggerBuildWithoutParametersUsesBuildEndpoint() throws Exception {
     TriggerHttpClient httpClient = new TriggerHttpClient();
-    JenkinsClient client = new JenkinsClient(new StaticSettingsProvider(), httpClient, newJaxbUnmarshaller());
+    JenkinsClient client = new JenkinsClient(testConnection(), httpClient, newJaxbUnmarshaller());
 
     String queueUrl = client.triggerBuild("job", new LinkedHashMap<String, String>());
 
@@ -663,7 +661,7 @@ public class JenkinsClientTest {
   public void triggerBuildOmitsCrumbHeaderWhenDisabled() throws Exception {
     TriggerHttpClient httpClient = new TriggerHttpClient();
     httpClient.crumbDisabled = true;
-    JenkinsClient client = new JenkinsClient(new StaticSettingsProvider(), httpClient, newJaxbUnmarshaller());
+    JenkinsClient client = new JenkinsClient(testConnection(), httpClient, newJaxbUnmarshaller());
 
     client.triggerBuild("job", new LinkedHashMap<String, String>());
 
@@ -743,7 +741,7 @@ public class JenkinsClientTest {
             + "]}");
     httpClient.responses.put("/execution/node/7/wfapi/log", "{\"text\":\"line A\"}");
     httpClient.responses.put("/execution/node/8/wfapi/log", "{\"text\":\"line B\"}");
-    JenkinsClient client = new JenkinsClient(new StaticSettingsProvider(), httpClient, newJaxbUnmarshaller());
+    JenkinsClient client = new JenkinsClient(testConnection(), httpClient, newJaxbUnmarshaller());
 
     List<JenkinsStageStep> steps = client.getStageSteps("job", 42, "6");
 
@@ -772,49 +770,8 @@ public class JenkinsClientTest {
     }
   }
 
-  private static class StaticSettingsProvider extends JenkinsBridgeSettingsProvider {
-    StaticSettingsProvider() {
-      super(null);
-    }
-
-    @Override
-    public JenkinsBridgeSettings load() {
-      try {
-        Constructor<JenkinsBridgeSettings> constructor = JenkinsBridgeSettings.class.getDeclaredConstructor(
-            boolean.class,
-            String.class,
-            String.class,
-            String.class,
-            String.class,
-            String.class,
-            String.class,
-            String.class,
-            String.class,
-            int.class,
-            int.class,
-            String.class,
-            String.class
-        );
-        constructor.setAccessible(true);
-        return constructor.newInstance(
-            true,
-            "http://jenkins",
-            "jenkins-user",
-            "jenkins-token",
-            "job",
-            "http://teamcity",
-            "teamcity-user",
-            "teamcity-password",
-            "buildType",
-            10,
-            1,
-            "Europe/Berlin",
-            ""
-        );
-      } catch (Exception e) {
-        throw new AssertionError(e);
-      }
-    }
+  private static JenkinsConnection testConnection() {
+    return new JenkinsConnection("http://jenkins", "jenkins-user", "jenkins-token");
   }
 
   private static class NotFoundHttpClient extends BridgeHttpClient {

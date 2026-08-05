@@ -2,6 +2,7 @@ package com.jetbrains.teamcity.jenkinsbridge.web;
 
 import com.google.gson.Gson;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClient;
+import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClientFactory;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsPipelineGraph;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsPipelineGraphNode;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsStageLog;
@@ -11,6 +12,7 @@ import com.jetbrains.teamcity.jenkinsbridge.persistence.BuildMirrorStore;
 import jetbrains.buildServer.controllers.BaseController;
 import jetbrains.buildServer.serverSide.BuildsManager;
 import jetbrains.buildServer.serverSide.SBuild;
+import jetbrains.buildServer.serverSide.SBuildType;
 import jetbrains.buildServer.serverSide.auth.Permission;
 import jetbrains.buildServer.users.SUser;
 import jetbrains.buildServer.web.openapi.WebControllerManager;
@@ -37,18 +39,26 @@ public class JenkinsPipelineGraphController extends BaseController {
 
   private final BuildsManager buildsManager;
   private final BuildMirrorStore mirrorStore;
-  private final JenkinsClient jenkinsClient;
+  private final JenkinsClientFactory jenkinsClientFactory;
 
   public JenkinsPipelineGraphController(
       WebControllerManager webControllerManager,
       BuildsManager buildsManager,
       BuildMirrorStore mirrorStore,
-      JenkinsClient jenkinsClient
+      JenkinsClientFactory jenkinsClientFactory
   ) {
     this.buildsManager = buildsManager;
     this.mirrorStore = mirrorStore;
-    this.jenkinsClient = jenkinsClient;
+    this.jenkinsClientFactory = jenkinsClientFactory;
     webControllerManager.registerController(PATH, this);
+  }
+
+  private JenkinsClient jenkinsClientFor(SBuild build) {
+    SBuildType buildType = build.getBuildType();
+    if (buildType == null) {
+      throw new IllegalStateException("Build " + build.getBuildId() + " has no build configuration");
+    }
+    return jenkinsClientFactory.forBuildType(buildType);
   }
 
   @Override
@@ -114,7 +124,7 @@ public class JenkinsPipelineGraphController extends BaseController {
       return new StageLogView(nodeId, "");
     }
     try {
-      JenkinsStageLog log = jenkinsClient.getStageLog(
+      JenkinsStageLog log = jenkinsClientFor(build).getStageLog(
           mirror.getJenkinsJob(), mirror.getJenkinsBuildNumber(), nodeId);
       return new StageLogView(nodeId, log.getText());
     } catch (Exception e) {
@@ -140,7 +150,7 @@ public class JenkinsPipelineGraphController extends BaseController {
     }
     try {
       String nodeName = nodeNameFromGraph(mirror, nodeId);
-      for (JenkinsStageStep step : jenkinsClient.getStageStepsForNode(
+      for (JenkinsStageStep step : jenkinsClientFor(build).getStageStepsForNode(
           mirror.getJenkinsJob(), mirror.getJenkinsBuildNumber(), nodeId, nodeName)) {
         view.steps.add(new StepView(step));
       }

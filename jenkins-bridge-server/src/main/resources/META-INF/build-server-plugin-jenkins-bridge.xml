@@ -15,11 +15,17 @@
   <bean id="jenkinsBridgeXmlUnmarshaller"
         class="com.jetbrains.teamcity.jenkinsbridge.xml.JaxbUnmarshaller"/>
 
-  <bean id="jenkinsClient"
-        class="com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClient"/>
+  <bean id="jenkinsConnectionProvider"
+        class="com.jetbrains.teamcity.jenkinsbridge.connection.JenkinsConnectionProvider"/>
 
-  <bean id="teamCityClient"
-        class="com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityClient"/>
+  <bean id="jenkinsConnectionResolver"
+        class="com.jetbrains.teamcity.jenkinsbridge.connection.JenkinsConnectionResolver"/>
+
+  <bean id="jenkinsConnectionTestController"
+        class="com.jetbrains.teamcity.jenkinsbridge.connection.JenkinsConnectionTestController"/>
+
+  <bean id="jenkinsClientFactory"
+        class="com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClientFactory"/>
 
   <bean id="teamCityRunningBuildLocator"
         class="com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityRunningBuildLocator"/>
@@ -59,6 +65,9 @@
 
   <bean id="bridgeBuildFeature"
         class="com.jetbrains.teamcity.jenkinsbridge.feature.BridgeBuildFeature"/>
+
+  <bean id="bridgeBuildFeatureController"
+        class="com.jetbrains.teamcity.jenkinsbridge.feature.BridgeBuildFeatureController"/>
 
   <bean id="mirroredJobProvider"
         class="com.jetbrains.teamcity.jenkinsbridge.feature.MirroredJobProvider"/>

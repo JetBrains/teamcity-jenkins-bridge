@@ -2,6 +2,7 @@ package com.jetbrains.teamcity.jenkinsbridge.teamcity;
 
 import com.google.gson.JsonParser;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClient;
+import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClientFactory;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsVcsInfo;
 import com.jetbrains.teamcity.jenkinsbridge.persistence.BuildMirror;
 import com.jetbrains.teamcity.jenkinsbridge.vcs.VcsRefType;
@@ -47,14 +48,16 @@ public class TeamCityVcsPublisherTest {
   private final BuildChainChangesCollector changesCollector = mock(BuildChainChangesCollector.class);
   private final BuildPromotionEx promotion = mock(BuildPromotionEx.class);
   private final JenkinsClient jenkinsClient = mock(JenkinsClient.class);
+  private final JenkinsClientFactory jenkinsClientFactory = mock(JenkinsClientFactory.class);
 
   private final TeamCityVcsPublisher publisher =
-      new TeamCityVcsPublisher(projectManager, buildLocator, changesCollector, jenkinsClient);
+      new TeamCityVcsPublisher(projectManager, buildLocator, changesCollector, jenkinsClientFactory);
 
   @Before
   public void setUp() {
     when(projectManager.findBuildTypeByExternalId(BUILD_TYPE_ID)).thenReturn(buildType);
     when(buildType.getProject()).thenReturn(project);
+    when(jenkinsClientFactory.forBuildType(buildType)).thenReturn(jenkinsClient);
     when(project.getVcsRoots()).thenReturn(Collections.emptyList());
     when(buildLocator.findPromotion(PROMOTION_ID)).thenReturn(promotion);
     when(jenkinsClient.getBranchRefType(any())).thenReturn(VcsRefType.HEADS);

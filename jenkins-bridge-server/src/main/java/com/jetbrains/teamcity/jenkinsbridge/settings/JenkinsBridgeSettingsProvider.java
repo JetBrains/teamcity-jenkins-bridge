@@ -4,8 +4,13 @@ import jetbrains.buildServer.parameters.ValueResolver;
 import jetbrains.buildServer.serverSide.ParametersSupport;
 import jetbrains.buildServer.serverSide.ProjectManager;
 
-import static com.jetbrains.teamcity.jenkinsbridge.util.Utilities.findBuildType;
-
+/**
+ * Reads the bridge's operational settings. Values come from a root project parameter first, then a
+ * system property, then an environment variable, then the default.
+ *
+ * <p>Jenkins servers and credentials are not read here. They live on the "Jenkins" project
+ * connections and are selected per build configuration by the Jenkins Bridge build feature.
+ */
 public class JenkinsBridgeSettingsProvider {
   private final ProjectManager projectManager;
 
@@ -15,32 +20,19 @@ public class JenkinsBridgeSettingsProvider {
 
   public JenkinsBridgeSettings load() {
     ParametersSource rootProjectSettings = ParametersSource.from(projectManager.getRootProject());
-    String teamCityBuildTypeId = readRootProjectSetting(
-        rootProjectSettings,
-        "jenkins.bridge.teamCityBuildTypeId",
-        "TEAMCITY_BUILD_TYPE_ID",
-        "TestTc_JenkinsTcTest"
-    );
-
-    ParametersSource buildTypeSettings = ParametersSource.from(findBuildType(teamCityBuildTypeId, projectManager));
     return new JenkinsBridgeSettings(
-        readBooleanSetting(buildTypeSettings, rootProjectSettings, "jenkins.bridge.enabled", "JENKINS_BRIDGE_ENABLED", true),
-        readStringSetting(buildTypeSettings, rootProjectSettings, "jenkins.bridge.jenkinsUrl", "JENKINS_URL", "http://localhost:8080"),
-        readStringSetting(buildTypeSettings, rootProjectSettings, "jenkins.bridge.jenkinsUser", "JENKINS_USER", "Ahmed"),
-        readStringSetting(buildTypeSettings, rootProjectSettings, "jenkins.bridge.jenkinsToken", "JENKINS_TOKEN", ""),
-        readStringSetting(buildTypeSettings, rootProjectSettings, "jenkins.bridge.jenkinsJob", "JENKINS_JOB", "tc-test"),
-        readStringSetting(buildTypeSettings, rootProjectSettings, "jenkins.bridge.teamCityUrl", "TEAMCITY_URL", "http://localhost:8111/bs/httpAuth"),
-        readStringSetting(buildTypeSettings, rootProjectSettings, "jenkins.bridge.teamCityUser", "TEAMCITY_USER", "Ahmed"),
-        readStringSetting(buildTypeSettings, rootProjectSettings, "jenkins.bridge.teamCityPassword", "TEAMCITY_PASSWORD", "test"),
-        teamCityBuildTypeId,
-        readIntSetting(buildTypeSettings, rootProjectSettings, "jenkins.bridge.pollSeconds", "BRIDGE_POLL_SECONDS", 10),
-        readIntSetting(buildTypeSettings, rootProjectSettings, "jenkins.bridge.recentBuildLimit", "RECENT_BUILDS_LIMIT", 1),
-        readStringSetting(buildTypeSettings, rootProjectSettings, "jenkins.bridge.timeZone", "TIMEZONE", "Europe/Berlin"),
-        readStringSetting(buildTypeSettings, rootProjectSettings, "jenkins.bridge.stateFile", "BRIDGE_STATE_FILE", "")
+        readBooleanSetting(rootProjectSettings, "jenkins.bridge.enabled", "JENKINS_BRIDGE_ENABLED", true),
+        readIntSetting(rootProjectSettings, "jenkins.bridge.pollSeconds", "BRIDGE_POLL_SECONDS", 10),
+        readStringSetting(rootProjectSettings, "jenkins.bridge.timeZone", "TIMEZONE", "Europe/Berlin"),
+        readStringSetting(rootProjectSettings, "jenkins.bridge.stateFile", "BRIDGE_STATE_FILE", ""),
+        // Legacy, only used by the deprecated TeamCityClient. Never read from project parameters.
+        getString("jenkins.bridge.teamCityUrl", "TEAMCITY_URL", ""),
+        getString("jenkins.bridge.teamCityUser", "TEAMCITY_USER", ""),
+        getString("jenkins.bridge.teamCityPassword", "TEAMCITY_PASSWORD", "")
     );
   }
 
-  private static String readRootProjectSetting(
+  private static String readStringSetting(
       ParametersSource rootProjectSettings,
       String propertyName,
       String environmentName,
@@ -54,46 +46,23 @@ public class JenkinsBridgeSettingsProvider {
     return getString(propertyName, environmentName, defaultValue);
   }
 
-  // Fallback order: build configuration parameter, root project parameter, system property, environment variable, default.
-  private static String readStringSetting(
-      ParametersSource buildTypeSettings,
-      ParametersSource rootProjectSettings,
-      String propertyName,
-      String environmentName,
-      String defaultValue
-  ) {
-    String value = buildTypeSettings == null ? null : buildTypeSettings.get(propertyName);
-    if (JenkinsBridgeSettings.isNotBlank(value)) {
-      return value;
-    }
-
-    value = rootProjectSettings == null ? null : rootProjectSettings.get(propertyName);
-    if (JenkinsBridgeSettings.isNotBlank(value)) {
-      return value;
-    }
-
-    return getString(propertyName, environmentName, defaultValue);
-  }
-
   private static int readIntSetting(
-      ParametersSource buildTypeSettings,
       ParametersSource rootProjectSettings,
       String propertyName,
       String environmentName,
       int defaultValue
   ) {
-    String value = readStringSetting(buildTypeSettings, rootProjectSettings, propertyName, environmentName, String.valueOf(defaultValue));
+    String value = readStringSetting(rootProjectSettings, propertyName, environmentName, String.valueOf(defaultValue));
     return parseInt(value, defaultValue);
   }
 
   private static boolean readBooleanSetting(
-      ParametersSource buildTypeSettings,
       ParametersSource rootProjectSettings,
       String propertyName,
       String environmentName,
       boolean defaultValue
   ) {
-    String value = readStringSetting(buildTypeSettings, rootProjectSettings, propertyName, environmentName, String.valueOf(defaultValue));
+    String value = readStringSetting(rootProjectSettings, propertyName, environmentName, String.valueOf(defaultValue));
     return parseBoolean(value);
   }
 

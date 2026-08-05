@@ -3,6 +3,7 @@ package com.jetbrains.teamcity.jenkinsbridge.web;
 import com.google.gson.Gson;
 import com.jetbrains.teamcity.jenkinsbridge.feature.BridgeBuildFeatureConstants;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClient;
+import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClientFactory;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsJobParameters;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsParameterDefinition;
 import jetbrains.buildServer.controllers.BaseController;
@@ -41,15 +42,15 @@ public class JenkinsTriggerController extends BaseController {
   private static final Gson GSON = new Gson();
 
   private final ProjectManager projectManager;
-  private final JenkinsClient jenkinsClient;
+  private final JenkinsClientFactory jenkinsClientFactory;
 
   public JenkinsTriggerController(
       WebControllerManager webControllerManager,
       ProjectManager projectManager,
-      JenkinsClient jenkinsClient
+      JenkinsClientFactory jenkinsClientFactory
   ) {
     this.projectManager = projectManager;
-    this.jenkinsClient = jenkinsClient;
+    this.jenkinsClientFactory = jenkinsClientFactory;
     webControllerManager.registerController(PATH, this);
   }
 
@@ -74,17 +75,19 @@ public class JenkinsTriggerController extends BaseController {
 
     String action = request.getParameter("action");
     try {
+      JenkinsClient jenkinsClient = jenkinsClientFactory.forBuildType(buildType);
       if ("trigger".equals(action)) {
-        return handleTrigger(response, job, request);
+        return handleTrigger(response, jenkinsClient, job, request);
       }
-      return handleParams(response, job);
+      return handleParams(response, jenkinsClient, job);
     } catch (Exception e) {
       return error(response, 502, e.getClass().getSimpleName()
           + (e.getMessage() == null ? "" : ": " + e.getMessage()));
     }
   }
 
-  private ModelAndView handleParams(HttpServletResponse response, String job) throws Exception {
+  private ModelAndView handleParams(HttpServletResponse response, JenkinsClient jenkinsClient, String job)
+      throws Exception {
     JenkinsJobParameters parameters = jenkinsClient.getJobParameters(job);
     List<ParamView> views = new ArrayList<ParamView>();
     for (JenkinsParameterDefinition def : parameters.getParameters()) {
@@ -93,8 +96,8 @@ public class JenkinsTriggerController extends BaseController {
     return writeJson(response, views);
   }
 
-  private ModelAndView handleTrigger(HttpServletResponse response, String job, HttpServletRequest request)
-      throws Exception {
+  private ModelAndView handleTrigger(HttpServletResponse response, JenkinsClient jenkinsClient, String job,
+                                     HttpServletRequest request) throws Exception {
     // Re-read the definitions so we only forward declared parameters, falling back to each default.
     JenkinsJobParameters parameters = jenkinsClient.getJobParameters(job);
     Map<String, String> values = new LinkedHashMap<String, String>();

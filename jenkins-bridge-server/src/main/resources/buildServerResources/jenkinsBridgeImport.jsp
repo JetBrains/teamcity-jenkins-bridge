@@ -8,10 +8,12 @@
 <div class="jenkinsBridgeImport">
   <h2 class="noBorder">Import Jenkins jobs</h2>
   <p class="grayNote">
-    Lists the top-level jobs at a Jenkins folder path (blank = server root) using the globally
-    configured Jenkins connection, and creates one build configuration per selected pipeline in this
-    project. Folders and already-imported jobs cannot be selected.
+    Lists the top-level jobs at a Jenkins folder path (blank = server root) and creates one build
+    configuration per selected pipeline in this project. Folders and already-imported jobs cannot be
+    selected.
   </p>
+
+<%-- TODO: Select the Jenkins connection and add the search bar --%>
 
   <table class="runnerFormTable">
     <tr>

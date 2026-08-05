@@ -3,7 +3,7 @@ package com.jetbrains.teamcity.jenkinsbridge.web;
 import com.google.gson.Gson;
 import com.jetbrains.teamcity.jenkinsbridge.feature.ImportResult;
 import com.jetbrains.teamcity.jenkinsbridge.feature.JenkinsJobImporter;
-import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClient;
+import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClientFactory;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsJob;
 import jetbrains.buildServer.controllers.BaseController;
 import jetbrains.buildServer.serverSide.ProjectManager;
@@ -31,24 +31,25 @@ import java.util.Set;
  *   <li>{@code action=import}: create build configs for the selected jobs (JSON {@link ImportResult}).</li>
  * </ul>
  * Runs on the request thread under the logged-in user; both actions require EDIT_PROJECT on the
- * target project.
+ * target project. Both also need a {@code connectionId} naming the Jenkins connection to read from,
+ * since a project can have several Jenkins servers.
  */
 public class JenkinsBridgeImportController extends BaseController {
   static final String PATH = "/admin/jenkinsBridgeImport.html";
   private static final Gson GSON = new Gson();
 
   private final ProjectManager projectManager;
-  private final JenkinsClient jenkinsClient;
+  private final JenkinsClientFactory jenkinsClientFactory;
   private final JenkinsJobImporter importer;
 
   public JenkinsBridgeImportController(
       WebControllerManager webControllerManager,
       ProjectManager projectManager,
-      JenkinsClient jenkinsClient,
+      JenkinsClientFactory jenkinsClientFactory,
       JenkinsJobImporter importer
   ) {
     this.projectManager = projectManager;
-    this.jenkinsClient = jenkinsClient;
+    this.jenkinsClientFactory = jenkinsClientFactory;
     this.importer = importer;
     webControllerManager.registerController(PATH, this);
   }
@@ -65,35 +66,41 @@ public class JenkinsBridgeImportController extends BaseController {
       return error(response, 403, "You do not have permission to edit this project");
     }
 
+    String connectionId = request.getParameter("connectionId");
+    if (connectionId == null || connectionId.trim().isEmpty()) {
+      return error(response, 400, "No Jenkins connection selected");
+    }
+
     String action = request.getParameter("action");
     try {
       if ("import".equals(action)) {
-        return handleImport(request, response, projectExternalId);
+        return handleImport(request, response, projectExternalId, connectionId);
       }
-      return handleList(request, response, projectExternalId);
+      return handleList(request, response, project, projectExternalId, connectionId);
     } catch (Exception e) {
       return error(response, 502, e.getClass().getSimpleName()
           + (e.getMessage() == null ? "" : ": " + e.getMessage()));
     }
   }
 
-  private ModelAndView handleList(HttpServletRequest request, HttpServletResponse response, String projectExternalId)
-      throws Exception {
+  private ModelAndView handleList(HttpServletRequest request, HttpServletResponse response, SProject project,
+                                  String projectExternalId, String connectionId) throws Exception {
     String folderPath = request.getParameter("folderPath");
     Set<String> mirrored = importer.alreadyMirroredJobs(projectExternalId);
 
     List<JobView> views = new ArrayList<JobView>();
-    for (JenkinsJob job : jenkinsClient.listJobs(folderPath == null ? "" : folderPath)) {
+    for (JenkinsJob job : jenkinsClientFactory.forConnectionId(project, connectionId)
+        .listJobs(folderPath == null ? "" : folderPath)) {
       views.add(new JobView(job, mirrored.contains(job.getFullName())));
     }
     return writeJson(response, views);
   }
 
-  private ModelAndView handleImport(HttpServletRequest request, HttpServletResponse response, String projectExternalId)
-      throws Exception {
+  private ModelAndView handleImport(HttpServletRequest request, HttpServletResponse response,
+                                    String projectExternalId, String connectionId) throws Exception {
     String[] jobs = request.getParameterValues("job");
     List<String> selected = jobs == null ? Collections.<String>emptyList() : Arrays.asList(jobs);
-    ImportResult result = importer.importJobs(projectExternalId, selected);
+    ImportResult result = importer.importJobs(projectExternalId, connectionId, selected);
     return writeJson(response, result);
   }
 

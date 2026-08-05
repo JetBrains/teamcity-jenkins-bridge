@@ -278,14 +278,10 @@ public class BuildMirrorStoreTest {
       public JenkinsBridgeSettings load() {
         try {
           Constructor<JenkinsBridgeSettings> constructor = JenkinsBridgeSettings.class.getDeclaredConstructor(
-              boolean.class, String.class, String.class, String.class, String.class,
-              String.class, String.class, String.class, String.class,
-              int.class, int.class, String.class, String.class);
+              boolean.class, int.class, String.class, String.class,
+              String.class, String.class, String.class);
           constructor.setAccessible(true);
-          return constructor.newInstance(
-              true, "http://jenkins", "user", "token", "job",
-              "http://teamcity", "tc-user", "tc-pass", "buildType",
-              10, 1, "Europe/Berlin", path);
+          return constructor.newInstance(true, 10, "Europe/Berlin", path, "", "", "");
         } catch (Exception e) {
           throw new AssertionError(e);
         }

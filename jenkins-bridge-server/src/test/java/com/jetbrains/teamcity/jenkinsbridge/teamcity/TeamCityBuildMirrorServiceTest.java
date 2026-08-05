@@ -90,15 +90,16 @@ public class TeamCityBuildMirrorServiceTest {
   public void ensureTeamCityBuildPassesSavedJenkinsParametersToQueuer() throws Exception {
     CapturingQueuer queuer = new CapturingQueuer();
     TeamCityBuildMirrorService service = new TeamCityBuildMirrorService(
-        null, new NoExistingBuildClient(), queuer, null, null, null, null, null, null, null, null, null, new NoopStore());
+        null, new NoExistingBuildLocator(), queuer, null, null, null, null, null, null, null, null, null, new NoopStore());
 
     BuildMirror mirror = BuildMirror.create("job#4@1710000000004", "job", buildInfo(4), "buildType", "now");
     Map<String, String> parameters = new LinkedHashMap<String, String>();
     parameters.put("BRANCH", "feature/x");
     mirror.setJenkinsBuildParameters(parameters);
 
-    service.ensureTeamCityBuild(mirror, buildInfo(4), null, null);
+    service.ensureTeamCityBuild(mirror, "conn1", buildInfo(4), null, null);
 
+    assertEquals("conn1", queuer.bridgeParameters.get("jenkins.connection.id"));
     assertEquals("job", queuer.bridgeParameters.get("jenkins.job"));
     assertEquals("job#4@1710000000004", queuer.bridgeParameters.get("jenkins.build.key"));
     assertEquals("1710000000004", queuer.bridgeParameters.get("jenkins.build.timestamp"));
@@ -564,6 +565,7 @@ public class TeamCityBuildMirrorServiceTest {
     }
   }
 
+  @Deprecated
   private static class NoExistingBuildClient extends TeamCityClient {
     NoExistingBuildClient() {
       super(null, null);
@@ -571,6 +573,20 @@ public class TeamCityBuildMirrorServiceTest {
 
     @Override
     public Long findBuildIdByJenkinsBuildKey(String jenkinsBuildKey) {
+      return null;
+    }
+  }
+
+  /**
+   * Reports that no mirror build exists yet, so the service has to queue one.
+   */
+  private static class NoExistingBuildLocator extends TeamCityRunningBuildLocator {
+    NoExistingBuildLocator() {
+      super(null, null, null);
+    }
+
+    @Override
+    public Long recoverBuildId(String buildTypeId, String jenkinsBuildKey) {
       return null;
     }
   }
