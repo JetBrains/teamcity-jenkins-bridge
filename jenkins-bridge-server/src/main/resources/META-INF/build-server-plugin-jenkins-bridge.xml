@@ -121,6 +121,9 @@
   <bean id="jenkinsBridgePollingService"
         class="com.jetbrains.teamcity.jenkinsbridge.polling.JenkinsBridgePollingService"/>
 
+  <bean id="jenkinsBridgeSystemProblemReporter"
+        class="com.jetbrains.teamcity.jenkinsbridge.polling.JenkinsBridgeSystemProblemReporter"/>
+
   <bean id="jenkinsBridgeServerLifecycle"
         class="com.jetbrains.teamcity.jenkinsbridge.polling.JenkinsBridgeServerLifecycle"
         destroy-method="dispose"/>

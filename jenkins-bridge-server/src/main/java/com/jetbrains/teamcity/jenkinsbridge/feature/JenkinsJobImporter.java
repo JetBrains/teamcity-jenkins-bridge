@@ -124,6 +124,8 @@ public class JenkinsJobImporter {
   // Creates a mirror configuration for a single Jenkins job and returns its external id.
   private String createMirrorConfig(SProject project, String connectionId, JenkinsClient jenkinsClient,
                                     String fullName, boolean inMultibranchPipeline) throws Exception {
+    String jenkinsType = jenkinsClient.getJobClass(fullName);
+    boolean isMultibranch = JenkinsJob.isMultibranchClass(jenkinsType);
     String externalId = ExternalIdGenerator.resolveUnique(
         ExternalIdGenerator.baseExternalId(project.getExternalId(), fullName),
         candidate -> projectManager.findBuildTypeByExternalId(candidate) != null);
@@ -133,7 +135,10 @@ public class JenkinsJobImporter {
     featureParams.put(BridgeBuildFeatureConstants.PARAM_CONNECTION_ID, connectionId);
     featureParams.put(BridgeBuildFeatureConstants.PARAM_JENKINS_JOB, fullName);
     featureParams.put(BridgeBuildFeatureConstants.PARAM_JENKINS_URL, jenkinsClient.jobUrl(fullName));
-    if (inMultibranchPipeline) {
+    if (!jenkinsType.isEmpty()) {
+      featureParams.put(BridgeBuildFeatureConstants.PARAM_JENKINS_TYPE, jenkinsType);
+    }
+    if (inMultibranchPipeline || isMultibranch) {
       featureParams.put(BridgeBuildFeatureConstants.PARAM_IN_MULTIBRANCH, "true");
     }
     buildType.addBuildFeature(BridgeBuildFeatureConstants.TYPE, featureParams);
@@ -160,6 +165,23 @@ public class JenkinsJobImporter {
     return project == null ? Collections.emptySet() : collectMirroredJobs(project);
   }
 
+  /** Jenkins job classes persisted on imported bridge features, keyed by Jenkins full name. */
+  public Map<String, String> alreadyMirroredJobTypes(String projectExternalId) {
+    SProject project = projectManager.findProjectByExternalId(projectExternalId);
+    if (project == null) {
+      return Collections.emptyMap();
+    }
+    Map<String, String> types = new LinkedHashMap<>();
+    for (SBuildFeatureDescriptor descriptor : allBridgeFeatures(project)) {
+      Map<String, String> params = descriptor.getParameters();
+      String job = params.get(BridgeBuildFeatureConstants.PARAM_JENKINS_JOB);
+      if (job != null && !job.trim().isEmpty()) {
+        types.put(job.trim(), params.get(BridgeBuildFeatureConstants.PARAM_JENKINS_TYPE));
+      }
+    }
+    return types;
+  }
+
   private Set<String> collectMirroredJobs(SProject project) {
     Set<String> jobs = new HashSet<>();
     jobs.addAll(collectMirroredBuildTypes(project).keySet());
@@ -183,6 +205,15 @@ public class JenkinsJobImporter {
     }
     return buildTypes;
   }
+
+  private List<SBuildFeatureDescriptor> allBridgeFeatures(SProject project) {
+    List<SBuildFeatureDescriptor> features = new java.util.ArrayList<>();
+    for (SBuildType buildType : project.getBuildTypes()) {
+      features.addAll(buildType.getBuildFeaturesOfType(BridgeBuildFeatureConstants.TYPE));
+    }
+    return features;
+  }
+
 
   private int importJenkinsParameters(JenkinsClient jenkinsClient, SBuildType buildType, String fullName)
       throws Exception {

@@ -22,6 +22,9 @@ public final class BridgeBuildFeatureConstants {
    */
   public static final String PARAM_JENKINS_URL = "jenkinsUrl";
 
+  /** Optional, informational Jenkins {@code _class} used to display the job type in import UI. */
+  public static final String PARAM_JENKINS_TYPE = "jenkinsType";
+
   /**
    * Optional. How many of the most recent Jenkins builds to mirror the first time this configuration
    * is polled, where zero mirrors no historical build. Has no effect once the job has been polled at

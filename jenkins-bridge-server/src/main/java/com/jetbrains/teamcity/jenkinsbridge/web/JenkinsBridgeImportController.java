@@ -3,6 +3,7 @@ package com.jetbrains.teamcity.jenkinsbridge.web;
 import com.google.gson.Gson;
 import com.jetbrains.teamcity.jenkinsbridge.feature.ImportResult;
 import com.jetbrains.teamcity.jenkinsbridge.feature.JenkinsJobImporter;
+import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClient;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClientFactory;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsJob;
 import jetbrains.buildServer.controllers.BaseController;
@@ -21,6 +22,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -36,6 +38,8 @@ import java.util.Set;
  */
 public class JenkinsBridgeImportController extends BaseController {
   static final String PATH = "/admin/jenkinsBridgeImport.html";
+  private static final int DEFAULT_PAGE_SIZE = 100;
+  private static final int MAX_PAGE_SIZE = 100;
   private static final Gson GSON = new Gson();
 
   private final ProjectManager projectManager;
@@ -86,14 +90,59 @@ public class JenkinsBridgeImportController extends BaseController {
   private ModelAndView handleList(HttpServletRequest request, HttpServletResponse response, SProject project,
                                   String projectExternalId, String connectionId) throws Exception {
     String folderPath = request.getParameter("folderPath");
+    String search = request.getParameter("search");
+    int offset = nonNegativeInt(request.getParameter("offset"), 0);
+    int limit = boundedPageSize(request.getParameter("limit"));
     Set<String> mirrored = importer.alreadyMirroredJobs(projectExternalId);
+    Map<String, String> mirroredTypes = importer.alreadyMirroredJobTypes(projectExternalId);
 
     List<JobView> views = new ArrayList<JobView>();
-    for (JenkinsJob job : jenkinsClientFactory.forConnectionId(project, connectionId)
-        .listJobs(folderPath == null ? "" : folderPath)) {
-      views.add(new JobView(job, mirrored.contains(job.getFullName())));
+    JenkinsClient jenkinsClient = jenkinsClientFactory.forConnectionId(project, connectionId);
+    int scanOffset = offset;
+    int nextOffset = offset;
+    boolean hasMore = false;
+    while (views.size() < limit) {
+      List<JenkinsJob> jobs = jenkinsClient.listJobs(folderPath == null ? "" : folderPath,
+          scanOffset, limit, search);
+      int consumed = 0;
+      for (JenkinsJob job : jobs) {
+        consumed++;
+        if (!mirrored.contains(job.getFullName())) {
+          views.add(new JobView(job, false));
+          if (views.size() >= limit) {
+            break;
+          }
+        }
+      }
+      scanOffset += consumed;
+      nextOffset = scanOffset;
+      hasMore = consumed < jobs.size() || jobs.size() == limit;
+      if (!hasMore || jobs.isEmpty()) {
+        break;
+      }
     }
-    return writeJson(response, views);
+    List<String> configuredNames = new ArrayList<String>(mirrored);
+    Collections.sort(configuredNames);
+    List<JobView> configured = new ArrayList<JobView>();
+    for (String name : configuredNames) {
+      configured.add(JobView.configured(name, mirroredTypes.get(name)));
+    }
+    return writeJson(response, new JobPage(offset, limit, nextOffset, hasMore, configured, views));
+  }
+
+  private static int boundedPageSize(String value) {
+    return Math.min(MAX_PAGE_SIZE, Math.max(1, nonNegativeInt(value, DEFAULT_PAGE_SIZE)));
+  }
+
+  private static int nonNegativeInt(String value, int defaultValue) {
+    if (value == null || value.trim().isEmpty()) {
+      return defaultValue;
+    }
+    try {
+      return Math.max(0, Integer.parseInt(value.trim()));
+    } catch (NumberFormatException ignored) {
+      return defaultValue;
+    }
   }
 
   private ModelAndView handleImport(HttpServletRequest request, HttpServletResponse response,
@@ -122,6 +171,7 @@ public class JenkinsBridgeImportController extends BaseController {
     final String name;
     final String fullName;
     final String type;
+    final String displayType;
     final boolean importable;
     final boolean isMultibranch;
     final boolean alreadyImported;
@@ -130,9 +180,46 @@ public class JenkinsBridgeImportController extends BaseController {
       this.name = job.getName();
       this.fullName = job.getFullName();
       this.type = job.getType();
+      this.displayType = job.getDisplayType();
       this.importable = job.isImportable();
       this.isMultibranch = job.isMultibranch();
       this.alreadyImported = alreadyImported;
+    }
+
+    static JobView configured(String fullName, String jenkinsClass) {
+      String displayType = jenkinsClass == null || jenkinsClass.trim().isEmpty()
+          ? "Configured"
+          : JenkinsJob.displayType(jenkinsClass);
+      return new JobView(fullName, displayType);
+    }
+
+    private JobView(String fullName, String type) {
+      this.name = fullName;
+      this.fullName = fullName;
+      this.type = type;
+      this.displayType = type;
+      this.importable = true;
+      this.isMultibranch = false;
+      this.alreadyImported = true;
+    }
+  }
+
+  private static final class JobPage {
+    final int offset;
+    final int limit;
+    final int nextOffset;
+    final boolean hasMore;
+    final List<JobView> configuredJobs;
+    final List<JobView> jobs;
+
+    JobPage(int offset, int limit, int nextOffset, boolean hasMore,
+            List<JobView> configuredJobs, List<JobView> jobs) {
+      this.offset = offset;
+      this.limit = limit;
+      this.nextOffset = nextOffset;
+      this.hasMore = hasMore;
+      this.configuredJobs = configuredJobs;
+      this.jobs = jobs;
     }
   }
 }

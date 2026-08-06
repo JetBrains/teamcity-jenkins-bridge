@@ -306,6 +306,36 @@ public class JenkinsClientTest {
   }
 
   @Test
+  public void listJobsRequestsOnlyTheRequestedRange() throws Exception {
+    StubResponseHttpClient httpClient = new StubResponseHttpClient();
+    httpClient.body = "{\"jobs\":[{\"name\":\"job-100\",\"fullName\":\"job-100\",\"_class\":\"hudson.model.FreeStyleProject\"}]}";
+    JenkinsClient client = new JenkinsClient(new StaticSettingsProvider(), httpClient, newJaxbUnmarshaller());
+
+    List<JenkinsJob> jobs = client.listJobs("", 100, 100);
+
+    assertEquals("http://jenkins/api/json?tree=jobs%5Bname%2CfullName%2Curl%2C_class%2Cbuildable%2Ccolor%5D%7B100%2C200%7D",
+        httpClient.url);
+    assertEquals(1, jobs.size());
+    assertEquals("job-100", jobs.get(0).getFullName());
+  }
+
+  @Test
+  public void listJobsSearchFiltersTheRequestedRemoteRange() throws Exception {
+    StubResponseHttpClient httpClient = new StubResponseHttpClient();
+    httpClient.body = "{\"jobs\":["
+        + "{\"name\":\"alpha\",\"fullName\":\"team/alpha\",\"_class\":\"hudson.model.FreeStyleProject\"},"
+        + "{\"name\":\"beta\",\"fullName\":\"team/beta\",\"_class\":\"hudson.model.FreeStyleProject\"}]}";
+    JenkinsClient client = new JenkinsClient(new StaticSettingsProvider(), httpClient, newJaxbUnmarshaller());
+
+    List<JenkinsJob> jobs = client.listJobs("team", 0, 100, "beta");
+
+    assertEquals("http://jenkins/job/team/api/json?tree=jobs%5Bname%2CfullName%2Curl%2C_class%2Cbuildable%2Ccolor%5D%7B0%2C100%7D",
+        httpClient.url);
+    assertEquals(1, jobs.size());
+    assertEquals("team/beta", jobs.get(0).getFullName());
+  }
+
+  @Test
   public void jobUrlBuildsAbsoluteJobPageUrlFromGlobalBase() {
     JenkinsClient client = new JenkinsClient(testConnection(), new StubResponseHttpClient(), newJaxbUnmarshaller());
 
