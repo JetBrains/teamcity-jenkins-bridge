@@ -625,13 +625,6 @@ public class JenkinsBridgePollingService {
       }
     }
 
-    // Jenkins-first mirrors without a TeamCity build still wait for Jenkins to finish before the
-    // mirror build is created. TeamCity-first mirrors are already bound to a queued promotion, so
-    // start and update that promotion live instead of leaving it in the queue until Jenkins finishes.
-    if (buildInfo.isBuilding() && mirror.getTeamCityBuildId() == null) {
-      return;
-    }
-
     ensureJenkinsBuildParametersLoaded(jenkinsClient, mirror);
 
     // Try to fetch any existing VCS info before queueing to pin the correct branch name
@@ -648,6 +641,7 @@ public class JenkinsBridgePollingService {
 
     long teamCityBuildId =
         mirrorService.ensureTeamCityBuild(mirror, connectionId, buildInfo, graph, queueVcsInfo);
+
     mirrorService.ensureRunningDataSent(mirror, teamCityBuildId);
     mirrorService.ensureMetadataLogSent(mirror, teamCityBuildId);
     mirrorService.syncBuildNumber(mirror);
@@ -708,6 +702,7 @@ public class JenkinsBridgePollingService {
       mirrorService.syncVcsIfNeeded(mirror, vcsInfo);
     }
     mirrorService.finishBuildIfNeeded(mirror, teamCityBuildId, buildInfo);
+    mirrorService.ensureRetrospectivePipelineChain(mirror, teamCityBuildId, graph);
   }
 
   private void ensureJenkinsBuildParametersLoaded(JenkinsClient jenkinsClient, BuildMirror mirror)
