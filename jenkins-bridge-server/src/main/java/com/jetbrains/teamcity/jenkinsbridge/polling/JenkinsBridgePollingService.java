@@ -56,6 +56,7 @@ public class JenkinsBridgePollingService {
   private final BuildMirrorStore mirrorStore;
   private final MirroredJobProvider mirroredJobProvider;
   private final TeamCityRunningBuildLocator buildLocator;
+  private final JenkinsBridgeSystemProblemReporter systemProblemReporter;
   private final JenkinsJobCoordinator jobCoordinator = new JenkinsJobCoordinator();
   private final AtomicBoolean started = new AtomicBoolean(false);
   private ScheduledExecutorService executorService;
@@ -67,7 +68,8 @@ public class JenkinsBridgePollingService {
       TeamCityBuildMirrorService mirrorService,
       BuildMirrorStore mirrorStore,
       MirroredJobProvider mirroredJobProvider,
-      TeamCityRunningBuildLocator buildLocator
+      TeamCityRunningBuildLocator buildLocator,
+      JenkinsBridgeSystemProblemReporter systemProblemReporter
   ) {
     this.settingsProvider = settingsProvider;
     this.jenkinsClientFactory = jenkinsClientFactory;
@@ -76,6 +78,7 @@ public class JenkinsBridgePollingService {
     this.mirrorStore = mirrorStore;
     this.mirroredJobProvider = mirroredJobProvider;
     this.buildLocator = buildLocator;
+    this.systemProblemReporter = systemProblemReporter;
   }
 
   public void start() {
@@ -140,6 +143,9 @@ public class JenkinsBridgePollingService {
         pollPipeline(mirroredJob);
       } catch (Exception e) {
         // Isolate per-job failures so one broken job does not abort the rest of the cycle.
+        if (systemProblemReporter != null) {
+          systemProblemReporter.report(mirroredJob, e);
+        }
         LOG.warn("Jenkins Bridge: failed to poll " + mirroredJob.describeForLog(), e);
       }
     }
@@ -337,10 +343,18 @@ public class JenkinsBridgePollingService {
             recentBuildLimit, false);
         pollJob(jenkinsClient, branchJob, entry.getValue(), recentBuildLimit);
       }
+      clearSystemProblem(mirroredJob);
       return;
     }
 
     pollJob(jenkinsClient, mirroredJob, jenkinsClient.getBuilds(mirroredJob.jenkinsJob()), recentBuildLimit);
+    clearSystemProblem(mirroredJob);
+  }
+
+  private void clearSystemProblem(MirroredJob mirroredJob) {
+    if (systemProblemReporter != null) {
+      systemProblemReporter.clear(mirroredJob);
+    }
   }
 
   private JenkinsClient jenkinsClientFor(MirroredJob mirroredJob) {

@@ -325,7 +325,37 @@ public class JenkinsClient {
    * non-importable. Reads from this client's Jenkins connection.
    */
   public List<JenkinsJob> listJobs(String folderPath) throws BridgeHttpException {
+    return listJobs(folderPath, -1, -1);
+  }
+
+  /**
+   * Lists a bounded range of top-level jobs using Jenkins Remote API tree range syntax. Jenkins
+   * does not expose conventional page metadata, so callers should request the next range while
+   * the returned page is full. Negative start/limit preserves the historical unbounded request.
+   */
+  public List<JenkinsJob> listJobs(String folderPath, int start, int limit) throws BridgeHttpException {
+    return listJobs(folderPath, start, limit, "");
+  }
+
+  /**
+   * Lists a page of jobs matching {@code search}. For a non-empty search Jenkins is scanned in
+   * bounded ranges so the bridge never downloads the whole job catalog into one request or one
+   * in-memory collection. Jenkins' generic API has no server-side text search or total-count
+   * metadata, so a search may still require scanning several ranges.
+   */
+  public List<JenkinsJob> listJobs(String folderPath, int start, int limit, String search)
+      throws BridgeHttpException {
+    if (search != null && !search.trim().isEmpty()) {
+      return searchJobs(folderPath, start, limit, search.trim());
+    }
+    return listJobsPage(folderPath, start, limit);
+  }
+
+  private List<JenkinsJob> listJobsPage(String folderPath, int start, int limit) throws BridgeHttpException {
     String tree = "jobs[name,fullName,url,_class,buildable,color]";
+    if (start >= 0 && limit > 0) {
+      tree += "{" + start + "," + (start + limit) + "}";
+    }
     String url = myConnection.getUrl()
         + jenkinsJobPath(folderPath == null ? "" : folderPath)
         + "/api/json?tree="
@@ -344,6 +374,40 @@ public class JenkinsClient {
       }
     }
     return result;
+  }
+
+  private List<JenkinsJob> searchJobs(String folderPath, int start, int limit, String search)
+      throws BridgeHttpException {
+    final int scanPageSize = 100;
+    String needle = search.toLowerCase(Locale.ROOT);
+    int matchingJobsSeen = 0;
+    int remoteOffset = 0;
+    List<JenkinsJob> result = new ArrayList<JenkinsJob>();
+
+    while (true) {
+      List<JenkinsJob> page = listJobsPage(folderPath, remoteOffset, scanPageSize);
+      if (page.isEmpty()) {
+        return result;
+      }
+      for (JenkinsJob job : page) {
+        String name = job.getName() == null ? "" : job.getName().toLowerCase(Locale.ROOT);
+        String fullName = job.getFullName() == null ? "" : job.getFullName().toLowerCase(Locale.ROOT);
+        if (!name.contains(needle) && !fullName.contains(needle)) {
+          continue;
+        }
+        if (matchingJobsSeen++ < start) {
+          continue;
+        }
+        result.add(job);
+        if (result.size() >= limit) {
+          return result;
+        }
+      }
+      if (page.size() < scanPageSize) {
+        return result;
+      }
+      remoteOffset += scanPageSize;
+    }
   }
 
   /**
