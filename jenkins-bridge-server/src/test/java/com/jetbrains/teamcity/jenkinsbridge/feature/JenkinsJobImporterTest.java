@@ -59,9 +59,9 @@ public class JenkinsJobImporterTest {
 
     ArgumentCaptor<Map<String, String>> params = paramsCaptor();
     verify(buildType).addBuildFeature(eq(BridgeBuildFeatureConstants.TYPE), params.capture());
-    assertEquals("true", params.getValue().get(BridgeBuildFeatureConstants.PARAM_IN_MULTIBRANCH));
     assertEquals("pipeline", params.getValue().get(BridgeBuildFeatureConstants.PARAM_JENKINS_JOB));
     assertEquals("conn1", params.getValue().get(BridgeBuildFeatureConstants.PARAM_CONNECTION_ID));
+    verify(parameterFactory).createSimpleParameter(BridgeBuildFeatureConstants.INTERNAL_MULTIBRANCH_PARAM, "true");
     assertEquals(1, result.getCreated().size());
   }
 

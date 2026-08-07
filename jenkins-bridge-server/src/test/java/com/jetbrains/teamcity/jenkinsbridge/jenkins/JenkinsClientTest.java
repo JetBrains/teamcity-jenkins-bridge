@@ -309,7 +309,7 @@ public class JenkinsClientTest {
   public void listJobsRequestsOnlyTheRequestedRange() throws Exception {
     StubResponseHttpClient httpClient = new StubResponseHttpClient();
     httpClient.body = "{\"jobs\":[{\"name\":\"job-100\",\"fullName\":\"job-100\",\"_class\":\"hudson.model.FreeStyleProject\"}]}";
-    JenkinsClient client = new JenkinsClient(new StaticSettingsProvider(), httpClient, newJaxbUnmarshaller());
+    JenkinsClient client = new JenkinsClient(testConnection(), httpClient, newJaxbUnmarshaller());
 
     List<JenkinsJob> jobs = client.listJobs("", 100, 100);
 
@@ -325,7 +325,7 @@ public class JenkinsClientTest {
     httpClient.body = "{\"jobs\":["
         + "{\"name\":\"alpha\",\"fullName\":\"team/alpha\",\"_class\":\"hudson.model.FreeStyleProject\"},"
         + "{\"name\":\"beta\",\"fullName\":\"team/beta\",\"_class\":\"hudson.model.FreeStyleProject\"}]}";
-    JenkinsClient client = new JenkinsClient(new StaticSettingsProvider(), httpClient, newJaxbUnmarshaller());
+    JenkinsClient client = new JenkinsClient(testConnection(), httpClient, newJaxbUnmarshaller());
 
     List<JenkinsJob> jobs = client.listJobs("team", 0, 100, "beta");
 

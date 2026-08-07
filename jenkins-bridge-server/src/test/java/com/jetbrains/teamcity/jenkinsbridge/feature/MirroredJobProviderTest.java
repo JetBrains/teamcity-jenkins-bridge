@@ -85,8 +85,9 @@ public class MirroredJobProviderTest {
     Map<String, String> params = new LinkedHashMap<>();
     params.put(BridgeBuildFeatureConstants.PARAM_CONNECTION_ID, "conn1");
     params.put(BridgeBuildFeatureConstants.PARAM_JENKINS_JOB, "team/pipeline");
-    params.put(BridgeBuildFeatureConstants.PARAM_IN_MULTIBRANCH, "true");
-    withBuildTypes(buildType("Proj_Mirror", "Proj / Mirror", params));
+    SBuildType buildType = buildType("Proj_Mirror", "Proj / Mirror", params);
+    when(buildType.getParameterValue(BridgeBuildFeatureConstants.INTERNAL_MULTIBRANCH_PARAM)).thenReturn("true");
+    withBuildTypes(buildType);
 
     assertTrue(provider.discoverMirroredJobs().getFirst().isMultibranch());
   }
