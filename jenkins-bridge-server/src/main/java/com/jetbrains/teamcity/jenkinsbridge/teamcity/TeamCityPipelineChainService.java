@@ -8,6 +8,7 @@ import jetbrains.buildServer.serverSide.BuildCustomizer;
 import jetbrains.buildServer.serverSide.BuildCustomizerEx;
 import jetbrains.buildServer.serverSide.BuildCustomizerFactory;
 import jetbrains.buildServer.serverSide.BuildPromotion;
+import jetbrains.buildServer.serverSide.BuildPromotionEx;
 import jetbrains.buildServer.serverSide.DuplicateBuildTypeNameException;
 import jetbrains.buildServer.serverSide.ProjectManager;
 import jetbrains.buildServer.serverSide.SBuildType;
@@ -90,6 +91,101 @@ public class TeamCityPipelineChainService {
     SProject generatedProject = ensureGeneratedProject(sourceBuildType.getProject());
     Map<String, SBuildType> buildTypesByNodeId = ensureBuildTypes(mirror, graph, plan, generatedProject);
     return queueSourceBuild(mirror, plan, sourceBuildType, buildTypesByNodeId);
+  }
+
+  /**
+   * Adds a completed Jenkins pipeline's graph to an already-finished TeamCity-first promotion.
+   *
+   * <p>This is deliberately retrospective: the top promotion has already mirrored Jenkins and
+   * will not be used to gate execution. TeamCity's dependency mutation API is an internal API and
+   * may warn when used after start, but it is the only way to preserve the original TeamCity-first
+   * promotion as the top of the historical chain.</p>
+   */
+  public PipelineChainMirror retrofitFinishedChain(
+      BuildMirror mirror,
+      JenkinsPipelineGraph graph,
+      BuildPromotion topPromotion
+  ) throws Exception {
+    SBuildType sourceBuildType = findBuildType(mirror.getTeamCityBuildTypeId(), projectManager);
+    if (sourceBuildType == null || !isChainEnabled(sourceBuildType)
+        || !planner.canCreateNativeChain(graph)) {
+      return null;
+    }
+    if (!(topPromotion instanceof BuildPromotionEx)) {
+      throw new IllegalStateException("TeamCity top promotion does not support retrospective dependencies");
+    }
+
+    PipelineChainMirror existing = mirror.getPipelineChain();
+    if (existing != null && existing.matchesQueuedTopology(graph.getTopologyHash())) {
+      return existing;
+    }
+
+    PipelineChainPlan plan = planner.plan(mirror, sourceBuildType.getExternalId(), graph);
+    if (plan.getTerminalNodeIds().isEmpty()) {
+      throw new IllegalStateException("Pipeline graph has no terminal node to attach");
+    }
+
+    SProject generatedProject = ensureGeneratedProject(sourceBuildType.getProject());
+    Map<String, SBuildType> buildTypesByNodeId = ensureBuildTypes(mirror, graph, plan, generatedProject);
+    Map<String, BuildPromotionEx> promotionsByNodeId = new LinkedHashMap<String, BuildPromotionEx>();
+
+    for (PipelineChainPlan.Node node : plan.getNodes()) {
+      SBuildType nodeBuildType = buildTypesByNodeId.get(node.getNodeId());
+      BuildCustomizer customizer = buildCustomizerFactory.createBuildCustomizer(nodeBuildType, null);
+      customizer.setParameters(TeamCityBuildParameters.mergeWithJenkinsParameters(
+          nodeBuildParameters(mirror, node),
+          mirror.getJenkinsBuildParameters(),
+          nodeBuildType.getParametersProvider().getAll().keySet()));
+      BuildPromotion promotion = customizer.createPromotion();
+      if (!(promotion instanceof BuildPromotionEx)) {
+        throw new IllegalStateException("Generated Pipeline promotion does not support dependencies");
+      }
+      promotionsByNodeId.put(node.getNodeId(), (BuildPromotionEx) promotion);
+    }
+
+    for (PipelineChainPlan.Node node : plan.getNodes()) {
+      BuildPromotionEx promotion = promotionsByNodeId.get(node.getNodeId());
+      for (String parentNodeId : node.getParentNodeIds()) {
+        BuildPromotionEx parent = promotionsByNodeId.get(parentNodeId);
+        if (parent == null) {
+          throw new IllegalStateException("Pipeline node " + node.getNodeId()
+              + " references missing parent node " + parentNodeId);
+        }
+        promotion.addDependency(parent, snapshotDependency(parent.getBuildTypeExternalId()));
+      }
+      promotion.persistDependencies();
+    }
+
+    BuildPromotionEx top = (BuildPromotionEx) topPromotion;
+    List<Long> terminalPromotionIds = new ArrayList<Long>();
+    for (String terminalNodeId : plan.getTerminalNodeIds()) {
+      BuildPromotionEx terminal = promotionsByNodeId.get(terminalNodeId);
+      if (terminal == null) {
+        throw new IllegalStateException("Pipeline terminal node " + terminalNodeId + " is missing");
+      }
+      top.addDependency(terminal, snapshotDependency(terminal.getBuildTypeExternalId()));
+      terminalPromotionIds.add(terminal.getId());
+    }
+    top.persistDependencies();
+
+    Map<String, PipelineChainNodeMirror> nodeMirrors =
+        new LinkedHashMap<String, PipelineChainNodeMirror>();
+    for (PipelineChainPlan.Node node : plan.getNodes()) {
+      BuildPromotionEx promotion = promotionsByNodeId.get(node.getNodeId());
+      nodeMirrors.put(node.getNodeId(), new PipelineChainNodeMirror(
+          node.getNodeId(), node.getFlowId(), node.getBuildTypeExternalId(), promotion.getId()));
+      promotion.addToQueue(TRIGGERED_BY);
+    }
+
+    return new PipelineChainMirror(
+        plan.getTopologyHash(),
+        String.valueOf(plan.getConfidence()),
+        sourceBuildType.getExternalId(),
+        topPromotion.getId(),
+        nodeMirrors,
+        plan.getTerminalNodeIds(),
+        terminalPromotionIds,
+        true);
   }
 
   private SProject ensureGeneratedProject(SProject sourceProject) {
@@ -276,6 +372,17 @@ public class TeamCityPipelineChainService {
         DependencyOptions.RUN_BUILD_IF_DEPENDENCY_FAILED_TO_START,
         DependencyOptions.BuildContinuationMode.RUN);
     return dependency;
+  }
+
+  private Map<String, String> nodeBuildParameters(BuildMirror mirror, PipelineChainPlan.Node node) {
+    Map<String, String> parameters = new LinkedHashMap<String, String>();
+    parameters.put("jenkins.job", mirror.getJenkinsJob());
+    parameters.put("jenkins.build.number", String.valueOf(mirror.getJenkinsBuildNumber()));
+    parameters.put("jenkins.build.key", mirror.getJenkinsBuildKey());
+    parameters.put("jenkins.flow.id", node.getFlowId());
+    parameters.put("jenkins.flow.node.id", node.getNodeId());
+    parameters.put("jenkins.flow.name", node.getName());
+    return parameters;
   }
 
   private Map<String, String> topBuildParameters(BuildMirror mirror) {

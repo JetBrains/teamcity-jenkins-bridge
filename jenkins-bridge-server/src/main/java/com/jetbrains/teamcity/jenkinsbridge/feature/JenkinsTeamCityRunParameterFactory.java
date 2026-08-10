@@ -20,6 +20,8 @@ public final class JenkinsTeamCityRunParameterFactory {
   private JenkinsTeamCityRunParameterFactory() {
   }
 
+  //  reject parameters that we don't want to import that could cause problems for use, for example jenkins bridge parameters.
+  // we should reserve theese paramets to written in TeamCity not from Jenkins.
   public static boolean canImport(JenkinsParameterDefinition definition) {
     if (definition == null) {
       return false;
@@ -34,7 +36,7 @@ public final class JenkinsTeamCityRunParameterFactory {
         && !TeamCityBuildParameters.AGENTLESS_BUILD_PROPERTY.equals(name)
         && !lowerName.startsWith("teamcity.")
         && !lowerName.startsWith("jenkins.build.")
-        && !lowerName.startsWith("jenkins.bridge.");
+        && !lowerName.startsWith(TeamCityBuildParameters.BRIDGE_PARAMETER_PREFIX);
   }
 
   public static Parameter create(ParameterFactory parameterFactory, JenkinsParameterDefinition definition) {
