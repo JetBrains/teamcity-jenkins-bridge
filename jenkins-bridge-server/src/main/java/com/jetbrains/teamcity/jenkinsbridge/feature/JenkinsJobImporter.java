@@ -71,7 +71,6 @@ public class JenkinsJobImporter {
     JenkinsClient jenkinsClient = jenkinsClientFactory.forConnectionId(project, connectionId);
 
     Set<String> alreadyMirroredJobs = collectMirroredJobs(project);
-    Map<String, SBuildType> alreadyMirroredBuildTypes = collectMirroredBuildTypes(project);
     ImportResult result = new ImportResult();
 
     for (String rawFullName : jenkinsJobFullNames) {
@@ -79,21 +78,8 @@ public class JenkinsJobImporter {
       if (fullName.isEmpty()) {
         continue;
       }
-      SBuildType existingBuildType = alreadyMirroredBuildTypes.get(fullName);
-      if (existingBuildType != null) {
-        try {
-          int importedParameters = importJenkinsParameters(jenkinsClient, existingBuildType, fullName);
-          ensureAgentlessHidden(existingBuildType);
-          existingBuildType.persist();
-          if (importedParameters > 0) {
-            result.addSkipped(fullName, "already imported; refreshed " + importedParameters + " Jenkins parameter(s)");
-          } else {
-            result.addSkipped(fullName, "already imported");
-          }
-        } catch (Exception e) {
-          result.addFailed(fullName, e.getClass().getSimpleName()
-              + (e.getMessage() == null ? "" : ": " + e.getMessage()));
-        }
+      if (alreadyMirroredJobs.contains(fullName)) {
+        result.addSkipped(fullName, "already imported");
         continue;
       }
 
@@ -179,28 +165,56 @@ public class JenkinsJobImporter {
     return types;
   }
 
-  private Set<String> collectMirroredJobs(SProject project) {
-    Set<String> jobs = new HashSet<>();
-    jobs.addAll(collectMirroredBuildTypes(project).keySet());
-    return jobs;
+  /** Jenkins connection ids persisted on imported bridge features, keyed by Jenkins full name. */
+  public Map<String, String> alreadyMirroredJobConnections(String projectExternalId) {
+    SProject project = projectManager.findProjectByExternalId(projectExternalId);
+    if (project == null) {
+      return Collections.emptyMap();
+    }
+    Map<String, String> connections = new LinkedHashMap<>();
+    for (SBuildFeatureDescriptor descriptor : allBridgeFeatures(project)) {
+      Map<String, String> params = descriptor.getParameters();
+      String job = params.get(BridgeBuildFeatureConstants.PARAM_JENKINS_JOB);
+      if (job != null && !job.trim().isEmpty()) {
+        connections.put(job.trim(), params.get(BridgeBuildFeatureConstants.PARAM_CONNECTION_ID));
+      }
+    }
+    return connections;
   }
 
-  private Map<String, SBuildType> collectMirroredBuildTypes(SProject project) {
-    Set<String> jobs = new HashSet<String>();
-    Map<String, SBuildType> buildTypes = new LinkedHashMap<String, SBuildType>();
+  /** Jenkins job URLs persisted on imported bridge features, keyed by Jenkins full name. */
+  public Map<String, String> alreadyMirroredJobUrls(String projectExternalId) {
+    SProject project = projectManager.findProjectByExternalId(projectExternalId);
+    if (project == null) {
+      return Collections.emptyMap();
+    }
+    Map<String, String> urls = new LinkedHashMap<>();
+    for (SBuildFeatureDescriptor descriptor : allBridgeFeatures(project)) {
+      Map<String, String> params = descriptor.getParameters();
+      String job = params.get(BridgeBuildFeatureConstants.PARAM_JENKINS_JOB);
+      if (job != null && !job.trim().isEmpty()) {
+        String url = params.get(BridgeBuildFeatureConstants.PARAM_JENKINS_URL);
+        if (url != null && !url.trim().isEmpty()) {
+          urls.put(job.trim(), url.trim());
+        }
+      }
+    }
+    return urls;
+  }
+
+  private Set<String> collectMirroredJobs(SProject project) {
+    Set<String> jobs = new HashSet<>();
     for (SBuildType buildType : project.getBuildTypes()) {
       for (SBuildFeatureDescriptor descriptor
           : buildType.getBuildFeaturesOfType(BridgeBuildFeatureConstants.TYPE)) {
         String job = descriptor.getParameters().get(BridgeBuildFeatureConstants.PARAM_JENKINS_JOB);
         if (job != null && !job.trim().isEmpty()) {
           String normalizedJob = job.trim();
-          if (jobs.add(normalizedJob)) {
-            buildTypes.put(normalizedJob, buildType);
-          }
+          jobs.add(normalizedJob);
         }
       }
     }
-    return buildTypes;
+    return jobs;
   }
 
   private List<SBuildFeatureDescriptor> allBridgeFeatures(SProject project) {
@@ -228,19 +242,6 @@ public class JenkinsJobImporter {
     }
     return imported;
   }
-
-  /**
-   * Ensures the agentless marker is present and hidden from the Run Custom Build dialog. Re-applies
-   * the hidden spec so configs imported before this behavior existed (agentless shown as a normal
-   * config parameter) are upgraded on re-import.
-   */
-  private void ensureAgentlessHidden(SBuildType buildType) throws Exception {
-    if (buildType.getParametersProvider().get(AGENTLESS_PARAM) != null) {
-      buildType.removeParameter(AGENTLESS_PARAM);
-    }
-    buildType.addConfigParameter(parameterFactory.createTypedParameter(AGENTLESS_PARAM, "true", HIDDEN_SPEC));
-  }
-
   private static String leafName(String fullName) {
     int slash = fullName.lastIndexOf('/');
     return slash >= 0 && slash < fullName.length() - 1 ? fullName.substring(slash + 1) : fullName;

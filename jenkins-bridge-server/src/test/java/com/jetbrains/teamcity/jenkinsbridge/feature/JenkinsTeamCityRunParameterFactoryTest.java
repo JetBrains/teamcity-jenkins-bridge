@@ -29,9 +29,10 @@ public class JenkinsTeamCityRunParameterFactoryTest {
   }
 
   @Test
-  public void skipsBridgeAndTeamCityInternalParameterNames() {
+  public void skipsBridgeTeamCityAndJenkinsBuildInternalParameterNames() {
     assertFalse(JenkinsTeamCityRunParameterFactory.canImport(definition("teamcity.build.agentLess")));
     assertFalse(JenkinsTeamCityRunParameterFactory.canImport(definition("jenkins.build.key")));
+    assertFalse(JenkinsTeamCityRunParameterFactory.canImport(definition("jenkins.bridge.pipelineChain.enabled")));
     assertFalse(JenkinsTeamCityRunParameterFactory.canImport(definition("teamcity.foo")));
     assertTrue(JenkinsTeamCityRunParameterFactory.canImport(definition("BRANCH_NAME")));
   }

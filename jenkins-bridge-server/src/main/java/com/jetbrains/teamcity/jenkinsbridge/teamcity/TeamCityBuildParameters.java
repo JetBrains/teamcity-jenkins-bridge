@@ -13,6 +13,8 @@ import java.util.Set;
 
 public class TeamCityBuildParameters {
   public static final String AGENTLESS_BUILD_PROPERTY = "teamcity.build.agentLess";
+  /** Prefix reserved for bridge-internal parameters; never expose Jenkins values under it. */
+  public static final String BRIDGE_PARAMETER_PREFIX = "jenkins.bridge.";
 
   public static final String PULL_REQUEST_AUTHOR = "teamcity.pullRequest.author";
   public static final String PULL_REQUEST_BRANCH = "teamcity.pullRequest.branch.pullrequests";
@@ -51,14 +53,25 @@ public class TeamCityBuildParameters {
     Map<String, String> safeJenkinsParameters = jenkinsParameters == null
         ? Collections.<String, String>emptyMap()
         : jenkinsParameters;
-    List<String> collisions = collisions(result.keySet(), safeJenkinsParameters.keySet(), existingTeamCityParameterNames);
+    Map<String, String> visibleJenkinsParameters = withoutBridgeInternalParameters(safeJenkinsParameters);
+    List<String> collisions = collisions(result.keySet(), visibleJenkinsParameters.keySet(), existingTeamCityParameterNames);
     if (!collisions.isEmpty()) {
       throw new IllegalStateException(
           "Jenkins build parameter name(s) collide with TeamCity build parameters: "
               + join(collisions));
     }
 
-    result.putAll(safeJenkinsParameters);
+    result.putAll(visibleJenkinsParameters);
+    return result;
+  }
+
+  private static Map<String, String> withoutBridgeInternalParameters(Map<String, String> parameters) {
+    Map<String, String> result = new LinkedHashMap<String, String>();
+    for (Map.Entry<String, String> entry : parameters.entrySet()) {
+      if (!entry.getKey().startsWith(BRIDGE_PARAMETER_PREFIX)) {
+        result.put(entry.getKey(), entry.getValue());
+      }
+    }
     return result;
   }
 

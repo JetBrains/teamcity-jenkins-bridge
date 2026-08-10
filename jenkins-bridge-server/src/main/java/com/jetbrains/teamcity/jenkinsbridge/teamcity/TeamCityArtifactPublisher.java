@@ -18,7 +18,9 @@ import java.nio.charset.StandardCharsets;
 import java.io.StringWriter;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 public class TeamCityArtifactPublisher {
 
@@ -80,11 +82,24 @@ public class TeamCityArtifactPublisher {
       return;
     }
 
+    Map<String, String> commonProperties = new LinkedHashMap<>();
+    copyPromotionParameter(runningBuild, "jenkins.job", commonProperties);
+    copyPromotionParameter(runningBuild, "jenkins.build.number", commonProperties);
+    copyPromotionParameter(runningBuild, "jenkins.connection.id", commonProperties);
+
     SerializableArtifactListData listData = new SerializableArtifactListData(
-        storageFeatureId, Collections.emptyMap(), artifactDataList);
+        storageFeatureId, commonProperties, artifactDataList);
     StringWriter writer = new StringWriter();
     ArtifactListUtil.writeArtifactList(listData, writer);
     byte[] bytes = writer.toString().getBytes(OUR_CHARSET);
     runningBuild.publishArtifact(ArtifactsConstants.ARTIFACT_LIST_PATH, bytes);
+  }
+
+  private static void copyPromotionParameter(RunningBuildEx runningBuild, String key,
+                                             Map<String, String> target) {
+    String value = runningBuild.getBuildPromotion().getParameterValue(key);
+    if (value != null && !value.trim().isEmpty()) {
+      target.put(key, value);
+    }
   }
 }

@@ -3,6 +3,7 @@ package com.jetbrains.teamcity.jenkinsbridge.web;
 import com.google.gson.Gson;
 import com.jetbrains.teamcity.jenkinsbridge.feature.ImportResult;
 import com.jetbrains.teamcity.jenkinsbridge.feature.JenkinsJobImporter;
+import com.jetbrains.teamcity.jenkinsbridge.connection.JenkinsConnectionResolver;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClient;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClientFactory;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsJob;
@@ -24,17 +25,19 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import jetbrains.buildServer.serverSide.connections.ConnectionDescriptor;
 
 /**
- * AJAX endpoint backing the "Import Jenkins Jobs" project tab. Two actions:
+ * AJAX endpoint backing the "Import Jenkins Jobs" project tab. Three actions:
  * <ul>
+ *   <li>{@code action=configured}: list already-configured Jenkins jobs without contacting Jenkins.</li>
  *   <li>{@code action=list}: list top-level Jenkins jobs at a folder path, flagged importable /
  *       already-imported (JSON).</li>
  *   <li>{@code action=import}: create build configs for the selected jobs (JSON {@link ImportResult}).</li>
  * </ul>
  * Runs on the request thread under the logged-in user; both actions require EDIT_PROJECT on the
- * target project. Both also need a {@code connectionId} naming the Jenkins connection to read from,
- * since a project can have several Jenkins servers.
+ * target project. List and import also need a {@code connectionId} naming the Jenkins connection to
+ * read from, since a project can have several Jenkins servers.
  */
 public class JenkinsBridgeImportController extends BaseController {
   static final String PATH = "/admin/jenkinsBridgeImport.html";
@@ -45,16 +48,19 @@ public class JenkinsBridgeImportController extends BaseController {
   private final ProjectManager projectManager;
   private final JenkinsClientFactory jenkinsClientFactory;
   private final JenkinsJobImporter importer;
+  private final JenkinsConnectionResolver connectionResolver;
 
   public JenkinsBridgeImportController(
       WebControllerManager webControllerManager,
       ProjectManager projectManager,
       JenkinsClientFactory jenkinsClientFactory,
-      JenkinsJobImporter importer
+      JenkinsJobImporter importer,
+      JenkinsConnectionResolver connectionResolver
   ) {
     this.projectManager = projectManager;
     this.jenkinsClientFactory = jenkinsClientFactory;
     this.importer = importer;
+    this.connectionResolver = connectionResolver;
     webControllerManager.registerController(PATH, this);
   }
 
@@ -70,13 +76,16 @@ public class JenkinsBridgeImportController extends BaseController {
       return error(response, 403, "You do not have permission to edit this project");
     }
 
-    String connectionId = request.getParameter("connectionId");
-    if (connectionId == null || connectionId.trim().isEmpty()) {
-      return error(response, 400, "No Jenkins connection selected");
-    }
-
     String action = request.getParameter("action");
     try {
+      if ("configured".equals(action)) {
+        return writeJson(response, Collections.singletonMap(
+            "configuredJobs", configuredJobViews(project)));
+      }
+      String connectionId = request.getParameter("connectionId");
+      if (connectionId == null || connectionId.trim().isEmpty()) {
+        return error(response, 400, "No Jenkins connection selected");
+      }
       if ("import".equals(action)) {
         return handleImport(request, response, projectExternalId, connectionId);
       }
@@ -94,7 +103,6 @@ public class JenkinsBridgeImportController extends BaseController {
     int offset = nonNegativeInt(request.getParameter("offset"), 0);
     int limit = boundedPageSize(request.getParameter("limit"));
     Set<String> mirrored = importer.alreadyMirroredJobs(projectExternalId);
-    Map<String, String> mirroredTypes = importer.alreadyMirroredJobTypes(projectExternalId);
 
     List<JobView> views = new ArrayList<JobView>();
     JenkinsClient jenkinsClient = jenkinsClientFactory.forConnectionId(project, connectionId);
@@ -121,13 +129,27 @@ public class JenkinsBridgeImportController extends BaseController {
         break;
       }
     }
+    List<JobView> configured = configuredJobViews(project);
+    return writeJson(response, new JobPage(offset, limit, nextOffset, hasMore, configured, views));
+  }
+
+  private List<JobView> configuredJobViews(SProject project) {
+    Set<String> mirrored = importer.alreadyMirroredJobs(project.getExternalId());
+    Map<String, String> mirroredTypes = importer.alreadyMirroredJobTypes(project.getExternalId());
+    Map<String, String> mirroredConnections = importer.alreadyMirroredJobConnections(project.getExternalId());
+    Map<String, String> mirroredUrls = importer.alreadyMirroredJobUrls(project.getExternalId());
     List<String> configuredNames = new ArrayList<String>(mirrored);
     Collections.sort(configuredNames);
     List<JobView> configured = new ArrayList<JobView>();
     for (String name : configuredNames) {
-      configured.add(JobView.configured(name, mirroredTypes.get(name)));
+      String connectionId = mirroredConnections.get(name);
+      ConnectionDescriptor descriptor = connectionResolver.findConnection(project, connectionId);
+      String connectionName = descriptor == null
+          ? (connectionId == null || connectionId.trim().isEmpty() ? "Unknown connection" : connectionId)
+          : descriptor.getDisplayName();
+      configured.add(JobView.configured(name, mirroredTypes.get(name), connectionName, mirroredUrls.get(name)));
     }
-    return writeJson(response, new JobPage(offset, limit, nextOffset, hasMore, configured, views));
+    return configured;
   }
 
   private static int boundedPageSize(String value) {
@@ -172,6 +194,8 @@ public class JenkinsBridgeImportController extends BaseController {
     final String fullName;
     final String type;
     final String displayType;
+    final String connection;
+    final String url;
     final boolean importable;
     final boolean isMultibranch;
     final boolean alreadyImported;
@@ -181,26 +205,36 @@ public class JenkinsBridgeImportController extends BaseController {
       this.fullName = job.getFullName();
       this.type = job.getType();
       this.displayType = job.getDisplayType();
+      this.connection = null;
+      this.url = job.getUrl();
       this.importable = job.isImportable();
       this.isMultibranch = job.isMultibranch();
       this.alreadyImported = alreadyImported;
     }
 
-    static JobView configured(String fullName, String jenkinsClass) {
+    static JobView configured(String fullName, String jenkinsClass, String connection, String url) {
       String displayType = jenkinsClass == null || jenkinsClass.trim().isEmpty()
           ? "Configured"
           : JenkinsJob.displayType(jenkinsClass);
-      return new JobView(fullName, displayType);
+      return new JobView(fullName, displayType, connection, url);
     }
 
-    private JobView(String fullName, String type) {
-      this.name = fullName;
+    private JobView(String fullName, String type, String connection, String url) {
+      this.name = leafName(fullName);
       this.fullName = fullName;
       this.type = type;
       this.displayType = type;
+      this.connection = connection;
+      this.url = url;
       this.importable = true;
       this.isMultibranch = false;
       this.alreadyImported = true;
+    }
+
+    private static String leafName(String fullName) {
+      int slash = fullName.lastIndexOf('/');
+      return slash >= 0 && slash < fullName.length() - 1
+          ? fullName.substring(slash + 1) : fullName;
     }
   }
 
