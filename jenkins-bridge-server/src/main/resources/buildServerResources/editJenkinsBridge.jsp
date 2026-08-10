@@ -65,19 +65,12 @@
   <td>
     <props:textProperty name="<%=BridgeBuildFeatureConstants.PARAM_RECENT_LIMIT%>" className="longField" maxlength="256"/>
     <span class="smallNote">
-      How many of the most recent Jenkins builds to mirror the first time this job is
-      polled (happens independently per branch for multibranch pipelines). Changing it later has no effect. The default value is
-      <code><%=BridgeBuildFeatureConstants.DEFAULT_RECENT_LIMIT%></code>.
+      Number of Jenkins builds to import when syncing for the first time.
+      Limited to builds available in Jenkins.
+      Changing it later has no effect.
+      Default: <code><%=BridgeBuildFeatureConstants.DEFAULT_RECENT_LIMIT%></code> (the most recent build).
     </span>
     <span class="error" id="error_<%=BridgeBuildFeatureConstants.PARAM_RECENT_LIMIT%>"></span>
-  </td>
-</tr>
-
-<tr>
-  <td><label for="<%=BridgeBuildFeatureConstants.PARAM_IN_MULTIBRANCH%>">Is multibranch pipeline:</label></td>
-  <td>
-    <props:checkboxProperty name="<%=BridgeBuildFeatureConstants.PARAM_IN_MULTIBRANCH%>"/>
-    <span class="smallNote">Whether this configuration mirrors a Jenkins multibranch pipeline.</span>
   </td>
 </tr>
 

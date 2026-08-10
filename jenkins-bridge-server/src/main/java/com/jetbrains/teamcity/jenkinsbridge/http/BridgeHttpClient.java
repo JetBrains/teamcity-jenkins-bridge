@@ -13,9 +13,25 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import jetbrains.buildServer.serverSide.TeamCityProperties;
+
 import static com.jetbrains.teamcity.jenkinsbridge.util.Utilities.nullToEmpty;
 
 public class BridgeHttpClient {
+  /** Connect timeout for regular (non-trigger) Jenkins requests, in milliseconds. */
+  private static final String CONNECT_TIMEOUT_MS_PROPERTY = "teamcity.internal.jenkinsBridge.http.connectTimeoutMs";
+  /** Read timeout for regular (non-trigger) Jenkins requests, in milliseconds. */
+  private static final String READ_TIMEOUT_MS_PROPERTY = "teamcity.internal.jenkinsBridge.http.readTimeoutMs";
+  /** Connect timeout for the fail-fast trigger POST, in milliseconds. */
+  private static final String TRIGGER_CONNECT_TIMEOUT_MS_PROPERTY =
+      "teamcity.internal.jenkinsBridge.trigger.connectTimeoutMs";
+  /** Read timeout for the fail-fast trigger POST, in milliseconds. */
+  private static final String TRIGGER_READ_TIMEOUT_MS_PROPERTY =
+      "teamcity.internal.jenkinsBridge.trigger.readTimeoutMs";
+
+  private static final int DEFAULT_TIMEOUT_MS = 30000;
+  private static final int DEFAULT_TRIGGER_TIMEOUT_MS = 5000;
+
   public interface StreamHandler {
     void handle(InputStream inputStream) throws IOException;
   }
@@ -48,7 +64,8 @@ public class BridgeHttpClient {
   public BridgeHttpResponse postResponse(
       String url, String user, String password, String body, String contentType, String accept,
       Map<String, String> headers) throws BridgeHttpException {
-    return request("POST", url, user, password, body, contentType, accept, headers, 5000, 15000, false);
+    return request("POST", url, user, password, body, contentType, accept, headers,
+        triggerConnectTimeoutMs(), triggerReadTimeoutMs(), false);
   }
 
   /** Trigger-specific POST: preserve Jenkins' original 201/303 Location and fail fast. */
@@ -72,7 +89,8 @@ public class BridgeHttpClient {
       String accept,
       Map<String, String> headers
   ) throws BridgeHttpException {
-    return request(method, url, user, password, body, contentType, accept, headers, 30000, 30000, true);
+    return request(method, url, user, password, body, contentType, accept, headers,
+        connectTimeoutMs(), readTimeoutMs(), true);
   }
 
   private BridgeHttpResponse request(
@@ -160,8 +178,8 @@ public class BridgeHttpClient {
     try {
       connection = (HttpURLConnection)new URL(url).openConnection();
       connection.setRequestMethod(method);
-      connection.setConnectTimeout(30000);
-      connection.setReadTimeout(30000);
+      connection.setConnectTimeout(connectTimeoutMs());
+      connection.setReadTimeout(readTimeoutMs());
 
       if (isNotBlank(user)) {
         String token = user + ":" + nullToEmpty(password);
@@ -251,6 +269,22 @@ public class BridgeHttpClient {
 
   private boolean isNotBlank(String value) {
     return value != null && value.trim().length() > 0;
+  }
+
+  private static int connectTimeoutMs() {
+    return TeamCityProperties.getInteger(CONNECT_TIMEOUT_MS_PROPERTY, DEFAULT_TIMEOUT_MS);
+  }
+
+  private static int readTimeoutMs() {
+    return TeamCityProperties.getInteger(READ_TIMEOUT_MS_PROPERTY, DEFAULT_TIMEOUT_MS);
+  }
+
+  private static int triggerConnectTimeoutMs() {
+    return TeamCityProperties.getInteger(TRIGGER_CONNECT_TIMEOUT_MS_PROPERTY, DEFAULT_TRIGGER_TIMEOUT_MS);
+  }
+
+  private static int triggerReadTimeoutMs() {
+    return TeamCityProperties.getInteger(TRIGGER_READ_TIMEOUT_MS_PROPERTY, DEFAULT_TRIGGER_TIMEOUT_MS);
   }
 
 }

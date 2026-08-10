@@ -84,9 +84,7 @@ public class JenkinsJobImporter {
       }
 
       try {
-        // TODO: Check if this API call is needed, or if we can fetch the class from elsewhere
-        boolean isMultiBranch = JenkinsJob.isMultibranchClass(jenkinsClient.getJobClass(fullName));
-        importJob(project, connectionId, jenkinsClient, fullName, isMultiBranch, alreadyMirroredJobs, result);
+        importJob(project, connectionId, jenkinsClient, fullName, alreadyMirroredJobs, result);
       } catch (Exception e) {
         result.addFailed(fullName, describeException(e));
       }
@@ -96,20 +94,20 @@ public class JenkinsJobImporter {
   }
 
   private void importJob(SProject project, String connectionId, JenkinsClient jenkinsClient, String fullName,
-                         boolean isMultibranch, Set<String> alreadyMirrored, ImportResult result)
+                         Set<String> alreadyMirrored, ImportResult result)
       throws Exception {
     if (alreadyMirrored.contains(fullName)) {
       result.addSkipped(fullName, "already imported");
       return;
     }
-    String externalId = createMirrorConfig(project, connectionId, jenkinsClient, fullName, isMultibranch);
+    String externalId = createMirrorConfig(project, connectionId, jenkinsClient, fullName);
     alreadyMirrored.add(fullName);
     result.addCreated(fullName, externalId);
   }
 
   // Creates a mirror configuration for a single Jenkins job and returns its external id.
   private String createMirrorConfig(SProject project, String connectionId, JenkinsClient jenkinsClient,
-                                    String fullName, boolean inMultibranchPipeline) throws Exception {
+                                    String fullName) throws Exception {
     String jenkinsType = jenkinsClient.getJobClass(fullName);
     boolean isMultibranch = JenkinsJob.isMultibranchClass(jenkinsType);
     String externalId = ExternalIdGenerator.resolveUnique(
@@ -124,11 +122,10 @@ public class JenkinsJobImporter {
     if (!jenkinsType.isEmpty()) {
       featureParams.put(BridgeBuildFeatureConstants.PARAM_JENKINS_TYPE, jenkinsType);
     }
-    if (inMultibranchPipeline || isMultibranch) {
-      featureParams.put(BridgeBuildFeatureConstants.PARAM_IN_MULTIBRANCH, "true");
-    }
     buildType.addBuildFeature(BridgeBuildFeatureConstants.TYPE, featureParams);
     buildType.addConfigParameter(parameterFactory.createTypedParameter(AGENTLESS_PARAM, "true", HIDDEN_SPEC));
+    buildType.addConfigParameter(parameterFactory.createSimpleParameter(
+        BridgeBuildFeatureConstants.INTERNAL_MULTIBRANCH_PARAM, String.valueOf(isMultibranch)));
     importJenkinsParameters(jenkinsClient, buildType, fullName);
     buildType.setOption(BuildTypeOptions.BT_FAIL_IF_TESTS_FAIL, false); // Let Jenkins decide if failing tests fail the build. Not the case for "unstable" builds.
     buildType.persist();
@@ -227,7 +224,6 @@ public class JenkinsJobImporter {
     }
     return features;
   }
-
 
   private int importJenkinsParameters(JenkinsClient jenkinsClient, SBuildType buildType, String fullName)
       throws Exception {

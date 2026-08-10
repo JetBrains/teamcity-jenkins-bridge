@@ -3,11 +3,6 @@
 <%@ page import="com.jetbrains.teamcity.jenkinsbridge.connection.JenkinsConnectionConstants" %>
 <jsp:useBean id="project" type="jetbrains.buildServer.serverSide.SProject" scope="request"/>
 <jsp:useBean id="oauthProvider" type="com.jetbrains.teamcity.jenkinsbridge.connection.JenkinsConnectionProvider" scope="request"/>
-<%--
-  Parameters of the "Jenkins" connection. Included by TeamCity inside its own runnerFormTable, so
-  this page contributes table rows only. The "Test connection" button is added by TeamCity because
-  the provider declares a testConnectionEndpoint default property.
---%>
 
 <oauth:displayName />
 
@@ -15,7 +10,7 @@
   <th><label for="<%=JenkinsConnectionConstants.PARAM_URL%>">URL:</label><l:star/></th>
   <td>
     <props:textProperty name="<%=JenkinsConnectionConstants.PARAM_URL%>" className="longField" maxlength="512"/>
-    <span class="smallNote">Jenkins installation URL.</span>
+    <span class="smallNote">Jenkins URL.</span>
     <span class="error" id="error_<%=JenkinsConnectionConstants.PARAM_URL%>"></span>
   </td>
 </tr>

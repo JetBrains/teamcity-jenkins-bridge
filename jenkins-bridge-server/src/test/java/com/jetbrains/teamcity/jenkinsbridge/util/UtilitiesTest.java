@@ -3,13 +3,9 @@ package com.jetbrains.teamcity.jenkinsbridge.util;
 import com.google.gson.JsonObject;
 import com.jetbrains.teamcity.jenkinsbridge.feature.BridgeBuildFeatureConstants;
 import jetbrains.buildServer.serverSide.ProjectManager;
-import jetbrains.buildServer.serverSide.SBuildFeatureDescriptor;
 import jetbrains.buildServer.serverSide.SBuildType;
 import org.junit.Test;
 
-import java.util.Collection;
-import java.util.Collections;
-import java.util.Map;
 
 import static org.junit.Assert.*;
 import static org.mockito.Mockito.mock;
@@ -53,6 +49,7 @@ public class UtilitiesTest {
   }
 
   @Test
+  @SuppressWarnings("all")
   public void nullToEmptyReturnsOriginalStringForNonNullValue() {
     assertEquals("value", Utilities.nullToEmpty("value"));
   }
@@ -166,33 +163,24 @@ public class UtilitiesTest {
   }
 
   @Test
-  public void isBuildConfigMultibranchReturnsFalseWhenNoJenkinsBridgeFeatureIsPresent() {
+  public void isBuildConfigMultibranchReturnsFalseWhenTheInternalParameterIsAbsent() {
     SBuildType buildType = mock(SBuildType.class);
-    Collection<SBuildFeatureDescriptor> noFeatures = Collections.emptyList();
-    when(buildType.getBuildFeaturesOfType(BridgeBuildFeatureConstants.TYPE)).thenReturn(noFeatures);
 
     assertFalse(Utilities.isBuildConfigMultibranch(buildType));
   }
 
   @Test
-  public void isBuildConfigMultibranchReturnsFalseWhenFeatureDoesNotMarkMultibranch() {
+  public void isBuildConfigMultibranchReturnsFalseWhenTheInternalParameterIsFalse() {
     SBuildType buildType = mock(SBuildType.class);
-    SBuildFeatureDescriptor feature = mock(SBuildFeatureDescriptor.class);
-    when(feature.getParameters()).thenReturn(Collections.emptyMap());
-    when(buildType.getBuildFeaturesOfType(BridgeBuildFeatureConstants.TYPE))
-        .thenReturn(Collections.singletonList(feature));
+    when(buildType.getParameterValue(BridgeBuildFeatureConstants.INTERNAL_MULTIBRANCH_PARAM)).thenReturn("false");
 
     assertFalse(Utilities.isBuildConfigMultibranch(buildType));
   }
 
   @Test
-  public void isBuildConfigMultibranchReturnsTrueWhenFeatureMarksMultibranch() {
+  public void isBuildConfigMultibranchReturnsTrueWhenTheInternalParameterIsTrue() {
     SBuildType buildType = mock(SBuildType.class);
-    SBuildFeatureDescriptor feature = mock(SBuildFeatureDescriptor.class);
-    when(feature.getParameters()).thenReturn(
-        Map.of(BridgeBuildFeatureConstants.PARAM_IN_MULTIBRANCH, "true"));
-    when(buildType.getBuildFeaturesOfType(BridgeBuildFeatureConstants.TYPE))
-        .thenReturn(Collections.singletonList(feature));
+    when(buildType.getParameterValue(BridgeBuildFeatureConstants.INTERNAL_MULTIBRANCH_PARAM)).thenReturn("true");
 
     assertTrue(Utilities.isBuildConfigMultibranch(buildType));
   }

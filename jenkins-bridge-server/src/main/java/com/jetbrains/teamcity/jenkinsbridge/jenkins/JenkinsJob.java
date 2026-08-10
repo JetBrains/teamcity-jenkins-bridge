@@ -11,6 +11,8 @@ import com.google.gson.JsonObject;
  */
 public class JenkinsJob {
   private final String name;
+  public static final String WORKFLOW_MULTIBRANCH_PROJECT_CLASS =
+      "org.jenkinsci.plugins.workflow.multibranch.WorkflowMultiBranchProject";
   private final String fullName;
   private final String url;
   private final String type;
@@ -106,7 +108,7 @@ public class JenkinsJob {
   }
 
   public static boolean isMultibranchClass(String jenkinsClass) {
-    return jenkinsClass != null && jenkinsClass.contains("MultiBranch");
+    return WORKFLOW_MULTIBRANCH_PROJECT_CLASS.equals(jenkinsClass);
   }
 
   private static String getString(JsonObject json, String key) {

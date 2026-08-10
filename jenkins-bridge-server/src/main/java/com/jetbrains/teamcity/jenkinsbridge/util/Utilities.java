@@ -7,8 +7,6 @@ import jetbrains.buildServer.serverSide.SBuildType;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Objects;
-
 import java.net.URI;
 import java.util.Locale;
 import java.util.regex.Matcher;
@@ -60,15 +58,9 @@ public final class Utilities {
     return slash >= 0 && slash < path.length() - 1 ? path.substring(slash + 1) : path;
   }
 
-  /**
-   * Whether the build config's Jenkins Bridge build feature is marked as mirroring a multibranch pipeline.
-   */
+  /** Whether the build configuration mirrors a Jenkins multibranch pipeline. */
   public static boolean isBuildConfigMultibranch(@NotNull SBuildType buildType) {
-    return buildType.getBuildFeaturesOfType(BridgeBuildFeatureConstants.TYPE).stream()
-        .findFirst()
-        .map(feature -> Objects.equals("true",
-            feature.getParameters().get(BridgeBuildFeatureConstants.PARAM_IN_MULTIBRANCH)))
-        .orElse(false);
+    return Boolean.parseBoolean(buildType.getParameterValue(BridgeBuildFeatureConstants.INTERNAL_MULTIBRANCH_PARAM));
   }
 
   @NotNull

@@ -445,6 +445,7 @@ public class JenkinsBridgePollingService {
       // We were running before but more than ~100 builds have happened since, so the cheap
       // builds view no longer reaches back to lastSeen. Escalate to allBuilds so we
       // never skip a build (rare; only after a long outage).
+      // TODO: Add a cap of ~1000 to not accidentally load thousands of builds
       LOG.info("[Jenkins Bridge DEBUG] Gap detected for job " + job
           + " (lastSeen=" + lastSeen + ", oldest fetched=" + oldest
           + "); fetching all build numbers");

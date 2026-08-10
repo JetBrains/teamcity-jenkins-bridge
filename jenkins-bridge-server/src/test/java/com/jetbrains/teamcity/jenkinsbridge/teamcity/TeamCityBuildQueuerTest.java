@@ -124,12 +124,12 @@ public class TeamCityBuildQueuerTest {
 
   private void withMultibranchFeature(String jenkinsJob) {
     Map<String, String> params = new LinkedHashMap<>();
-    params.put(BridgeBuildFeatureConstants.PARAM_IN_MULTIBRANCH, "true");
     params.put(BridgeBuildFeatureConstants.PARAM_JENKINS_JOB, jenkinsJob);
     SBuildFeatureDescriptor descriptor = mock(SBuildFeatureDescriptor.class);
     when(descriptor.getParameters()).thenReturn(params);
     when(buildType.getBuildFeaturesOfType(BridgeBuildFeatureConstants.TYPE))
         .thenReturn(Collections.singletonList(descriptor));
+    when(buildType.getParameterValue(BridgeBuildFeatureConstants.INTERNAL_MULTIBRANCH_PARAM)).thenReturn("true");
   }
 
   private Map<String, String> properties() {

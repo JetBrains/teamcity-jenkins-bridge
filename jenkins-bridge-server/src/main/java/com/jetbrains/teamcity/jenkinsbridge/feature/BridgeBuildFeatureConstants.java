@@ -35,10 +35,8 @@ public final class BridgeBuildFeatureConstants {
   /** Value prefilled in the UI and used when {@link #PARAM_RECENT_LIMIT} is blank. */
   public static final int DEFAULT_RECENT_LIMIT = 1;
 
-  /**
-   * Optional, {@code "true"} when set. Marks the configuration as mirroring a multibranch pipeline.
-   */
-  public static final String PARAM_IN_MULTIBRANCH = "inMultibranchPipeline";
+  /** Internal build configuration parameter holding the detected Jenkins job type. */
+  public static final String INTERNAL_MULTIBRANCH_PARAM = "teamcity.internal.jenkinsBridge.multibranch";
 
   /**
    * TC build parameter stamped onto Jenkins-first mirror builds (the Jenkins build key,
