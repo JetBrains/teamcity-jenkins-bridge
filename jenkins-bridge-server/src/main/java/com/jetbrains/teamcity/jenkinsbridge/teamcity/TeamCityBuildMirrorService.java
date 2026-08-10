@@ -26,6 +26,7 @@ import com.jetbrains.teamcity.jenkinsbridge.settings.JenkinsBridgeSettingsProvid
 import com.jetbrains.teamcity.jenkinsbridge.vcs.VcsSyncResult;
 import jetbrains.buildServer.messages.BuildMessage1;
 import jetbrains.buildServer.serverSide.BuildPromotion;
+import jetbrains.buildServer.serverSide.BuildPromotionEx;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -179,6 +180,28 @@ public class TeamCityBuildMirrorService {
     properties.put("jenkins.build.key", mirror.getJenkinsBuildKey());
     properties.put("jenkins.build.url", nullToEmpty(jenkinsInfo.getUrl()));
     return properties;
+  }
+
+  /**
+   * Stamps the Jenkins identity onto a promotion that TeamCity created before Jenkins was
+   * triggered. The normal queue path supplies these parameters to the customizer, but a
+   * TeamCity-first promotion already exists by the time the Jenkins build is resolved.
+   */
+  public void stampExistingPromotion(
+      long teamCityPromotionId,
+      BuildMirror mirror,
+      String connectionId,
+      JenkinsBuildInfo jenkinsInfo
+  ) {
+    BuildPromotion promotion = teamCityBuildLocator.findPromotion(teamCityPromotionId);
+    if (!(promotion instanceof BuildPromotionEx)) {
+      throw new IllegalStateException("TeamCity promotion " + teamCityPromotionId
+          + " does not support custom parameter updates");
+    }
+
+    Map<String, String> parameters = new LinkedHashMap<String, String>(promotion.getCustomParameters());
+    parameters.putAll(bridgeBuildParameters(mirror, connectionId, jenkinsInfo));
+    ((BuildPromotionEx) promotion).setCustomParameters(parameters);
   }
 
   public void ensureRunningDataSent(BuildMirror mirror, long teamCityBuildId)

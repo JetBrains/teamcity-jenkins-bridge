@@ -1,5 +1,6 @@
 package com.jetbrains.teamcity.jenkinsbridge.polling;
 
+import com.jetbrains.teamcity.jenkinsbridge.connection.JenkinsConnectionResolver;
 import com.jetbrains.teamcity.jenkinsbridge.http.BridgeHttpException;
 import com.jetbrains.teamcity.jenkinsbridge.settings.MirroredJob;
 import com.intellij.openapi.diagnostic.Logger;
@@ -8,9 +9,13 @@ import jetbrains.buildServer.serverSide.ProjectManager;
 import jetbrains.buildServer.serverSide.systemProblems.SystemProblem;
 import jetbrains.buildServer.serverSide.systemProblems.SystemProblemNotification;
 import jetbrains.buildServer.serverSide.systemProblems.SystemProblemTicket;
+import jetbrains.buildServer.serverSide.connections.ConnectionDescriptor;
 
+import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Publishes persistent TeamCity system problems for Jenkins failures and clears them after a
@@ -25,17 +30,39 @@ public class JenkinsBridgeSystemProblemReporter {
 
   private final ProjectManager projectManager;
   private final SystemProblemNotification notification;
-  private final Map<String, SystemProblemTicket> tickets = new HashMap<>();
+  private final JenkinsConnectionResolver connectionResolver;
+  /**
+   * A ticket is deliberately keyed by the complete configured mapping rather than just the build
+   * type. This makes a changed Jenkins connection or job a new mapping and lets reconciliation
+   * remove the old mapping's warning.
+   */
+  private final Map<MappingKey, ActiveTicket> tickets = new HashMap<>();
 
   public JenkinsBridgeSystemProblemReporter(
       ProjectManager projectManager,
-      SystemProblemNotification notification
+      SystemProblemNotification notification,
+      JenkinsConnectionResolver connectionResolver
   ) {
     this.projectManager = projectManager;
     this.notification = notification;
+    this.connectionResolver = connectionResolver;
   }
 
-  public void report(MirroredJob job, Exception failure) {
+  /** Raises the missing-job problem for an authoritative Jenkins job lookup. */
+  public synchronized void reportMissingJob(MirroredJob job, BridgeHttpException failure) {
+    report(job, MISSING_JOB_TYPE, failure);
+  }
+
+  /** Raises the connectivity/access problem for a Jenkins transport or authorization failure. */
+  public synchronized void reportConnectivity(MirroredJob job, BridgeHttpException failure) {
+    report(job, CONNECTIVITY_TYPE, failure);
+  }
+
+  private void report(MirroredJob job, String problemType, BridgeHttpException failure) {
+    if (job == null || !job.hasMinimumConfiguration()) {
+      LOG.warn("Jenkins Bridge cannot report a system problem for an incomplete mapping");
+      return;
+    }
     SBuildType buildType = buildType(job);
     if (buildType == null || notification == null) {
       LOG.warn("Jenkins Bridge cannot report a system problem for " + job.describeForLog()
@@ -43,48 +70,130 @@ public class JenkinsBridgeSystemProblemReporter {
       return;
     }
 
-    boolean missing = failure instanceof BridgeHttpException
-        && ((BridgeHttpException) failure).getStatusCode() == 404;
-    String problemType = missing ? MISSING_JOB_TYPE : CONNECTIVITY_TYPE;
-    String key = buildType.getExternalId() + "|" + problemType;
-    if (tickets.containsKey(key)) {
+    MappingKey key = MappingKey.of(job);
+    String connectionLabel = connectionLabel(buildType, job.connectionId());
+    ActiveTicket existing = tickets.get(key);
+    if (existing != null
+        && existing.problemType.equals(problemType)
+        && existing.connectionLabel.equals(connectionLabel)) {
       return;
     }
 
+    if (existing != null) {
+      tickets.remove(key);
+      cancel(existing.ticket);
+    }
+
+    boolean missing = MISSING_JOB_TYPE.equals(problemType);
     String description = missing
-        ? "Jenkins job '" + job.jenkinsJob() + "' no longer exists or is not accessible."
-        : "Jenkins cannot be reached while polling job '" + job.jenkinsJob() + "'.";
+        ? "Jenkins job '" + job.jenkinsJob() + "' on connection " + connectionLabel
+            + " no longer exists or is not accessible."
+        : "Jenkins Bridge cannot access connection " + connectionLabel + " while polling job '"
+            + job.jenkinsJob() + "'.";
     SystemProblem problem = new SystemProblem(
         description,
-        failure,
-        failure == null ? "" : failure.getMessage(),
+        null,
+        causeDetails(failure),
         problemType,
         SOURCE);
-    tickets.put(key, notification.raiseProblem(buildType, problem));
-    LOG.warn(description, failure);
+    try {
+      SystemProblemTicket ticket = notification.raiseProblem(buildType, problem);
+      if (ticket != null) {
+        tickets.put(key, new ActiveTicket(problemType, connectionLabel, ticket));
+      }
+      LOG.warn(description + " " + causeDetails(failure));
+    } catch (RuntimeException e) {
+      LOG.warn("Jenkins Bridge failed to raise a system problem for " + job.describeForLog(), e);
+    }
   }
 
-  public void clear(MirroredJob job) {
-    SBuildType buildType = buildType(job);
-    if (buildType == null) {
+  /** Clears the problem for a mapping after a complete successful poll. */
+  public synchronized void recover(MirroredJob job) {
+    if (job == null || !job.hasMinimumConfiguration()) {
       return;
     }
-    String prefix = buildType.getExternalId() + "|";
-    clear(prefix + MISSING_JOB_TYPE);
-    clear(prefix + CONNECTIVITY_TYPE);
+    ActiveTicket ticket = tickets.remove(MappingKey.of(job));
+    if (ticket != null) {
+      cancel(ticket.ticket);
+    }
   }
 
-  private void clear(String key) {
-    SystemProblemTicket ticket = tickets.remove(key);
-    if (ticket != null) {
-      ticket.cancel();
+  /**
+   * Removes tickets belonging to mappings that no longer exist. This intentionally does not look
+   * up a build type: a deleted build type must not leave an unreachable ticket in this reporter.
+   */
+  public synchronized void reconcile(Collection<MirroredJob> activeJobs) {
+    Set<MappingKey> activeKeys = new HashSet<>();
+    if (activeJobs != null) {
+      for (MirroredJob job : activeJobs) {
+        if (job != null && job.hasMinimumConfiguration()) {
+          activeKeys.add(MappingKey.of(job));
+        }
+      }
     }
+
+    for (MappingKey key : new HashSet<>(tickets.keySet())) {
+      if (!activeKeys.contains(key)) {
+        ActiveTicket ticket = tickets.remove(key);
+        if (ticket != null) {
+          cancel(ticket.ticket);
+        }
+      }
+    }
+  }
+
+  /** Clears every ticket when bridge polling is stopped. */
+  public synchronized void clearAll() {
+    for (ActiveTicket ticket : tickets.values()) {
+      cancel(ticket.ticket);
+    }
+    tickets.clear();
+  }
+
+  private void cancel(SystemProblemTicket ticket) {
+    try {
+      ticket.cancel();
+    } catch (RuntimeException e) {
+      LOG.warn("Jenkins Bridge failed to cancel a system problem ticket", e);
+    }
+  }
+
+  private String causeDetails(BridgeHttpException failure) {
+    if (failure == null) {
+      return "Jenkins request failed.";
+    }
+    int status = failure.getStatusCode();
+    return status > 0 ? "Jenkins returned HTTP " + status + "." : "Jenkins request failed.";
   }
 
   private SBuildType buildType(MirroredJob job) {
     if (job == null || !job.hasMinimumConfiguration()) {
       return null;
     }
-    return projectManager.findBuildTypeByExternalId(job.teamCityBuildTypeExternalId());
+    return projectManager == null
+        ? null : projectManager.findBuildTypeByExternalId(job.teamCityBuildTypeExternalId());
+  }
+
+  private String connectionLabel(SBuildType buildType, String connectionId) {
+    if (connectionResolver != null && buildType != null) {
+      ConnectionDescriptor descriptor = connectionResolver.findConnection(buildType.getProject(), connectionId);
+      String displayName = descriptor == null ? null : descriptor.getDisplayName();
+      if (displayName != null && !displayName.trim().isEmpty()) {
+        displayName = displayName.trim();
+        if (!displayName.equals(connectionId)) {
+          return "'" + displayName + "' (ID: " + connectionId + ")";
+        }
+      }
+    }
+    return "'" + connectionId + "'";
+  }
+
+  private record MappingKey(String buildTypeExternalId, String connectionId, String jenkinsJob) {
+    private static MappingKey of(MirroredJob job) {
+      return new MappingKey(job.teamCityBuildTypeExternalId(), job.connectionId(), job.jenkinsJob());
+    }
+  }
+
+  private record ActiveTicket(String problemType, String connectionLabel, SystemProblemTicket ticket) {
   }
 }

@@ -1,6 +1,7 @@
 package com.jetbrains.teamcity.jenkinsbridge.polling;
 
 import com.jetbrains.teamcity.jenkinsbridge.feature.MirroredJobProvider;
+import com.jetbrains.teamcity.jenkinsbridge.http.BridgeHttpException;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClient;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClientFactory;
 import com.jetbrains.teamcity.jenkinsbridge.persistence.BuildMirror;
@@ -58,6 +59,7 @@ public class JenkinsBridgePollingService {
   private final TeamCityRunningBuildLocator buildLocator;
   private final JenkinsBridgeSystemProblemReporter systemProblemReporter;
   private final JenkinsJobCoordinator jobCoordinator = new JenkinsJobCoordinator();
+  private final Object systemProblemLifecycleLock = new Object();
   private final AtomicBoolean started = new AtomicBoolean(false);
   private ScheduledExecutorService executorService;
 
@@ -118,6 +120,11 @@ public class JenkinsBridgePollingService {
     if (executorService != null) {
       executorService.shutdownNow();
     }
+    synchronized (systemProblemLifecycleLock) {
+      if (systemProblemReporter != null) {
+        systemProblemReporter.clearAll();
+      }
+    }
   }
 
   private void pollOnceSafely() {
@@ -135,17 +142,20 @@ public class JenkinsBridgePollingService {
   private void pollOnce() throws Exception {
     JenkinsBridgeSettings settings = settingsProvider.load();
     List<MirroredJob> mirroredJobs = mirroredJobProvider.discoverMirroredJobs();
+    if (systemProblemReporter != null) {
+      systemProblemReporter.reconcile(mirroredJobs);
+    }
     LOG.info("[Jenkins Bridge DEBUG] Discovered " + mirroredJobs.size() + " mirrored job(s)");
     resolvePendingTriggers(mirroredJobs, settings);
 
     for (MirroredJob mirroredJob : mirroredJobs) {
       try {
         pollPipeline(mirroredJob);
+      } catch (BridgeHttpException e) {
+        reportAuthoritativePollingFailure(mirroredJob, e);
+        LOG.warn("Jenkins Bridge: failed to poll " + mirroredJob.describeForLog(), e);
       } catch (Exception e) {
         // Isolate per-job failures so one broken job does not abort the rest of the cycle.
-        if (systemProblemReporter != null) {
-          systemProblemReporter.report(mirroredJob, e);
-        }
         LOG.warn("Jenkins Bridge: failed to poll " + mirroredJob.describeForLog(), e);
       }
     }
@@ -287,6 +297,8 @@ public class JenkinsBridgePollingService {
         return;
       }
       mirror.setTeamCityBuildId(pendingTrigger.getTeamCityPromotionId());
+      mirrorService.stampExistingPromotion(
+          pendingTrigger.getTeamCityPromotionId(), mirror, mirroredJob.connectionId(), buildInfo);
       mirrorStore.saveMirror(mirror);
       mirrorStore.removePendingTrigger(pendingTrigger.getTeamCityPromotionId());
       LOG.info("Jenkins Bridge bound TeamCity promotion " + pendingTrigger.getTeamCityPromotionId()
@@ -334,6 +346,7 @@ public class JenkinsBridgePollingService {
     if (mirroredJob.isMultibranch()) {
       Map<String, List<JenkinsBuildInfo>> branchBuilds =
           jenkinsClient.listBranchBuilds(mirroredJob.jenkinsJob());
+      JobPollOutcome outcome = new JobPollOutcome();
       for (var entry : branchBuilds.entrySet()) {
         MirroredJob branchJob = new MirroredJob(
             mirroredJob.connectionId(),
@@ -341,20 +354,50 @@ public class JenkinsBridgePollingService {
             mirroredJob.teamCityBuildTypeExternalId(),
             mirroredJob.teamCityBuildTypeName(),
             recentBuildLimit, false);
-        pollJob(jenkinsClient, branchJob, entry.getValue(), recentBuildLimit);
+        outcome.merge(pollJob(jenkinsClient, branchJob, entry.getValue(), recentBuildLimit));
       }
-      clearSystemProblem(mirroredJob);
+      updateSystemProblem(mirroredJob, outcome);
       return;
     }
 
-    pollJob(jenkinsClient, mirroredJob, jenkinsClient.getBuilds(mirroredJob.jenkinsJob()), recentBuildLimit);
-    clearSystemProblem(mirroredJob);
+    JobPollOutcome outcome = pollJob(
+        jenkinsClient, mirroredJob, jenkinsClient.getBuilds(mirroredJob.jenkinsJob()), recentBuildLimit);
+    updateSystemProblem(mirroredJob, outcome);
   }
 
-  private void clearSystemProblem(MirroredJob mirroredJob) {
-    if (systemProblemReporter != null) {
-      systemProblemReporter.clear(mirroredJob);
+  void reportAuthoritativePollingFailure(MirroredJob mirroredJob, BridgeHttpException failure) {
+    synchronized (systemProblemLifecycleLock) {
+      if (systemProblemReporter == null || !started.get()) {
+        return;
+      }
+      if (failure.getStatusCode() == 404) {
+        systemProblemReporter.reportMissingJob(mirroredJob, failure);
+      } else if (isConnectivityFailure(failure)) {
+        systemProblemReporter.reportConnectivity(mirroredJob, failure);
+      }
     }
+  }
+
+  void updateSystemProblem(MirroredJob mirroredJob, JobPollOutcome outcome) {
+    synchronized (systemProblemLifecycleLock) {
+      if (systemProblemReporter == null || !started.get()) {
+        return;
+      }
+      BridgeHttpException connectivityFailure = outcome.getConnectivityFailure();
+      if (connectivityFailure != null) {
+        systemProblemReporter.reportConnectivity(mirroredJob, connectivityFailure);
+      } else {
+        systemProblemReporter.recover(mirroredJob);
+      }
+    }
+  }
+
+  static boolean isConnectivityFailure(BridgeHttpException failure) {
+    if (failure == null) {
+      return false;
+    }
+    int status = failure.getStatusCode();
+    return status < 0 || status == 401 || status == 403 || status >= 500;
   }
 
   private JenkinsClient jenkinsClientFor(MirroredJob mirroredJob) {
@@ -367,8 +410,9 @@ public class JenkinsBridgePollingService {
     return jenkinsClientFactory.forConnectionId(buildType.getProject(), mirroredJob.connectionId());
   }
 
-  private void pollJob(JenkinsClient jenkinsClient, MirroredJob mirroredJob, List<JenkinsBuildInfo> builds,
-                       int recentBuildLimit) throws Exception {
+  private JobPollOutcome pollJob(JenkinsClient jenkinsClient, MirroredJob mirroredJob,
+                                 List<JenkinsBuildInfo> builds, int recentBuildLimit) throws Exception {
+    JobPollOutcome outcome = new JobPollOutcome();
     String job = mirroredJob.jenkinsJob();
     String keyPrefix = mirroredJob.getMirrorKeyPrefix();
 
@@ -376,7 +420,7 @@ public class JenkinsBridgePollingService {
     // the bridge identity because Jenkins build numbers can be reused after the build history is reset.
     if (builds.isEmpty()) {
       LOG.info("[Jenkins Bridge DEBUG] Jenkins job " + job + " has no builds yet");
-      return;
+      return outcome;
     }
 
     int latest = maxBuildNumber(builds);
@@ -406,7 +450,7 @@ public class JenkinsBridgePollingService {
           + "); fetching all build numbers");
       builds = jenkinsClient.getAllBuilds(job);
       if (builds.isEmpty()) {
-        return;
+        return outcome;
       }
       latest = maxBuildNumber(builds);
     }
@@ -426,7 +470,7 @@ public class JenkinsBridgePollingService {
 
     for (JenkinsBuildInfo build : toProcess) {
       maxNumber = Math.max(maxNumber, build.getNumber());
-      syncDiscoveredBuild(jenkinsClient, mirroredJob, build);
+      syncDiscoveredBuild(jenkinsClient, mirroredJob, build, outcome);
       handled.add(build.getNumber());
     }
 
@@ -438,7 +482,7 @@ public class JenkinsBridgePollingService {
       if (handled.contains(mirror.getJenkinsBuildNumber())) {
         continue;
       }
-      syncActiveMirror(jenkinsClient, mirroredJob.connectionId(), mirror);
+      syncActiveMirror(jenkinsClient, mirroredJob.connectionId(), mirror, outcome);
     }
 
     // On a cold start the watermark also has to clear the builds that were deliberately skipped,
@@ -447,6 +491,7 @@ public class JenkinsBridgePollingService {
     if (!resetDetected && watermark > mirrorStore.getLastSeenBuildNumber(keyPrefix)) {
       mirrorStore.setLastSeenBuildNumber(keyPrefix, watermark);
     }
+    return outcome;
   }
 
   private boolean shouldProcessDiscoveredBuild(
@@ -489,7 +534,7 @@ public class JenkinsBridgePollingService {
 
   // Syncs a newly discovered Jenkins build, isolating failures so one bad build does not abort the poll cycle.
   private void syncDiscoveredBuild(JenkinsClient jenkinsClient, MirroredJob mirroredJob,
-                                   JenkinsBuildInfo discoveredBuild) {
+                                   JenkinsBuildInfo discoveredBuild, JobPollOutcome outcome) {
     String job = mirroredJob.jenkinsJob();
     BuildMirror mirror = null;
     int buildNumber = discoveredBuild.getNumber();
@@ -518,6 +563,8 @@ public class JenkinsBridgePollingService {
             return;
           }
           mirror.setTeamCityBuildId(pending.getTeamCityPromotionId());
+          mirrorService.stampExistingPromotion(
+              pending.getTeamCityPromotionId(), mirror, mirroredJob.connectionId(), buildInfo);
           mirrorStore.saveMirror(mirror);
           mirrorStore.removePendingTrigger(pending.getTeamCityPromotionId());
           LOG.info("Jenkins Bridge claimed Jenkins build " + mirror.getJenkinsBuildKey()
@@ -532,6 +579,7 @@ public class JenkinsBridgePollingService {
             + " now in state " + mirror.getSyncState()
             + " with TeamCity build id " + mirror.getTeamCityBuildId());
       } catch (Exception e) {
+        outcome.recordJenkinsFailure(e);
         if (mirror != null) {
           mirrorStore.markBuildError(mirror, e);
         }
@@ -540,7 +588,8 @@ public class JenkinsBridgePollingService {
     }
   }
 
-  private void syncActiveMirror(JenkinsClient jenkinsClient, String connectionId, BuildMirror mirror) {
+  private void syncActiveMirror(JenkinsClient jenkinsClient, String connectionId, BuildMirror mirror,
+                                JobPollOutcome outcome) {
     try {
       JenkinsBuildInfo buildInfo = jenkinsClient.getBuildInfo(mirror.getJenkinsJob(), mirror.getJenkinsBuildNumber());
       if (mirror.getJenkinsBuildTimestamp() > 0L
@@ -555,6 +604,7 @@ public class JenkinsBridgePollingService {
       }
       syncBuild(jenkinsClient, connectionId, mirror, buildInfo);
     } catch (Exception e) {
+      outcome.recordJenkinsFailure(e);
       mirrorStore.markBuildError(mirror, e);
       LOG.warn("Failed to sync Jenkins build " + mirror.getJenkinsBuildKey(), e);
     }
@@ -717,5 +767,36 @@ public class JenkinsBridgePollingService {
     mirrorStore.saveMirror(mirror);
     LOG.info("[Jenkins Bridge DEBUG] Read " + parameters.getParameters().size()
         + " Jenkins build parameter(s) for " + mirror.getJenkinsBuildKey());
+  }
+
+  static final class JobPollOutcome {
+    private BridgeHttpException connectivityFailure;
+
+    void recordJenkinsFailure(Exception failure) {
+      if (!(failure instanceof BridgeHttpException)) {
+        return;
+      }
+      BridgeHttpException httpFailure = (BridgeHttpException) failure;
+      if (connectivityFailure == null && isConnectivityFailure(httpFailure)) {
+        connectivityFailure = httpFailure;
+      }
+    }
+
+    void merge(JobPollOutcome other) {
+      if (other == null) {
+        return;
+      }
+      if (connectivityFailure == null) {
+        connectivityFailure = other.connectivityFailure;
+      }
+    }
+
+    boolean isSuccessful() {
+      return connectivityFailure == null;
+    }
+
+    BridgeHttpException getConnectivityFailure() {
+      return connectivityFailure;
+    }
   }
 }

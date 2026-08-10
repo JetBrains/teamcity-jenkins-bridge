@@ -5,6 +5,8 @@ import jetbrains.buildServer.serverSide.BuildPromotion;
 import jetbrains.buildServer.serverSide.artifacts.StoredBuildArtifactInfo;
 import org.junit.Test;
 
+import java.util.Collections;
+
 import static org.junit.Assert.assertEquals;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -15,6 +17,13 @@ public class JenkinsArtifactInfoUtilsTest {
   @Test
   public void jenkinsJobReturnsParameterValue() {
     StoredBuildArtifactInfo info = infoWithParameter("jenkins.job", "folder/job");
+
+    assertEquals("folder/job", utils.jenkinsJob(info));
+  }
+
+  @Test
+  public void commonPropertiesOverrideConsumerPromotionParameters() {
+    StoredBuildArtifactInfo info = infoWithCommonProperty("jenkins.job", "folder/job");
 
     assertEquals("folder/job", utils.jenkinsJob(info));
   }
@@ -81,6 +90,12 @@ public class JenkinsArtifactInfoUtilsTest {
     when(promotion.getParameterValue(name)).thenReturn(value);
     StoredBuildArtifactInfo info = mock(StoredBuildArtifactInfo.class);
     when(info.getBuildPromotion()).thenReturn(promotion);
+    return info;
+  }
+
+  private static StoredBuildArtifactInfo infoWithCommonProperty(String name, String value) {
+    StoredBuildArtifactInfo info = infoWithParameter(name, null);
+    when(info.getCommonProperties()).thenReturn(Collections.singletonMap(name, value));
     return info;
   }
 }
