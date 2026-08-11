@@ -13,7 +13,8 @@ import javax.servlet.http.HttpServletRequest;
 import java.util.Map;
 
 /**
- * "Import Jenkins Jobs" tab under a project's settings. The tab's project is the import target; the
+ * "Jenkins Jobs Sync" tab under a project's settings. The tab's project is the
+ * synchronization target; the
  * JSP makes AJAX calls to {@link JenkinsBridgeImportController}. Visible only to users who can edit
  * the project.
  */
@@ -25,7 +26,7 @@ public class JenkinsBridgeImportTab extends EditProjectTab {
     super(pagePlaces,
         pluginDescriptor.getPluginName(),
         pluginDescriptor.getPluginResourcesPath("jenkinsBridgeImport.jsp"),
-        "Import Jenkins Jobs");
+        "Jenkins Jobs Sync");
     register();
     this.connectionResolver = connectionResolver;
   }
