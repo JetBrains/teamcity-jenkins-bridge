@@ -2,24 +2,25 @@
 <%@ taglib prefix="bs" tagdir="/WEB-INF/tags" %>
 <jsp:useBean id="jenkinsConnections" scope="request" type="com.jetbrains.teamcity.jenkinsbridge.connection.JenkinsConnectionResolver"/>
 <%--
-  "Import Jenkins Jobs" project-settings tab. Lists top-level Jenkins jobs from the configured
-  Jenkins connection and optionally within a folder path. Creates a build configuration (with the
-  Jenkins Bridge feature) for each selected job in this project. Uses BS.ajaxRequest so TeamCity's
-  CSRF token is attached automatically.
+  "Jenkins Jobs Sync" project-settings tab. Lists top-level Jenkins jobs from the
+  configured Jenkins connection and optionally within a folder path. Creates a build configuration
+  (with the Jenkins Bridge feature) for each selected job in this project, enabling build mirroring.
+  Uses BS.ajaxRequest so TeamCity's CSRF token is attached automatically.
 --%>
 <div class="jenkinsBridgeImport">
-  <h2 class="noBorder">Import Jenkins jobs</h2>
+  <h2 class="noBorder">Jenkins Jobs Sync</h2>
   <p class="grayNote">
-    It creates one build configuration per selected Jenkins job in this project.
-    Folders cannot be selected; multibranch projects are imported as one configuration and their
-    branch jobs are polled individually.
+    Enable sync to create one TeamCity build configuration per selected Jenkins job.
+    The configuration mirrors the job's builds and build data in TeamCity. Folders cannot be
+    selected; multibranch projects use one configuration and their branch jobs are synchronized
+    individually.
   </p>
 
   <c:set var="connections" value="${jenkinsConnections.availableConnections(project)}"/>
 
-  <div id="jbConfigured"><p class="grayNote">Loading imported jobs…</p></div>
+  <div id="jbConfigured"><p class="grayNote">Loading synced jobs…</p></div>
 
-  <h3>Available to import</h3>
+  <h3>Available to sync</h3>
   <p class="grayNote">Jobs are searched from the selected Jenkins connection and optional folder path.</p>
 
   <table class="runnerFormTable">
@@ -60,7 +61,7 @@
 
   <div style="margin: 0.5em 0;">
     <input type="button" class="btn" id="jbListBtn" value="List jobs" disabled="disabled"/>
-    <input type="button" class="btn btn_primary" id="jbImportBtn" value="Import selected" disabled="disabled"/>
+    <input type="button" class="btn btn_primary" id="jbImportBtn" value="Enable selected" disabled="disabled"/>
     <span id="jbStatus" class="grayNote" style="margin-left: 1em;"></span>
   </div>
 
@@ -245,7 +246,7 @@
     function renderConfiguredSection() {
       configuredDiv.innerHTML = configuredJobs.length
         ? renderConfiguredJobs()
-        : '<p class="grayNote">No jobs have been imported into this project.</p>';
+        : '<p class="grayNote">No Jenkins jobs are synced in this project.</p>';
       bindConfiguredPagination();
     }
 
@@ -269,7 +270,7 @@
       configuredPage = Math.min(configuredPage, pageCount - 1);
       var start = configuredPage * configuredPageSize;
       var pageJobs = configuredJobs.slice(start, start + configuredPageSize);
-      var html = '<details open="open"><summary><strong>Imported jobs'
+      var html = '<details open="open"><summary><strong>Synced jobs'
         + ' <span class="grayNote">(' + configuredJobs.length + ')</span></strong></summary>'
         + '<table class="parametersTable" style="width:auto;"><tr><th>Name</th><th>Jenkins job path</th><th>Jenkins</th><th>Connection (display name)</th><th>Type</th></tr>';
       for (var i = 0; i < pageJobs.length; i++) html += configuredJobRow(pageJobs[i]);
@@ -300,7 +301,7 @@
       section('Created', result.created, 'successMessage');
       section('Skipped', result.skipped, 'grayNote');
       section('Failed', result.failed, 'errorMessage');
-      resultDiv.innerHTML = parts.join('') || '<p class="grayNote">Nothing to import.</p>';
+      resultDiv.innerHTML = parts.join('') || '<p class="grayNote">No jobs were enabled.</p>';
     }
 
     function parse(transport) {
@@ -313,7 +314,7 @@
         onComplete: function (transport) {
           var data = parse(transport);
           if (!data || data.error) {
-            configuredDiv.innerHTML = '<p class="grayNote">Unable to load imported jobs.</p>';
+            configuredDiv.innerHTML = '<p class="grayNote">Unable to load synced jobs.</p>';
             return;
           }
           configuredJobs = data.configuredJobs || [];
@@ -399,7 +400,7 @@
       var params = 'action=import&projectExternalId=' + encode(projectExternalId)
         + '&connectionId=' + encode(selectedConnection());
       for (var i = 0; i < jobs.length; i++) { params += '&job=' + encode(jobs[i]); }
-      setStatus('Importing…');
+      setStatus('Enabling sync…');
       importBtn.disabled = true;
       BS.ajaxRequest(url, {
         parameters: params,
@@ -408,7 +409,7 @@
           var data = parse(transport);
           if (!data) { setStatus('HTTP ' + transport.status + ' @ ' + url + ' — ' + (transport.responseText || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').substring(0, 200)); return; }
           if (data.error) { setStatus('Error: ' + data.error); return; }
-          setStatus('Done. Re-list to refresh the imported-jobs list.');
+          setStatus('Done. Re-list to refresh the synced-jobs list.');
           renderResult(data);
         }
       });

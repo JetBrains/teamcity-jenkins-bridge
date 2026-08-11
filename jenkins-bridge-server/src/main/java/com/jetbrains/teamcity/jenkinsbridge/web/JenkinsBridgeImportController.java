@@ -28,7 +28,7 @@ import java.util.Set;
 import jetbrains.buildServer.serverSide.connections.ConnectionDescriptor;
 
 /**
- * AJAX endpoint backing the "Import Jenkins Jobs" project tab. Three actions:
+ * AJAX endpoint backing the "Jenkins Jobs Sync" project tab. Three actions:
  * <ul>
  *   <li>{@code action=configured}: list already-configured Jenkins jobs without contacting Jenkins.</li>
  *   <li>{@code action=list}: list top-level Jenkins jobs at a folder path, flagged importable /
