@@ -66,6 +66,17 @@ public class TeamCityBuildQueuerTest {
   }
 
   @Test
+  public void queueAgentlessBuildDecodesBranchNameOfMultibranchJob() {
+    withMultibranchFeature("team/my-pipeline/someone%2Ffeature");
+    Map<String, String> properties = new LinkedHashMap<>();
+    properties.put("jenkins.job", "team/my-pipeline/someone%2Ffeature");
+
+    queuer.queueAgentlessBuild(BUILD_TYPE_ID, properties, Collections.emptyMap(), null);
+
+    verify(customizer).setDesiredBranchName("someone/feature", false);
+  }
+
+  @Test
   public void queueAgentlessBuildUsesSourceBranchAndPullRequestParametersForMultibranchJob() {
     withMultibranchFeature("team/my-pipeline/PR-1-merge");
     Map<String, String> properties = new LinkedHashMap<>();

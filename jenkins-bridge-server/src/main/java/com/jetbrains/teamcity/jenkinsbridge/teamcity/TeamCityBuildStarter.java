@@ -3,6 +3,7 @@ package com.jetbrains.teamcity.jenkinsbridge.teamcity;
 import jetbrains.buildServer.serverSide.BuildPromotion;
 import jetbrains.buildServer.serverSide.BuildsManager;
 import jetbrains.buildServer.serverSide.QueuedBuildEx;
+import jetbrains.buildServer.serverSide.RunningBuildEx;
 import jetbrains.buildServer.serverSide.SBuild;
 import jetbrains.buildServer.serverSide.SQueuedBuild;
 
@@ -36,6 +37,12 @@ public class TeamCityBuildStarter {
       throw new IllegalStateException("TeamCity build promotion " + buildId + " cannot be started as an agentless build");
     }
 
-    ((QueuedBuildEx)queuedBuild).startBuild(requestor);
+    detachFromAgent(((QueuedBuildEx)queuedBuild).startBuild(requestor));
+  }
+
+  private void detachFromAgent(RunningBuildEx runningBuild) {
+    if (!runningBuild.isCompositeBuild()) {
+      runningBuild.detachedFromAgent();
+    }
   }
 }
