@@ -115,6 +115,19 @@ public class UtilitiesTest {
   }
 
   @Test
+  public void decodeBranchFragmentDecodesPercentEscapes() {
+    assertEquals("someone/feature", Utilities.decodeBranchFragment("someone%2Ffeature"));
+    assertEquals("release 1.0", Utilities.decodeBranchFragment("release%201.0"));
+  }
+
+  @Test
+  public void decodeBranchFragmentKeepsNamesWithoutEscapes() {
+    assertEquals("main", Utilities.decodeBranchFragment("main"));
+    assertEquals("feature+x", Utilities.decodeBranchFragment("feature+x"));
+    assertEquals("100%", Utilities.decodeBranchFragment("100%"));
+  }
+
+  @Test
   public void describeExceptionIncludesClassNameAndMessage() {
     assertEquals("IllegalArgumentException: bad input",
         Utilities.describeException(new IllegalArgumentException("bad input")));

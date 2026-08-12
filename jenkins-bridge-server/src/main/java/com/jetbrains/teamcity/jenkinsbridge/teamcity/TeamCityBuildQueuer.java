@@ -12,6 +12,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
+import static com.jetbrains.teamcity.jenkinsbridge.util.Utilities.decodeBranchFragment;
 import static com.jetbrains.teamcity.jenkinsbridge.util.Utilities.findBuildType;
 import static com.jetbrains.teamcity.jenkinsbridge.util.Utilities.lastPathSegment;
 
@@ -91,7 +92,7 @@ public class TeamCityBuildQueuer {
       }
       if (job != null && !job.trim().isEmpty()) {
         job = job.trim();
-        branchName = lastPathSegment(job);
+        branchName = decodeBranchFragment(lastPathSegment(job));
         if (Utilities.looksLikePullOrMergeRequestBranch(branchName)) {
           var pullRequestInfoResult = jenkinsClientFactory.forBuildType(buildType).getPullRequestInfo(job);
           if (pullRequestInfoResult.isPresent()) {
