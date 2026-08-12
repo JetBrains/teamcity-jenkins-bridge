@@ -39,7 +39,7 @@
   <td colspan="2">
     <em>
       To mirror jobs from this Jenkins server, use the
-      <a href="<c:url value="${oauthProvider.importJobsTabUrl(project)}"/>">Import Jenkins Jobs</a>
+      <a href="<c:url value="${oauthProvider.importJobsTabUrl(project)}"/>">Jenkins Jobs Sync</a>
       tab of this project, or add the <strong>Jenkins Bridge</strong> build feature to a build configuration.
     </em>
   </td>
