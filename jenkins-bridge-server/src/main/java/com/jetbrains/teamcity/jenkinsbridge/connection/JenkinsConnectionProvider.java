@@ -65,7 +65,7 @@ public class JenkinsConnectionProvider extends OAuthProvider {
   }
 
   /**
-   * Link to this plugin's "Import Jenkins Jobs" project tab. The tab id is the plugin name, see
+   * Link to this plugin's "Jenkins Jobs Sync" project tab. The tab id is the plugin name, see
    * {@code JenkinsBridgeImportTab}.
    *
    * @param project project whose settings page to link to
