@@ -75,6 +75,15 @@ public class JenkinsBridgePollingServiceTest {
     assertEquals(3, store.getLastSeenBuildNumber("buildType::job"));
   }
 
+  /**
+   * A discovered build must remain retryable when its detail request fails before a mirror exists.
+   *
+   * <p>On the first poll Jenkins lists build 2, but the detail request for build 2 fails
+   * transiently. The current implementation still advances the last-seen watermark to 2. On the
+   * second poll build 2 is therefore filtered out as already seen, even though no BuildMirror was
+   * created. The expected behavior is to retry the build and create its mirror after Jenkins
+   * recovers.</p>
+   */
   @Test
   public void retriesDiscoveredBuildAfterTransientDetailFetchFailure() throws Exception {
     JenkinsBridgeSettingsProvider provider = providerWithTempStateFile();
