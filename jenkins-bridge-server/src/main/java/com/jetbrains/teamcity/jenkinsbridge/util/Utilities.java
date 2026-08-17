@@ -10,6 +10,8 @@ import org.jetbrains.annotations.Nullable;
 import java.util.Objects;
 
 import java.net.URI;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -106,6 +108,65 @@ public final class Utilities {
     }
 
     return normalizedRepositoryKey(uri.getHost(), uri.getPath());
+  }
+
+  /**
+   * Validates a Jenkins-controlled repository URL before it is made persistent TeamCity VCS
+   * configuration. HTTPS and SSH are supported; cleartext HTTP, arbitrary schemes, credentials,
+   * and loopback/private/link-local destinations are rejected.
+   *
+   * Scp-style SSH syntax (for example {@code git@host:org/repo.git}) is retained because the
+   * {@code git@} prefix is protocol syntax rather than an HTTP credential.
+   */
+  public static String repositoryUrlPolicyError(String url) {
+    if (url == null || url.trim().isEmpty()) return "repository URL is blank";
+    String value = url.trim();
+    Matcher scpUrl = SCP_REPOSITORY_URL.matcher(value);
+    if (!value.contains("://") && scpUrl.matches()) {
+      int at = value.indexOf('@');
+      if (at >= 0 && !value.substring(0, at).equalsIgnoreCase("git")) {
+        return "repository URL must not contain user information";
+      }
+      return unsafeRepositoryHost(scpUrl.group(1));
+    }
+    final URI uri;
+    try {
+      uri = URI.create(value);
+    } catch (IllegalArgumentException e) {
+      return "repository URL is malformed";
+    }
+    String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);
+    if (!"https".equals(scheme) && !"ssh".equals(scheme)) {
+      return "repository URL scheme must be https or ssh";
+    }
+    if (uri.getUserInfo() != null) return "repository URL must not contain user information";
+    if (uri.getHost() == null || uri.getPath() == null || uri.getPath().equals("/")) {
+      return "repository URL must contain a host and repository path";
+    }
+    return unsafeRepositoryHost(uri.getHost());
+  }
+
+  private static String unsafeRepositoryHost(String host) {
+    if (host == null || host.trim().isEmpty()) return "repository URL host is missing";
+    if (host.length() > 1 && host.charAt(0) == '[' && host.charAt(host.length() - 1) == ']') {
+      host = host.substring(1, host.length() - 1);
+    }
+    String normalized = host.toLowerCase(Locale.ROOT);
+    if ("localhost".equals(normalized) || normalized.endsWith(".localhost")
+        || normalized.endsWith(".local")) {
+      return "repository URL host is local or link-local";
+    }
+    try {
+      for (InetAddress address : InetAddress.getAllByName(host)) {
+        if (address.isAnyLocalAddress() || address.isLoopbackAddress()
+            || address.isLinkLocalAddress() || address.isSiteLocalAddress()) {
+          return "repository URL host resolves to a private or local address";
+        }
+      }
+    } catch (UnknownHostException ignored) {
+      // DNS failure is not a private-address determination; VCS access will report it later.
+    }
+    return null;
   }
 
   /**

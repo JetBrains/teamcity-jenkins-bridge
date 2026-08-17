@@ -1,5 +1,6 @@
 package com.jetbrains.teamcity.jenkinsbridge.web;
 
+import com.google.gson.Gson;
 import com.jetbrains.teamcity.jenkinsbridge.feature.BridgeBuildFeatureConstants;
 import jetbrains.buildServer.serverSide.ProjectManager;
 import jetbrains.buildServer.serverSide.SBuildFeatureDescriptor;
@@ -18,6 +19,7 @@ import java.util.Map;
  * mapped Jenkins job's parameters and to trigger a build.
  */
 public class JenkinsTriggerTab extends BuildTypeTab {
+  private static final Gson GSON = new Gson();
   public JenkinsTriggerTab(
       WebControllerManager webControllerManager,
       ProjectManager projectManager,
@@ -40,9 +42,11 @@ public class JenkinsTriggerTab extends BuildTypeTab {
   protected void fillModel(Map<String, Object> model, HttpServletRequest request,
                            SBuildType buildType, SUser user) {
     // Prefix the context path so the AJAX URL is correct under a non-root TeamCity context (e.g. /bs).
-    model.put("controllerUrl", request.getContextPath() + JenkinsTriggerController.PATH);
-    model.put("buildTypeExternalId", buildType.getExternalId());
-    model.put("jenkinsJob", mappedJenkinsJob(buildType));
+    // Gson's default HTML escaping protects the surrounding script element as well as the JS
+    // string literal (notably for </script>, quotes, backslashes, and Unicode separators).
+    model.put("controllerUrlJson", GSON.toJson(request.getContextPath() + JenkinsTriggerController.PATH));
+    model.put("buildTypeExternalIdJson", GSON.toJson(buildType.getExternalId()));
+    model.put("jenkinsJobJson", GSON.toJson(mappedJenkinsJob(buildType)));
   }
 
   private String mappedJenkinsJob(SBuildType buildType) {

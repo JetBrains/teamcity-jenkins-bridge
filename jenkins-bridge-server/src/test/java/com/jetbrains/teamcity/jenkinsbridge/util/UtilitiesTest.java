@@ -48,6 +48,17 @@ public class UtilitiesTest {
   }
 
   @Test
+  public void repositoryUrlPolicyRejectsUnsafeDestinationsAndSchemes() {
+    assertNotNull(Utilities.repositoryUrlPolicyError("http://github.com/org/repo.git"));
+    assertNotNull(Utilities.repositoryUrlPolicyError("file:///etc/passwd"));
+    assertNotNull(Utilities.repositoryUrlPolicyError("https://user:pass@github.com/org/repo.git"));
+    assertNotNull(Utilities.repositoryUrlPolicyError("https://127.0.0.1/org/repo.git"));
+    assertNotNull(Utilities.repositoryUrlPolicyError("https://localhost/org/repo.git"));
+    assertNull(Utilities.repositoryUrlPolicyError("https://github.com/org/repo.git"));
+    assertNull(Utilities.repositoryUrlPolicyError("git@github.com:org/repo.git"));
+  }
+
+  @Test
   public void nullToEmptyReturnsEmptyStringForNull() {
     assertEquals("", Utilities.nullToEmpty(null));
   }

@@ -113,6 +113,11 @@ public class TeamCityVcsPublisher {
                 // Unimplemented VCS type
                 continue;
             }
+            String policyError = repositoryUrlPolicyError(repo.remoteUrl());
+            if (policyError != null) {
+                result.addError(repo.remoteUrl() + ": rejected by repository URL policy: " + policyError);
+                continue;
+            }
             String normalized = normalizeRepositoryUrl(repo.remoteUrl());
             if (normalized == null) {
                 result.addError("Could not parse repository URL: " + repo.remoteUrl());

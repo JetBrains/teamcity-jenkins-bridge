@@ -31,9 +31,9 @@
 
 <script type="text/javascript">
   (function () {
-    var url = '${controllerUrl}';
-    var buildTypeExternalId = '${buildTypeExternalId}';
-    var jenkinsJob = '${jenkinsJob}';
+    var url = ${controllerUrlJson};
+    var buildTypeExternalId = ${buildTypeExternalIdJson};
+    var jenkinsJob = ${jenkinsJobJson};
 
     var jobEl = document.getElementById('jbtJob');
     var paramsDiv = document.getElementById('jbtParams');
