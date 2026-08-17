@@ -76,6 +76,30 @@ public class JenkinsBridgePollingServiceTest {
   }
 
   @Test
+  public void retriesDiscoveredBuildAfterTransientDetailFetchFailure() throws Exception {
+    JenkinsBridgeSettingsProvider provider = providerWithTempStateFile();
+    BuildMirrorStore store = new BuildMirrorStore(null, provider, buildMockProjectManager());
+    store.setLastSeenBuildNumber("buildType::job", 1);
+
+    FakeJenkinsClient jenkinsClient = new FakeJenkinsClient();
+    jenkinsClient.addBuild(buildInfo(2, 1710000000002L));
+    jenkinsClient.failNextBuildInfo = true;
+    JenkinsBridgePollingService service = newService(
+        provider, jenkinsClient, new CapturingMirrorService(), store);
+    MirroredJob mirroredJob = new MirroredJob("job", "buildType", "Build", 0, false, false);
+
+    // The first detail request fails transiently before a BuildMirror can be created.
+    pollPipeline(service, mirroredJob, provider.load());
+    assertNull(store.findMirror("buildType::job#2@1710000000002"));
+
+    // A later poll must retry the still-unmirrored Jenkins build.
+    pollPipeline(service, mirroredJob, provider.load());
+
+    assertNotNull(store.findMirror("buildType::job#2@1710000000002"));
+    assertEquals(2, jenkinsClient.getBuildInfoCalls);
+  }
+
+  @Test
   public void pollPipelinePrunesFinishedMirrors() throws Exception {
     JenkinsBridgeSettingsProvider provider = providerWithTempStateFile();
     BuildMirrorStore store = new BuildMirrorStore(null, provider, buildMockProjectManager());
@@ -207,6 +231,7 @@ public class JenkinsBridgePollingServiceTest {
     private final Map<Integer, JenkinsBuildInfo> buildInfos = new LinkedHashMap<Integer, JenkinsBuildInfo>();
     int getBuildParametersCalls;
     int getBuildInfoCalls;
+    boolean failNextBuildInfo;
 
     FakeJenkinsClient() {
       super(null, null, null);
@@ -230,6 +255,10 @@ public class JenkinsBridgePollingServiceTest {
     @Override
     public JenkinsBuildInfo getBuildInfo(String jobName, int buildNumber) {
       getBuildInfoCalls++;
+      if (failNextBuildInfo) {
+        failNextBuildInfo = false;
+        throw new IllegalStateException("transient Jenkins detail failure");
+      }
       return buildInfos.get(Integer.valueOf(buildNumber));
     }
 
