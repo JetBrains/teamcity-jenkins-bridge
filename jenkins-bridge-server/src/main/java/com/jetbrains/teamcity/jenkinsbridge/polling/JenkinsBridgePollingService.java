@@ -468,10 +468,17 @@ public class JenkinsBridgePollingService {
 
     Set<Integer> handled = new HashSet<Integer>();
     int maxNumber = lastSeen;
+    boolean watermarkCanAdvance = true;
 
     for (JenkinsBuildInfo build : toProcess) {
-      maxNumber = Math.max(maxNumber, build.getNumber());
-      syncDiscoveredBuild(jenkinsClient, mirroredJob, build, outcome);
+      boolean discoveredAndTracked = syncDiscoveredBuild(jenkinsClient, mirroredJob, build, outcome);
+      if (!discoveredAndTracked) {
+        watermarkCanAdvance = false;
+        continue;
+      }
+      if (watermarkCanAdvance) {
+        maxNumber = Math.max(maxNumber, build.getNumber());
+      }
       handled.add(build.getNumber());
     }
 
@@ -492,6 +499,7 @@ public class JenkinsBridgePollingService {
     if (!resetDetected && watermark > mirrorStore.getLastSeenBuildNumber(keyPrefix)) {
       mirrorStore.setLastSeenBuildNumber(keyPrefix, watermark);
     }
+
     return outcome;
   }
 
@@ -533,17 +541,24 @@ public class JenkinsBridgePollingService {
     return legacy == null;
   }
 
-  // Syncs a newly discovered Jenkins build, isolating failures so one bad build does not abort the poll cycle.
-  private void syncDiscoveredBuild(JenkinsClient jenkinsClient, MirroredJob mirroredJob,
+  /**
+   * Synchronizes a discovered build and reports whether discovery/tracking succeeded.
+   *
+   * <p>False means the watermark must not advance past this build. True means a mirror exists;
+   * later synchronization failures are recorded for retry and do not block watermark progress.</p>
+   */
+  private boolean syncDiscoveredBuild(JenkinsClient jenkinsClient, MirroredJob mirroredJob,
                                    JenkinsBuildInfo discoveredBuild, JobPollOutcome outcome) {
     String job = mirroredJob.jenkinsJob();
     BuildMirror mirror = null;
+    boolean discoveredAndTracked = false;
     int buildNumber = discoveredBuild.getNumber();
     synchronized (jobCoordinator.lockFor(jenkinsClient.getControllerIdentity(), job)) {
       try {
         JenkinsBuildInfo buildInfo = jenkinsClient.getBuildInfo(job, buildNumber);
         String mirrorKey = BuildMirrorStore.buildKey(mirroredJob.getMirrorKeyPrefix(), buildInfo);
         mirror = mirrorStore.getOrCreateMirror(mirrorKey, job, mirroredJob.teamCityBuildTypeExternalId(), buildInfo);
+        discoveredAndTracked = true;
         PendingTrigger pending = mirrorStore.findPendingTrigger(jenkinsClient.getControllerIdentity(), buildInfo.getQueueId());
         if (pending != null) {
           boolean ownershipMatches = job.equals(pending.getJenkinsJob())
@@ -561,7 +576,7 @@ public class JenkinsBridgePollingService {
             mirrorStore.removePendingTrigger(pending.getTeamCityPromotionId());
             LOG.warn("Jenkins Bridge retained existing owner for " + mirror.getJenkinsBuildKey()
                 + " instead of replacing TeamCity promotion " + pending.getTeamCityPromotionId());
-            return;
+            return true;
           }
           mirror.setTeamCityBuildId(pending.getTeamCityPromotionId());
           mirrorService.stampExistingPromotion(
@@ -587,6 +602,7 @@ public class JenkinsBridgePollingService {
         LOG.warn("Failed to sync Jenkins build " + job + "#" + buildNumber, e);
       }
     }
+    return discoveredAndTracked;
   }
 
   private void syncActiveMirror(JenkinsClient jenkinsClient, String connectionId, BuildMirror mirror,
