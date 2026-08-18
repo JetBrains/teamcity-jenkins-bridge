@@ -66,6 +66,15 @@ public class JenkinsClientTest {
   }
 
   @Test
+  public void rawJsonEndpointsRejectMalformedOrNonObjectResponsesAsJenkinsDataException() throws Exception {
+    assertJenkinsDataFailure("{", client -> client.getBuildNumbers("job"));
+    assertJenkinsDataFailure("[]", client -> client.listJobs(""));
+    assertJenkinsDataFailure("{", client -> client.getJobParameters("job"));
+    assertJenkinsDataFailure("[]", client -> client.getCrumb());
+    assertJenkinsDataFailure("{", client -> client.resolveQueuedBuildNumber("http://jenkins/queue/item/7/"));
+  }
+
+  @Test
   public void getPipelineGraphRejectsMalformedJsonAsJenkinsDataException() throws Exception {
     RoutingHttpClient httpClient = new RoutingHttpClient();
     httpClient.responses.put("/blue/rest/organizations/jenkins/pipelines/job/runs/7/nodes/", "{");
@@ -784,6 +793,21 @@ public class JenkinsClientTest {
         client.resolveQueuedBuildNumber("http://jenkins/queue/item/99/");
 
     assertTrue(resolution.isCancelled());
+  }
+
+  private void assertJenkinsDataFailure(String body, JenkinsClientOperation operation) throws Exception {
+    StubResponseHttpClient httpClient = new StubResponseHttpClient();
+    httpClient.body = body;
+    try {
+      operation.run(new JenkinsClient(testConnection(), httpClient, newJaxbUnmarshaller()));
+      fail("Expected JenkinsDataException");
+    } catch (JenkinsDataException expected) {
+      // Expected: malformed JSON and non-object payloads are remote-data failures.
+    }
+  }
+
+  private interface JenkinsClientOperation {
+    void run(JenkinsClient client) throws Exception;
   }
 
   private static class StubResponseHttpClient extends BridgeHttpClient {

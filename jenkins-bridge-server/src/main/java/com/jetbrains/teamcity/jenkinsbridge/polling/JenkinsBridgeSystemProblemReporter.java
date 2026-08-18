@@ -103,7 +103,7 @@ public class JenkinsBridgeSystemProblemReporter {
       }
       LOG.warn(description + " " + causeDetails(failure));
     } catch (RuntimeException e) {
-      LOG.warn("Jenkins Bridge failed to raise a system problem for " + job.describeForLog(), e);
+      LOG.error("Jenkins Bridge failed to raise a system problem for " + job.describeForLog(), e);
     }
   }
 
@@ -154,7 +154,7 @@ public class JenkinsBridgeSystemProblemReporter {
     try {
       ticket.cancel();
     } catch (RuntimeException e) {
-      LOG.warn("Jenkins Bridge failed to cancel a system problem ticket", e);
+      LOG.error("Jenkins Bridge failed to cancel a system problem ticket", e);
     }
   }
 

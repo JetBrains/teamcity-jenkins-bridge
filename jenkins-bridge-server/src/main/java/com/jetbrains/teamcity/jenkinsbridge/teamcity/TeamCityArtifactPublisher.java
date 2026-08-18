@@ -12,7 +12,6 @@ import jetbrains.buildServer.serverSide.RunningBuildEx;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.io.StringWriter;
@@ -38,15 +37,6 @@ public class TeamCityArtifactPublisher {
   ) {
     myBuildLocator = buildLocator;
     myStorageActivator = storageActivator;
-  }
-
-  @Deprecated
-  public void publishArtifact(long buildId, String artifactPath, InputStream inputStream) throws IOException {
-    RunningBuildEx runningBuild = myBuildLocator.findRunningBuild(buildId);
-    if (runningBuild == null) {
-      throw new IOException("TeamCity build " + buildId + " is already finished");
-    }
-    runningBuild.publishArtifact(artifactPath, inputStream);
   }
 
   /**

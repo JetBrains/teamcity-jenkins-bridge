@@ -1,7 +1,6 @@
 package com.jetbrains.teamcity.jenkinsbridge.teamcity;
 
 import com.jetbrains.teamcity.jenkinsbridge.connection.JenkinsConnectionConstants;
-import com.jetbrains.teamcity.jenkinsbridge.http.BridgeHttpClient;
 import com.jetbrains.teamcity.jenkinsbridge.http.BridgeHttpException;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClient;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsDataException;
@@ -30,7 +29,6 @@ import jetbrains.buildServer.serverSide.BuildPromotion;
 import jetbrains.buildServer.serverSide.BuildPromotionEx;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -532,81 +530,6 @@ public class TeamCityBuildMirrorService {
     mirrorStore.saveMirror(mirror);
   }
 
-  @Deprecated
-  public void syncArtifactsIfNeeded(
-      final BuildMirror mirror,
-      final long teamCityBuildId,
-      JenkinsArtifacts artifacts,
-      final JenkinsClient jenkinsClient
-  ) {
-    if (mirror.isArtifactsSynced()) {
-      return;
-    }
-
-    int published = 0;
-    int skipped = 0;
-    List<String> failures = new ArrayList<String>();
-
-    if (artifacts != null) {
-      for (final JenkinsArtifact artifact : artifacts.getArtifacts()) {
-        final String relativePath = artifact.relativePath();
-        final String teamCityPath = teamCityArtifactPath(relativePath);
-        if (teamCityPath == null) {
-          skipped++;
-          failures.add("Skipped unsafe artifact path: " + nullToEmpty(relativePath));
-          continue;
-        }
-
-        try {
-          jenkinsClient.streamArtifact(
-              mirror.getJenkinsJob(),
-              mirror.getJenkinsBuildNumber(),
-              relativePath,
-              new BridgeHttpClient.StreamHandler() {
-                public void handle(InputStream inputStream) throws IOException {
-                  teamCityArtifactPublisher.publishArtifact(teamCityBuildId, teamCityPath, inputStream);
-                }
-              });
-          published++;
-        } catch (Exception e) {
-          failures.add(relativePath + ": " + e.getClass().getSimpleName()
-              + (e.getMessage() == null ? "" : ": " + e.getMessage()));
-          LOG.warn("Jenkins Bridge: failed to publish artifact "
-              + relativePath + " for " + mirror.getJenkinsBuildKey(), e);
-        }
-      }
-    }
-
-    String message = "\n--- Jenkins artifact mirroring ---\n"
-        + "Published artifacts: " + published + "\n"
-        + "Skipped artifacts: " + skipped + "\n"
-        + "Failures: " + failures.size() + "\n";
-    if (!failures.isEmpty()) {
-      message += "Artifact mirroring is best-effort; the TeamCity build result still follows Jenkins.\n";
-    }
-
-    try {
-      teamCityBuildLogger.addBuildLog(teamCityBuildId, message);
-    } catch (Exception e) {
-      LOG.warn("Jenkins Bridge: failed to write artifact summary for "
-          + mirror.getJenkinsBuildKey(), e);
-      failures.add("Failed to write artifact summary: " + e.getClass().getSimpleName()
-          + (e.getMessage() == null ? "" : ": " + e.getMessage()));
-    }
-
-    mirror.setArtifactsSynced(true);
-    mirror.setArtifactSyncError(failures.isEmpty() ? null : joinFailures(failures));
-    if (failures.isEmpty()) {
-      mirror.setLastError(null);
-    }
-    try {
-      mirrorStore.saveMirror(mirror);
-    } catch (Exception e) {
-      LOG.warn("Jenkins Bridge: failed to persist artifact sync state for "
-          + mirror.getJenkinsBuildKey(), e);
-    }
-  }
-
   /**
    * Registers Jenkins artifacts as externally stored references in TeamCity, without copying artifact bytes.
    */
@@ -835,37 +758,6 @@ public class TeamCityBuildMirrorService {
   private Date getJenkinsFinishTime(JenkinsBuildInfo jenkinsInfo) {
     long finishMillis = jenkinsInfo.getTimestamp() + Math.max(0L, jenkinsInfo.getDuration());
     return new Date(finishMillis);
-  }
-
-  @Deprecated
-  static String teamCityArtifactPath(String jenkinsRelativePath) {
-    if (jenkinsRelativePath == null) {
-      return null;
-    }
-    String trimmed = jenkinsRelativePath.trim();
-    if (trimmed.length() == 0 || trimmed.startsWith("/") || trimmed.indexOf('\\') >= 0) {
-      return null;
-    }
-
-    String[] segments = trimmed.split("/");
-    StringBuilder normalized = new StringBuilder();
-    for (String segment : segments) {
-      if (segment.length() == 0 || ".".equals(segment)) {
-        continue;
-      }
-      if ("..".equals(segment)) {
-        return null;
-      }
-      if (normalized.length() > 0) {
-        normalized.append('/');
-      }
-      normalized.append(segment);
-    }
-
-    if (normalized.length() == 0) {
-      return null;
-    }
-    return "jenkins-artifacts/" + normalized;
   }
 
   private String joinFailures(List<String> failures) {

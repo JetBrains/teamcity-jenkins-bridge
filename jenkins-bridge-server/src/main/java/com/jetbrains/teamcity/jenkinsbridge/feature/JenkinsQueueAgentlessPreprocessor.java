@@ -40,10 +40,10 @@ public class JenkinsQueueAgentlessPreprocessor implements AddToQueuePreprocessor
     for (BuildPromotion promotion : promotions.keySet()) {
       try {
         markAgentlessIfBridge(promotion);
-      } catch (Exception e) {
+      } catch (RuntimeException e) {
         // Never break queueing for a bug in the bridge; the build just stays non-agentless and the
         // existing post-queue listener + poller still mirror it (only the live-in-queue view suffers).
-        LOG.warn("Jenkins Bridge: failed to mark promotion "
+        LOG.error("Jenkins Bridge: failed to mark promotion "
             + safeId(promotion) + " agentless before queueing", e);
       }
     }
@@ -81,7 +81,7 @@ public class JenkinsQueueAgentlessPreprocessor implements AddToQueuePreprocessor
   private static String safeId(BuildPromotion promotion) {
     try {
       return String.valueOf(promotion.getId());
-    } catch (Exception e) {
+    } catch (RuntimeException e) {
       return "<unknown>";
     }
   }

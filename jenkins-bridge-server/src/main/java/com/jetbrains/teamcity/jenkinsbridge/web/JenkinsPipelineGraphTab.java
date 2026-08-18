@@ -10,6 +10,7 @@ import jetbrains.buildServer.web.openapi.PluginDescriptor;
 import jetbrains.buildServer.web.openapi.ViewLogTab;
 
 import javax.servlet.http.HttpServletRequest;
+import java.io.IOException;
 import java.util.Map;
 
 /**
@@ -52,7 +53,7 @@ public class JenkinsPipelineGraphTab extends ViewLogTab {
       BuildMirror mirror = mirrorResolver.resolve(build);
       JenkinsPipelineGraph graph = mirror == null ? null : mirror.getPipelineGraph();
       return graph != null && graph.isPipeline() && !graph.getNodes().isEmpty();
-    } catch (Exception e) {
+    } catch (IOException e) {
       // Never let a tab-availability check break the build results page.
       return false;
     }

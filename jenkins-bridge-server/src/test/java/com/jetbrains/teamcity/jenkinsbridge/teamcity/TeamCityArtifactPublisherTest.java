@@ -11,10 +11,6 @@ import org.junit.Test;
 import org.mockito.ArgumentCaptor;
 
 import java.io.ByteArrayInputStream;
-import java.io.InputStream;
-import java.lang.reflect.InvocationHandler;
-import java.lang.reflect.Method;
-import java.lang.reflect.Proxy;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -29,26 +25,6 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 public class TeamCityArtifactPublisherTest {
-  @Test
-  public void publishesToResolvedRunningBuild() throws Exception {
-    CapturingRunningBuild capture = new CapturingRunningBuild();
-    TeamCityArtifactPublisher publisher = new TeamCityArtifactPublisher(new FixedLocator(capture.proxy()), null);
-
-    publisher.publishArtifact(42L, "jenkins-artifacts/out.txt",
-        new ByteArrayInputStream("hello".getBytes("UTF-8")));
-
-    assertEquals("jenkins-artifacts/out.txt", capture.path);
-    assertEquals("hello", capture.content);
-  }
-
-  @Test(expected = java.io.IOException.class)
-  public void failsWhenBuildIsNoLongerRunning() throws Exception {
-    TeamCityArtifactPublisher publisher = new TeamCityArtifactPublisher(new FixedLocator(null), null);
-
-    publisher.publishArtifact(42L, "jenkins-artifacts/out.txt",
-        new ByteArrayInputStream("hello".getBytes("UTF-8")));
-  }
-
   @Test
   public void publishArtifactListWritesSerializedArtifactsWhenStorageActivated() throws Exception {
     RunningBuildEx runningBuild = mock(RunningBuildEx.class);
@@ -149,56 +125,4 @@ public class TeamCityArtifactPublisherTest {
     }
   }
 
-  private static class CapturingRunningBuild implements InvocationHandler {
-    String path;
-    String content;
-
-    RunningBuildEx proxy() {
-      return (RunningBuildEx) Proxy.newProxyInstance(
-          RunningBuildEx.class.getClassLoader(),
-          new Class<?>[]{RunningBuildEx.class},
-          this);
-    }
-
-    public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
-      if ("publishArtifact".equals(method.getName())
-          && args != null
-          && args.length == 2
-          && args[0] instanceof String
-          && args[1] instanceof InputStream) {
-        path = (String) args[0];
-        content = read((InputStream) args[1]);
-        return null;
-      }
-      if ("toString".equals(method.getName())) {
-        return "capturing-running-build";
-      }
-      if ("hashCode".equals(method.getName())) {
-        return Integer.valueOf(1);
-      }
-      if ("equals".equals(method.getName())) {
-        return Boolean.valueOf(proxy == args[0]);
-      }
-      Class<?> returnType = method.getReturnType();
-      if (returnType.equals(Boolean.TYPE)) {
-        return Boolean.FALSE;
-      }
-      if (returnType.equals(Integer.TYPE)) {
-        return Integer.valueOf(0);
-      }
-      if (returnType.equals(Long.TYPE)) {
-        return Long.valueOf(0L);
-      }
-      return null;
-    }
-
-    private String read(InputStream inputStream) throws Exception {
-      StringBuilder result = new StringBuilder();
-      int read;
-      while ((read = inputStream.read()) != -1) {
-        result.append((char) read);
-      }
-      return result.toString();
-    }
-  }
 }

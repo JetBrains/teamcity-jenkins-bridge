@@ -83,7 +83,7 @@ public class JenkinsClient {
    * collection at the 100 newest builds to avoid loading the whole history; callers that may have
    * fallen further behind can escalate to {@link #getAllBuildNumbers(String)}.
    */
-  public List<Integer> getBuildNumbers(String jobName) throws BridgeHttpException {
+  public List<Integer> getBuildNumbers(String jobName) throws BridgeHttpException, JenkinsDataException {
     return fetchBuildNumbers(jobName, "builds");
   }
 
@@ -92,7 +92,7 @@ public class JenkinsClient {
    * but can be expensive on jobs with a long history, so use it only as a fallback when a gap is
    * detected below the {@link #getBuildNumbers(String)} window.
    */
-  public List<Integer> getAllBuildNumbers(String jobName) throws BridgeHttpException {
+  public List<Integer> getAllBuildNumbers(String jobName) throws BridgeHttpException, JenkinsDataException {
     return fetchBuildNumbers(jobName, "allBuilds");
   }
 
@@ -100,7 +100,7 @@ public class JenkinsClient {
    * Returns the (up to 100) most recent builds with enough metadata to identify a Jenkins run even
    * when build numbers are reused after history deletion/reset.
    */
-  public List<JenkinsBuildInfo> getBuilds(String jobName) throws BridgeHttpException {
+  public List<JenkinsBuildInfo> getBuilds(String jobName) throws BridgeHttpException, JenkinsDataException {
     return fetchBuildInfos(jobName, "builds");
   }
 
@@ -108,11 +108,12 @@ public class JenkinsClient {
    * Returns all builds with identity metadata. This is complete but potentially expensive, so
    * callers should use it only after detecting that the recent-build window is insufficient.
    */
-  public List<JenkinsBuildInfo> getAllBuilds(String jobName) throws BridgeHttpException {
+  public List<JenkinsBuildInfo> getAllBuilds(String jobName) throws BridgeHttpException, JenkinsDataException {
     return fetchBuildInfos(jobName, "allBuilds");
   }
 
-  private List<Integer> fetchBuildNumbers(String jobName, String collection) throws BridgeHttpException {
+  private List<Integer> fetchBuildNumbers(String jobName, String collection)
+      throws BridgeHttpException, JenkinsDataException {
     String tree = collection + "[number]";
     String url = myConnection.getUrl()
         + jenkinsJobPath(jobName)
@@ -120,7 +121,7 @@ public class JenkinsClient {
         + encodeQueryValue(tree);
 
     String response = httpClient.get(url, myConnection.getUser(), myConnection.getToken(), "application/json");
-    JsonObject root = jsonParser.parse(response).getAsJsonObject();
+    JsonObject root = parseJsonObject(response, collection + " build numbers");
     JsonArray builds = root.getAsJsonArray(collection);
     List<Integer> numbers = new ArrayList<Integer>();
     if (builds == null) {
@@ -140,7 +141,8 @@ public class JenkinsClient {
     return numbers;
   }
 
-  private List<JenkinsBuildInfo> fetchBuildInfos(String jobName, String collection) throws BridgeHttpException {
+  private List<JenkinsBuildInfo> fetchBuildInfos(String jobName, String collection)
+      throws BridgeHttpException, JenkinsDataException {
     String tree = collection + "[number,timestamp,url,queueId]";
     String url = myConnection.getUrl()
         + jenkinsJobPath(jobName)
@@ -148,7 +150,7 @@ public class JenkinsClient {
         + encodeQueryValue(tree);
 
     String response = httpClient.get(url, myConnection.getUser(), myConnection.getToken(), "application/json");
-    JsonObject root = jsonParser.parse(response).getAsJsonObject();
+    JsonObject root = parseJsonObject(response, collection + " build information");
     JsonArray builds = root.getAsJsonArray(collection);
     List<JenkinsBuildInfo> result = new ArrayList<JenkinsBuildInfo>();
     if (builds == null) {
@@ -374,7 +376,7 @@ public class JenkinsClient {
    * folders or expand multibranch projects; folder/multibranch entries are returned but marked
    * non-importable. Reads from this client's Jenkins connection.
    */
-  public List<JenkinsJob> listJobs(String folderPath) throws BridgeHttpException {
+  public List<JenkinsJob> listJobs(String folderPath) throws BridgeHttpException, JenkinsDataException {
     return listJobs(folderPath, -1, -1);
   }
 
@@ -383,7 +385,8 @@ public class JenkinsClient {
    * does not expose conventional page metadata, so callers should request the next range while
    * the returned page is full. Negative start/limit preserves the historical unbounded request.
    */
-  public List<JenkinsJob> listJobs(String folderPath, int start, int limit) throws BridgeHttpException {
+  public List<JenkinsJob> listJobs(String folderPath, int start, int limit)
+      throws BridgeHttpException, JenkinsDataException {
     return listJobs(folderPath, start, limit, "");
   }
 
@@ -394,14 +397,15 @@ public class JenkinsClient {
    * metadata, so a search may still require scanning several ranges.
    */
   public List<JenkinsJob> listJobs(String folderPath, int start, int limit, String search)
-      throws BridgeHttpException {
+      throws BridgeHttpException, JenkinsDataException {
     if (search != null && !search.trim().isEmpty()) {
       return searchJobs(folderPath, start, limit, search.trim());
     }
     return listJobsPage(folderPath, start, limit);
   }
 
-  private List<JenkinsJob> listJobsPage(String folderPath, int start, int limit) throws BridgeHttpException {
+  private List<JenkinsJob> listJobsPage(String folderPath, int start, int limit)
+      throws BridgeHttpException, JenkinsDataException {
     String tree = "jobs[name,fullName,url,_class,buildable,color]";
     if (start >= 0 && limit > 0) {
       tree += "{" + start + "," + (start + limit) + "}";
@@ -412,7 +416,7 @@ public class JenkinsClient {
         + encodeQueryValue(tree);
 
     String response = httpClient.get(url, myConnection.getUser(), myConnection.getToken(), "application/json");
-    JsonObject root = JsonParser.parseString(response).getAsJsonObject();
+    JsonObject root = parseJsonObject(response, "job list");
     JsonArray jobs = root.getAsJsonArray("jobs");
     List<JenkinsJob> result = new ArrayList<JenkinsJob>();
     if (jobs == null) {
@@ -427,7 +431,7 @@ public class JenkinsClient {
   }
 
   private List<JenkinsJob> searchJobs(String folderPath, int start, int limit, String search)
-      throws BridgeHttpException {
+      throws BridgeHttpException, JenkinsDataException {
     final int scanPageSize = 100;
     String needle = search.toLowerCase(Locale.ROOT);
     int matchingJobsSeen = 0;
@@ -464,7 +468,8 @@ public class JenkinsClient {
    * Lists the branch jobs of a multibranch pipeline together with their recent builds.
    * Maps each branch job's {@code fullName} to its builds.
    */
-  public Map<String, List<JenkinsBuildInfo>> listBranchBuilds(String pipelinePath) throws BridgeHttpException {
+  public Map<String, List<JenkinsBuildInfo>> listBranchBuilds(String pipelinePath)
+      throws BridgeHttpException, JenkinsDataException {
     String tree = "jobs[fullName,builds[number,timestamp,url]]";
     String url = myConnection.getUrl()
         + jenkinsJobPath(pipelinePath == null ? "" : pipelinePath)
@@ -472,7 +477,7 @@ public class JenkinsClient {
         + encodeQueryValue(tree);
 
     String response = httpClient.get(url, myConnection.getUser(), myConnection.getToken(), "application/json");
-    JsonObject root = JsonParser.parseString(response).getAsJsonObject();
+    JsonObject root = parseJsonObject(response, "branch build list");
     JsonArray jobs = root.getAsJsonArray("jobs");
     Map<String, List<JenkinsBuildInfo>> result = new LinkedHashMap<>();
     if (jobs == null) {
@@ -506,14 +511,14 @@ public class JenkinsClient {
    * Returns an empty string when Jenkins does not report a class.
    */
   @NotNull
-  public String getJobClass(String fullName) throws BridgeHttpException {
+  public String getJobClass(String fullName) throws BridgeHttpException, JenkinsDataException {
     String url = myConnection.getUrl()
         + jenkinsJobPath(fullName == null ? "" : fullName)
         + "/api/json?tree="
         + encodeQueryValue("_class");
 
     String response = httpClient.get(url, myConnection.getUser(), myConnection.getToken(), "application/json");
-    JsonObject root = JsonParser.parseString(response).getAsJsonObject();
+    JsonObject root = parseJsonObject(response, "job class");
     return stringValue(root, "_class");
   }
 
@@ -1035,7 +1040,7 @@ public class JenkinsClient {
    * Reads the build parameters a Jenkins job declares. Empty for a non-parameterized job (or a
    * {@code 404}). Drives the TeamCity trigger form and validates which values are accepted.
    */
-  public JenkinsJobParameters getJobParameters(String jobName) throws BridgeHttpException {
+  public JenkinsJobParameters getJobParameters(String jobName) throws BridgeHttpException, JenkinsDataException {
     String tree = "property[parameterDefinitions[name,type,defaultParameterValue[value],choices]]";
     String url = myConnection.getUrl()
         + jenkinsJobPath(jobName)
@@ -1044,7 +1049,11 @@ public class JenkinsClient {
 
     try {
       String response = httpClient.get(url, myConnection.getUser(), myConnection.getToken(), "application/json");
-      return JenkinsJobParameters.fromJson(jsonParser.parse(response).getAsJsonObject());
+      return parseJson(response, "job parameters", new JsonMapper<JenkinsJobParameters>() {
+        public JenkinsJobParameters map(JsonObject json) {
+          return JenkinsJobParameters.fromJson(json);
+        }
+      });
     } catch (BridgeHttpException e) {
       if (e.getStatusCode() == 404) {
         return JenkinsJobParameters.empty();
@@ -1080,11 +1089,15 @@ public class JenkinsClient {
    * Fetches a Jenkins CSRF crumb. A {@code 404} means crumb protection is disabled, in which case
    * {@link JenkinsCrumb#disabled()} is returned and no crumb header is sent on the trigger POST.
    */
-  public JenkinsCrumb getCrumb() throws BridgeHttpException {
+  public JenkinsCrumb getCrumb() throws BridgeHttpException, JenkinsDataException {
     String url = myConnection.getUrl() + "/crumbIssuer/api/json";
     try {
       String response = httpClient.get(url, myConnection.getUser(), myConnection.getToken(), "application/json");
-      return JenkinsCrumb.fromJson(jsonParser.parse(response).getAsJsonObject());
+      return parseJson(response, "CSRF crumb", new JsonMapper<JenkinsCrumb>() {
+        public JenkinsCrumb map(JsonObject json) {
+          return JenkinsCrumb.fromJson(json);
+        }
+      });
     } catch (BridgeHttpException e) {
       if (e.getStatusCode() == 404) {
         return JenkinsCrumb.disabled();
@@ -1099,7 +1112,8 @@ public class JenkinsClient {
    * URL from the {@code Location} response header (empty if absent), which the caller can poll until
    * Jenkins assigns a build number.
    */
-  public String triggerBuild(String jobName, Map<String, String> parameters) throws BridgeHttpException {
+  public String triggerBuild(String jobName, Map<String, String> parameters)
+      throws BridgeHttpException, JenkinsDataException {
     return triggerBuildWithQueueId(jobName, parameters).getQueueItemUrl();
   }
 
@@ -1111,7 +1125,7 @@ public class JenkinsClient {
    * @return the absolute queue-item URL and its queue id, both empty/-1 when Jenkins sent no Location header
    */
   public JenkinsTriggerResponse triggerBuildWithQueueId(String jobName, Map<String, String> parameters)
-      throws BridgeHttpException {
+      throws BridgeHttpException, JenkinsDataException {
     boolean parameterized = parameters != null && !parameters.isEmpty();
 
     String url = myConnection.getUrl()
@@ -1174,14 +1188,15 @@ public class JenkinsClient {
    * @param queueItemUrl absolute queue-item URL returned when the build was triggered
    * @return the resolved build number, or a pending/cancelled resolution while Jenkins has not started it
    */
-  public JenkinsQueueBuildResolution resolveQueuedBuildNumber(String queueItemUrl) throws BridgeHttpException {
+  public JenkinsQueueBuildResolution resolveQueuedBuildNumber(String queueItemUrl)
+      throws BridgeHttpException, JenkinsDataException {
     if (queueItemUrl == null || queueItemUrl.trim().isEmpty()) {
       return JenkinsQueueBuildResolution.pending();
     }
 
     String url = appendApiJson(queueItemUrl.trim());
     String response = httpClient.get(url, myConnection.getUser(), myConnection.getToken(), "application/json");
-    JsonObject root = jsonParser.parse(response).getAsJsonObject();
+    JsonObject root = parseJsonObject(response, "queue item");
 
     JsonElement executable = root.get("executable");
     if (executable != null && executable.isJsonObject()) {
