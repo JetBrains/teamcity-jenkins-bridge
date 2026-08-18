@@ -29,11 +29,7 @@ public class TeamCityTestReporter {
       return;
     }
 
-    RunningBuildEx runningBuild = buildLocator.findRunningBuild(buildId);
-    if (runningBuild == null) {
-      throw new TeamCityRunningBuildNotFoundException(
-          "TeamCity running build not found for id " + buildId);
-    }
+    RunningBuildEx runningBuild = buildLocator.requireRunningBuild(buildId);
 
     List<BuildMessage1> messages = createTestMessages(report);
     if (messages.isEmpty()) {

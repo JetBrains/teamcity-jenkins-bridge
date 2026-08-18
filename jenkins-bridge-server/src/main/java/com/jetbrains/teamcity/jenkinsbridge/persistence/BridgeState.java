@@ -2,6 +2,7 @@ package com.jetbrains.teamcity.jenkinsbridge.persistence;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.JsonParseException;
 import jetbrains.buildServer.serverSide.CustomDataStorage;
 import org.jetbrains.annotations.NotNull;
 
@@ -26,15 +27,18 @@ public class BridgeState {
 
   public BridgeState(@NotNull CustomDataStorage underlyingStorage) {
     myStorage = underlyingStorage;
-    setVersion(2);
   }
 
-  public int getVersion() {
+  public int getVersion() throws BridgeStateCorruptionException {
     String versionString = myStorage.getValue(VERSION_KEY);
     if (versionString == null) {
-      throw new IllegalStateException("Cannot read the state schema version before it is set");
+      throw new BridgeStateCorruptionException("Persisted Jenkins Bridge state has no schema version");
     }
-    return Integer.parseInt(versionString);
+    try {
+      return Integer.parseInt(versionString);
+    } catch (NumberFormatException e) {
+      throw new BridgeStateCorruptionException("Persisted Jenkins Bridge state has an invalid schema version", e);
+    }
   }
 
   public void setVersion(int version) {
@@ -42,21 +46,23 @@ public class BridgeState {
   }
 
   @NotNull
-  public Map<String, BuildMirror> getBuilds() {
+  public Map<String, BuildMirror> getBuilds() throws BridgeStateCorruptionException {
     Map<String, String> stateMap = myStorage.getValues();
-    if (stateMap == null) {
-      return new LinkedHashMap<>();
+    Map<String, BuildMirror> builds = new LinkedHashMap<String, BuildMirror>();
+    if (stateMap != null) {
+      for (Map.Entry<String, String> entry : stateMap.entrySet()) {
+        if (!entry.getKey().startsWith(BUILD_KEY_PREFIX) || entry.getValue() == null) {
+          continue;
+        }
+        BuildMirror mirror = parseEntry(entry.getKey(), entry.getValue(), BuildMirror.class);
+        if (mirror == null) {
+          throw new BridgeStateCorruptionException("Persisted Jenkins Bridge state entry "
+              + entry.getKey() + " is null");
+        }
+        builds.put(entry.getKey().substring(BUILD_KEY_PREFIX.length()), mirror);
+      }
     }
-    return stateMap
-        .entrySet()
-        .stream()
-        .filter(entry -> entry.getKey().startsWith(BUILD_KEY_PREFIX))
-        .filter(entry -> entry.getValue() != null)
-        .collect(Collectors.toMap(
-            entry -> entry.getKey().substring(BUILD_KEY_PREFIX.length()),
-            entry -> OUR_GSON.fromJson(entry.getValue(), BuildMirror.class),
-            (a, b) -> b,
-            LinkedHashMap::new));
+    return builds;
   }
 
   public void putBuild(@NotNull String key, @NotNull BuildMirror mirror) {
@@ -74,21 +80,23 @@ public class BridgeState {
   }
 
   @NotNull
-  public Map<String, PendingTrigger> getPendingTriggers() {
+  public Map<String, PendingTrigger> getPendingTriggers() throws BridgeStateCorruptionException {
     Map<String, String> stateMap = myStorage.getValues();
-    if (stateMap == null) {
-      return new LinkedHashMap<>();
+    Map<String, PendingTrigger> pendingTriggers = new LinkedHashMap<String, PendingTrigger>();
+    if (stateMap != null) {
+      for (Map.Entry<String, String> entry : stateMap.entrySet()) {
+        if (!entry.getKey().startsWith(PENDING_TRIGGER_KEY_PREFIX) || entry.getValue() == null) {
+          continue;
+        }
+        PendingTrigger pendingTrigger = parseEntry(entry.getKey(), entry.getValue(), PendingTrigger.class);
+        if (pendingTrigger == null) {
+          throw new BridgeStateCorruptionException("Persisted Jenkins Bridge state entry "
+              + entry.getKey() + " is null");
+        }
+        pendingTriggers.put(entry.getKey().substring(PENDING_TRIGGER_KEY_PREFIX.length()), pendingTrigger);
+      }
     }
-    return stateMap
-        .entrySet()
-        .stream()
-        .filter(entry -> entry.getKey().startsWith(PENDING_TRIGGER_KEY_PREFIX))
-        .filter(entry -> entry.getValue() != null)
-        .collect(Collectors.toMap(
-            entry -> entry.getKey().substring(PENDING_TRIGGER_KEY_PREFIX.length()),
-            entry -> OUR_GSON.fromJson(entry.getValue(), PendingTrigger.class),
-            (a, b) -> b,
-            LinkedHashMap::new));
+    return pendingTriggers;
   }
 
   public void putPendingTrigger(@NotNull String key, @NotNull PendingTrigger pendingTrigger) {
@@ -102,21 +110,24 @@ public class BridgeState {
   }
 
   @NotNull
-  public Map<String, Integer> getLastSeenBuildNumbers() {
+  public Map<String, Integer> getLastSeenBuildNumbers() throws BridgeStateCorruptionException {
     Map<String, String> stateMap = myStorage.getValues();
-    if (stateMap == null) {
-      return new LinkedHashMap<>();
+    Map<String, Integer> buildNumbers = new LinkedHashMap<String, Integer>();
+    if (stateMap != null) {
+      for (Map.Entry<String, String> entry : stateMap.entrySet()) {
+        if (!entry.getKey().startsWith(LAST_SEEN_BUILD_NUMBER_KEY_PREFIX) || entry.getValue() == null) {
+          continue;
+        }
+        try {
+          buildNumbers.put(entry.getKey().substring(LAST_SEEN_BUILD_NUMBER_KEY_PREFIX.length()),
+              Integer.parseInt(entry.getValue()));
+        } catch (NumberFormatException e) {
+          throw new BridgeStateCorruptionException("Persisted Jenkins Bridge state entry "
+              + entry.getKey() + " has an invalid build number", e);
+        }
+      }
     }
-    return stateMap
-        .entrySet()
-        .stream()
-        .filter(entry -> entry.getKey().startsWith(LAST_SEEN_BUILD_NUMBER_KEY_PREFIX))
-        .filter(entry -> entry.getValue() != null)
-        .collect(Collectors.toMap(
-            entry -> entry.getKey().substring(LAST_SEEN_BUILD_NUMBER_KEY_PREFIX.length()),
-            entry -> Integer.parseInt(entry.getValue()),
-            (a, b) -> b,
-            LinkedHashMap::new));
+    return buildNumbers;
   }
 
   public void putLastSeenBuildNumber(@NotNull String jobName, int buildNumber) {
@@ -137,5 +148,15 @@ public class BridgeState {
 
   public void setLastError(String lastError) {
     myStorage.putValue(LAST_ERROR_KEY, lastError);
+  }
+
+  private <T> T parseEntry(String key, String value, Class<T> type)
+      throws BridgeStateCorruptionException {
+    try {
+      return OUR_GSON.fromJson(value, type);
+    } catch (JsonParseException e) {
+      throw new BridgeStateCorruptionException("Persisted Jenkins Bridge state entry "
+          + key + " is invalid", e);
+    }
   }
 }

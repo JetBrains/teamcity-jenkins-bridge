@@ -411,7 +411,7 @@ public class TeamCityPipelineChainService {
     return node;
   }
 
-  private void setConfigParameter(SBuildType buildType, String name, String value) throws Exception {
+  private void setConfigParameter(SBuildType buildType, String name, String value) {
     if (buildType.getConfigParameters().containsKey(name)) {
       buildType.removeConfigParameter(name);
     }

@@ -5,6 +5,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.google.gson.JsonSyntaxException;
 import com.jetbrains.teamcity.jenkinsbridge.http.BridgeHttpClient;
 import com.jetbrains.teamcity.jenkinsbridge.http.BridgeHttpException;
 import com.jetbrains.teamcity.jenkinsbridge.http.BridgeHttpResponse;
@@ -14,8 +15,11 @@ import com.jetbrains.teamcity.jenkinsbridge.vcs.VcsRefType;
 import com.jetbrains.teamcity.jenkinsbridge.vcs.constants.GitConstants;
 import com.jetbrains.teamcity.jenkinsbridge.xml.JaxbUnmarshaller;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.io.UnsupportedEncodingException;
+import java.net.MalformedURLException;
+import java.net.URL;
 import java.net.URLEncoder;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
@@ -44,6 +48,10 @@ public class JenkinsClient {
   private final BridgeHttpClient httpClient;
   private final JaxbUnmarshaller xmlUnmarshaller;
   private final JsonParser jsonParser = new JsonParser();
+
+  private interface JsonMapper<T> {
+    T map(JsonObject json);
+  }
 
   public JenkinsClient(@NotNull JenkinsConnection connection,
                        @NotNull BridgeHttpClient httpClient,
@@ -156,7 +164,8 @@ public class JenkinsClient {
     return result;
   }
 
-  public JenkinsBuildInfo getBuildInfo(String jobName, int buildNumber) throws BridgeHttpException {
+  public JenkinsBuildInfo getBuildInfo(String jobName, int buildNumber)
+      throws BridgeHttpException, JenkinsDataException {
     String tree = "number,queueId,building,result,timestamp,duration,estimatedDuration,url";
     String url = myConnection.getUrl()
         + jenkinsJobPath(jobName)
@@ -166,11 +175,16 @@ public class JenkinsClient {
         + encodeQueryValue(tree);
 
     String response = httpClient.get(url, myConnection.getUser(), myConnection.getToken(), "application/json");
-    return JenkinsBuildInfo.fromJson(jsonParser.parse(response).getAsJsonObject());
+    return parseJson(response, "build information", new JsonMapper<JenkinsBuildInfo>() {
+      public JenkinsBuildInfo map(JsonObject json) {
+        return JenkinsBuildInfo.fromJson(json);
+      }
+    });
   }
 
   @NotNull
-  public JenkinsVcsInfo getBuildVcs(String jobName, int buildNumber) throws BridgeHttpException {
+  public JenkinsVcsInfo getBuildVcs(String jobName, int buildNumber)
+      throws BridgeHttpException, JenkinsDataException {
     String tree = "actions[_class,"
         + GitConstants.API_FIELDS
 //      + ','
@@ -185,7 +199,11 @@ public class JenkinsClient {
 
     try {
       String response = httpClient.get(url, myConnection.getUser(), myConnection.getToken(), "application/json");
-      return JenkinsVcsInfo.fromJson(JsonParser.parseString(response).getAsJsonObject());
+      return parseJson(response, "build VCS information", new JsonMapper<JenkinsVcsInfo>() {
+        public JenkinsVcsInfo map(JsonObject json) {
+          return JenkinsVcsInfo.fromJson(json);
+        }
+      });
     } catch (BridgeHttpException e) {
       if (e.getStatusCode() == 404) {
         return JenkinsVcsInfo.empty();
@@ -229,6 +247,28 @@ public class JenkinsClient {
     }
   }
 
+  private <T> T parseJson(String response, String operation, JsonMapper<T> mapper)
+      throws JenkinsDataException {
+    return mapper.map(parseJsonObject(response, operation));
+  }
+
+  private JsonObject parseJsonObject(String response, String operation) throws JenkinsDataException {
+    JsonElement parsed = parseJsonElement(response, operation);
+    if (!parsed.isJsonObject()) {
+      throw new JenkinsDataException("Jenkins returned invalid " + operation
+          + ": response was not a JSON object");
+    }
+    return parsed.getAsJsonObject();
+  }
+
+  private JsonElement parseJsonElement(String response, String operation) throws JenkinsDataException {
+    try {
+      return jsonParser.parse(response);
+    } catch (JsonSyntaxException e) {
+      throw new JenkinsDataException("Jenkins returned invalid " + operation, e);
+    }
+  }
+
   /**
    * Removes Jenkins ConsoleNote annotations (ESC[8m...ESC[0m conceal blocks) from console text so
    * they don't leak into the mirrored TeamCity log. Visible for testing.
@@ -240,7 +280,8 @@ public class JenkinsClient {
     return CONSOLE_NOTE.matcher(text).replaceAll("");
   }
 
-  public JenkinsTestReport getTestReport(String jobName, int buildNumber) throws BridgeHttpException {
+  public JenkinsTestReport getTestReport(String jobName, int buildNumber)
+      throws BridgeHttpException, JenkinsDataException {
     String tree = "suites[name,cases[className,name,status,duration,errorDetails,errorStackTrace,skippedMessage,stdout,stderr]]";
     String url = myConnection.getUrl()
         + jenkinsJobPath(jobName)
@@ -251,7 +292,11 @@ public class JenkinsClient {
 
     try {
       String response = httpClient.get(url, myConnection.getUser(), myConnection.getToken(), "application/json");
-      return JenkinsTestReport.fromJson(jsonParser.parse(response).getAsJsonObject());
+      return parseJson(response, "test report", new JsonMapper<JenkinsTestReport>() {
+        public JenkinsTestReport map(JsonObject json) {
+          return JenkinsTestReport.fromJson(json);
+        }
+      });
     } catch (BridgeHttpException e) {
       if (e.getStatusCode() == 404) {
         return JenkinsTestReport.empty();
@@ -260,7 +305,8 @@ public class JenkinsClient {
     }
   }
 
-  public JenkinsArtifacts getArtifacts(String jobName, int buildNumber) throws BridgeHttpException {
+  public JenkinsArtifacts getArtifacts(String jobName, int buildNumber)
+      throws BridgeHttpException, JenkinsDataException {
     String tree = "artifacts[fileName,relativePath]";
     String buildUrl = myConnection.getUrl()
         + jenkinsJobPath(jobName)
@@ -272,7 +318,11 @@ public class JenkinsClient {
 
     try {
       String response = httpClient.get(url, myConnection.getUser(), myConnection.getToken(), "application/json");
-      JenkinsArtifacts artifacts = JenkinsArtifacts.fromJson(JsonParser.parseString(response).getAsJsonObject());
+      JenkinsArtifacts artifacts = parseJson(response, "build artifacts", new JsonMapper<JenkinsArtifacts>() {
+        public JenkinsArtifacts map(JsonObject json) {
+          return JenkinsArtifacts.fromJson(json);
+        }
+      });
       List<JenkinsArtifact> sizedArtifacts = new ArrayList<>();
       for (JenkinsArtifact artifact : artifacts.getArtifacts()) {
         String artifactUrl = buildUrl + "/artifact/" + artifact.relativePath();
@@ -481,7 +531,8 @@ public class JenkinsClient {
    * plugin). A {@code 404} means the build is not a Pipeline, or the plugin is absent: callers
    * fall back to the flat console log.
    */
-  public JenkinsStages getStages(String jobName, int buildNumber) throws BridgeHttpException {
+  public JenkinsStages getStages(String jobName, int buildNumber)
+      throws BridgeHttpException, JenkinsDataException {
     String url = myConnection.getUrl()
         + jenkinsJobPath(jobName)
         + "/"
@@ -490,7 +541,11 @@ public class JenkinsClient {
 
     try {
       String response = httpClient.get(url, myConnection.getUser(), myConnection.getToken(), "application/json");
-      return JenkinsStages.fromJson(jsonParser.parse(response).getAsJsonObject());
+      return parseJson(response, "Pipeline stages", new JsonMapper<JenkinsStages>() {
+        public JenkinsStages map(JsonObject json) {
+          return JenkinsStages.fromJson(json);
+        }
+      });
     } catch (BridgeHttpException e) {
       if (e.getStatusCode() == 404) {
         return JenkinsStages.notPipeline();
@@ -499,12 +554,15 @@ public class JenkinsClient {
     }
   }
 
-  public JenkinsPipelineGraph getPipelineGraph(String jobName, int buildNumber) throws BridgeHttpException {
+  @Nullable
+  public JenkinsPipelineGraph getPipelineGraph(String jobName, int buildNumber)
+      throws BridgeHttpException, JenkinsDataException {
     return getPipelineGraph(jobName, buildNumber, jobName + "#" + buildNumber);
   }
 
+  @Nullable
   public JenkinsPipelineGraph getPipelineGraph(String jobName, int buildNumber, String flowIdPrefix)
-      throws BridgeHttpException {
+      throws BridgeHttpException, JenkinsDataException {
     JenkinsPipelineGraph blueOceanGraph = getBlueOceanPipelineGraph(jobName, buildNumber, flowIdPrefix);
     if (isUsableForNativeChain(blueOceanGraph)) {
       return blueOceanGraph;
@@ -526,7 +584,7 @@ public class JenkinsClient {
       int buildNumber,
       String flowIdPrefix,
       List<String> previousDiagnostics
-  ) throws BridgeHttpException {
+  ) throws BridgeHttpException, JenkinsDataException {
     String url = myConnection.getUrl()
         + jenkinsJobPath(jobName)
         + "/"
@@ -541,7 +599,7 @@ public class JenkinsClient {
     JenkinsStages stages;
     try {
       String response = httpClient.get(url, myConnection.getUser(), myConnection.getToken(), "application/json");
-      root = jsonParser.parse(response).getAsJsonObject();
+      root = parseJsonObject(response, "WFAPI Pipeline description");
       stages = JenkinsStages.fromJson(root);
     } catch (BridgeHttpException e) {
       if (e.getStatusCode() == 404) {
@@ -572,7 +630,7 @@ public class JenkinsClient {
       String jobName,
       int buildNumber,
       String flowIdPrefix
-  ) throws BridgeHttpException {
+  ) throws BridgeHttpException, JenkinsDataException {
     List<String> diagnostics = new ArrayList<String>();
 
     String url = myConnection.getUrl()
@@ -585,10 +643,12 @@ public class JenkinsClient {
     JsonArray nodes;
     try {
       String response = httpClient.get(url, myConnection.getUser(), myConnection.getToken(), "application/json");
-      JsonElement parsed = jsonParser.parse(response);
+      JsonElement parsed = parseJsonElement(response, "Blue Ocean Pipeline graph");
       if (parsed.isJsonArray()) {
         nodes = parsed.getAsJsonArray();
-      } else if (parsed.isJsonObject() && parsed.getAsJsonObject().get("nodes") != null) {
+      } else if (parsed.isJsonObject()
+          && parsed.getAsJsonObject().get("nodes") != null
+          && parsed.getAsJsonObject().get("nodes").isJsonArray()) {
         nodes = parsed.getAsJsonObject().getAsJsonArray("nodes");
       } else {
         diagnostics.add("Blue Ocean nodes endpoint returned an unsupported JSON shape");
@@ -752,7 +812,7 @@ public class JenkinsClient {
     }
     try {
       return value.getAsLong();
-    } catch (RuntimeException e) {
+    } catch (IllegalStateException | ClassCastException  e) {
       return defaultValue;
     }
   }
@@ -762,7 +822,8 @@ public class JenkinsClient {
    * descends into the stage's {@code stageFlowNodes} (echo / sh / etc. steps) and concatenates each
    * step node's log in flow order. ConsoleNote annotations are stripped, same as the progressive log.
    */
-  public JenkinsStageLog getStageLog(String jobName, int buildNumber, String stageId) throws BridgeHttpException {
+  public JenkinsStageLog getStageLog(String jobName, int buildNumber, String stageId)
+      throws BridgeHttpException, JenkinsDataException {
     JenkinsStageNodes nodes = getStageNodes(jobName, buildNumber, stageId);
     if (nodes.getLogNodeIds().isEmpty()) {
       return JenkinsStageLog.empty();
@@ -782,7 +843,7 @@ public class JenkinsClient {
    * so they show name/status/timing. A {@code 404} (stage not materialized) yields no steps.
    */
   public List<JenkinsStageStep> getStageSteps(String jobName, int buildNumber, String stageId)
-      throws BridgeHttpException {
+      throws BridgeHttpException, JenkinsDataException {
     JsonObject describe = getStageNodeDescribe(jobName, buildNumber, stageId, null);
     if (describe == null) {
       return Collections.emptyList();
@@ -803,7 +864,7 @@ public class JenkinsClient {
    * steps, fall back to the WFAPI stage whose name matches the clicked node's name.
    */
   public List<JenkinsStageStep> getStageStepsForNode(String jobName, int buildNumber, String nodeId, String nodeName)
-      throws BridgeHttpException {
+      throws BridgeHttpException, JenkinsDataException {
     List<JenkinsStageStep> direct = getStageSteps(jobName, buildNumber, nodeId);
     if (!direct.isEmpty()) {
       return direct;
@@ -821,7 +882,7 @@ public class JenkinsClient {
    * then containment. Returns null if nothing matches.
    */
   private String matchWfapiStageIdByName(String jobName, int buildNumber, String excludeId, String nodeName)
-      throws BridgeHttpException {
+      throws BridgeHttpException, JenkinsDataException {
     if (nodeName == null || nodeName.trim().length() == 0) {
       return null;
     }
@@ -855,7 +916,8 @@ public class JenkinsClient {
    * Fetches the step nodes of a stage via {@code execution/node/<stageId>/wfapi/describe}. A
    * {@code 404} (stage not yet materialized) yields no nodes.
    */
-  JenkinsStageNodes getStageNodes(String jobName, int buildNumber, String stageId) throws BridgeHttpException {
+  JenkinsStageNodes getStageNodes(String jobName, int buildNumber, String stageId)
+      throws BridgeHttpException, JenkinsDataException {
     JsonObject describe = getStageNodeDescribe(jobName, buildNumber, stageId, null);
     if (describe == null) {
       return JenkinsStageNodes.empty();
@@ -864,7 +926,7 @@ public class JenkinsClient {
   }
 
   private JsonObject getStageNodeDescribe(String jobName, int buildNumber, String stageId, List<String> diagnostics)
-      throws BridgeHttpException {
+      throws BridgeHttpException, JenkinsDataException {
     String url = myConnection.getUrl()
         + jenkinsJobPath(jobName)
         + "/"
@@ -875,7 +937,11 @@ public class JenkinsClient {
 
     try {
       String response = httpClient.get(url, myConnection.getUser(), myConnection.getToken(), "application/json");
-      return jsonParser.parse(response).getAsJsonObject();
+      return parseJson(response, "WFAPI stage node " + stageId, new JsonMapper<JsonObject>() {
+        public JsonObject map(JsonObject json) {
+          return json;
+        }
+      });
     } catch (BridgeHttpException e) {
       if (e.getStatusCode() == 404) {
         if (diagnostics != null) {
@@ -891,7 +957,8 @@ public class JenkinsClient {
    * Fetches one flow node's console text via {@code execution/node/<id>/wfapi/log}, with Jenkins
    * ConsoleNote annotations stripped. A {@code 404} (node not yet materialized) yields empty text.
    */
-  JenkinsStageLog getNodeLog(String jobName, int buildNumber, String nodeId) throws BridgeHttpException {
+  JenkinsStageLog getNodeLog(String jobName, int buildNumber, String nodeId)
+      throws BridgeHttpException, JenkinsDataException {
     String url = myConnection.getUrl()
         + jenkinsJobPath(jobName)
         + "/"
@@ -902,7 +969,12 @@ public class JenkinsClient {
 
     try {
       String response = httpClient.get(url, myConnection.getUser(), myConnection.getToken(), "application/json");
-      JenkinsStageLog log = JenkinsStageLog.fromJson(jsonParser.parse(response).getAsJsonObject());
+      JenkinsStageLog log = parseJson(response, "WFAPI node log " + nodeId,
+          new JsonMapper<JenkinsStageLog>() {
+            public JenkinsStageLog map(JsonObject json) {
+              return JenkinsStageLog.fromJson(json);
+            }
+          });
       return JenkinsStageLog.of(stripConsoleNotes(log.getText()));
     } catch (BridgeHttpException e) {
       if (e.getStatusCode() == 404) {
@@ -983,9 +1055,11 @@ public class JenkinsClient {
 
   /**
    * Reads the parameter values attached to one concrete Jenkins build run. Empty for
-   * non-parameterized builds, builds whose ParametersAction is absent, or a {@code 404}.
+   * non-parameterized builds or builds whose ParametersAction is absent. A {@code 404} is
+   * propagated because it means the requested Jenkins build resource was not found.
    */
-  public JenkinsBuildParameters getBuildParameters(String jobName, int buildNumber) throws BridgeHttpException {
+  public JenkinsBuildParameters getBuildParameters(String jobName, int buildNumber)
+      throws BridgeHttpException, JenkinsDataException {
     String tree = "actions[parameters[name,value,_class]]";
     String url = myConnection.getUrl()
         + jenkinsJobPath(jobName)
@@ -994,15 +1068,12 @@ public class JenkinsClient {
         + "/api/json?tree="
         + encodeQueryValue(tree);
 
-    try {
-      String response = httpClient.get(url, myConnection.getUser(), myConnection.getToken(), "application/json");
-      return JenkinsBuildParameters.fromJson(jsonParser.parse(response).getAsJsonObject());
-    } catch (BridgeHttpException e) {
-      if (e.getStatusCode() == 404) {
-        return JenkinsBuildParameters.empty();
+    String response = httpClient.get(url, myConnection.getUser(), myConnection.getToken(), "application/json");
+    return parseJson(response, "build parameters", new JsonMapper<JenkinsBuildParameters>() {
+      public JenkinsBuildParameters map(JsonObject json) {
+        return JenkinsBuildParameters.fromJson(json);
       }
-      throw e;
-    }
+    });
   }
 
   /**
@@ -1089,10 +1160,10 @@ public class JenkinsClient {
     String value = location.trim();
     try {
       if (value.startsWith("/")) {
-        return new java.net.URL(new java.net.URL(jenkinsUrl + "/"), value).toString();
+        return new URL(new URL(jenkinsUrl + "/"), value).toString();
       }
       return new java.net.URL(value).toString();
-    } catch (java.net.MalformedURLException e) {
+    } catch (MalformedURLException e) {
       return value;
     }
   }

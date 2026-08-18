@@ -81,6 +81,38 @@ public class TeamCityBuildMirrorServiceTest {
   }
 
   @Test
+  public void syncStagesDoesNotCheckpointWhenTeamCityRejectsDelivery() throws Exception {
+    TeamCityBuildMirrorService service = new TeamCityBuildMirrorService(
+        null, null, null, null, null, null, new FailingStageReporter(), null, null, null, null, null, new NoopStore());
+    BuildMirror mirror = new BuildMirror();
+    FakeStageLogClient client = new FakeStageLogClient();
+    client.text = "+ mvn compile";
+
+    try {
+      service.syncStages(mirror, 1L, stages("Build", "IN_PROGRESS", 1000, 0), client);
+      fail("Expected TeamCityRunningBuildNotFoundException");
+    } catch (TeamCityRunningBuildNotFoundException expected) {
+      assertTrue(mirror.getStages().isEmpty());
+      assertNull(mirror.getLastStageProgress());
+    }
+  }
+
+  @Test
+  public void syncLogsDoesNotAdvanceOffsetWhenTeamCityRejectsDelivery() throws Exception {
+    TeamCityBuildMirrorService service = new TeamCityBuildMirrorService(
+        null, null, null, null, new FailingLogger(), null, null, null, null, null, null, null, new NoopStore());
+    BuildMirror mirror = new BuildMirror();
+    mirror.setLastLogOffset(10L);
+
+    try {
+      service.syncLogs(mirror, 1L, new com.jetbrains.teamcity.jenkinsbridge.model.JenkinsLogChunk("new log", 20L, false));
+      fail("Expected TeamCityRunningBuildNotFoundException");
+    } catch (TeamCityRunningBuildNotFoundException expected) {
+      assertEquals(10L, mirror.getLastLogOffset());
+    }
+  }
+
+  @Test
   public void skippedPipelineNodeFinishesGreenNotRed() {
     // Parity: Jenkins shows a skipped stage as neutral, so NOT_EXECUTED maps to SUCCESS (green), not red.
     assertEquals("SUCCESS", TeamCityBuildMirrorService.jenkinsResultForPipelineNodeStatus("NOT_EXECUTED"));
@@ -294,6 +326,20 @@ public class TeamCityBuildMirrorServiceTest {
     assertTrue(logger.texts.get(0).contains("Failures: 1"));
   }
 
+  @Test(expected = NullPointerException.class)
+  public void syncArtifactMetadataDoesNotHideUnexpectedNullPointer() throws Exception {
+    CapturingArtifactListPublisher publisher = new CapturingArtifactListPublisher();
+    publisher.throwNullPointer = true;
+    TeamCityBuildMirrorService service = new TeamCityBuildMirrorService(
+        null, null, null, null, new CapturingLogger(), null, null, publisher,
+        null, null, null, null, new NoopStore());
+
+    service.syncArtifactMetadataIfNeeded(
+        BuildMirror.create("job#12@1710000000012", "job", buildInfo(12), "buildType", "now"),
+        77L,
+        artifacts("{\"artifacts\":[{\"fileName\":\"a\",\"relativePath\":\"a\"}]}"));
+  }
+
   @Test
   public void syncBuildNumberUpdatesRunningBuild() throws Exception {
     CapturingBuildNumberPublisher publisher = new CapturingBuildNumberPublisher();
@@ -358,7 +404,7 @@ public class TeamCityBuildMirrorServiceTest {
   }
 
   @Test
-  public void syncVcsRecordsPublisherErrorsAndPromptsForCredentials() throws Exception {
+  public void syncVcsPublisherErrorsRemainRetryable() throws Exception {
     CapturingVcsPublisher publisher = new CapturingVcsPublisher();
     publisher.result.incrementAttached();
     publisher.result.addError("git@host:org/repo.git: auth failed");
@@ -370,13 +416,13 @@ public class TeamCityBuildMirrorServiceTest {
 
     service.syncVcsIfNeeded(mirror, gitVcsInfo());
 
-    assertTrue(mirror.isVcsSynced());
+    assertFalse(mirror.isVcsSynced());
     assertTrue(hasVcsErrorContaining(mirror, "auth failed"));
     assertTrue(logger.texts.isEmpty());
   }
 
   @Test
-  public void syncVcsMarksSyncedWhenPublisherThrows() throws Exception {
+  public void syncVcsPublisherExceptionRemainsRetryable() throws Exception {
     CapturingVcsPublisher publisher = new CapturingVcsPublisher();
     publisher.throwError = true;
     TeamCityBuildMirrorService service = new TeamCityBuildMirrorService(
@@ -386,8 +432,20 @@ public class TeamCityBuildMirrorServiceTest {
 
     service.syncVcsIfNeeded(mirror, gitVcsInfo());
 
-    assertTrue(mirror.isVcsSynced());
+    assertFalse(mirror.isVcsSynced());
     assertTrue(hasVcsErrorContaining(mirror, "RuntimeException"));
+  }
+
+  @Test
+  public void recordVcsFetchFailureLeavesMirrorRetryable() throws Exception {
+    TeamCityBuildMirrorService service = new TeamCityBuildMirrorService(
+        null, null, null, null, new CapturingLogger(), null, null, null, null, null, null, null, new NoopStore());
+    BuildMirror mirror = BuildMirror.create("job#1@1", "job", buildInfo(1), "buildType", "now");
+
+    service.recordVcsFetchFailure(mirror, new BridgeHttpException("GET", "http://jenkins/job/job/1/api/json", 503, "unavailable"));
+
+    assertFalse(mirror.isVcsSynced());
+    assertTrue(hasVcsErrorContaining(mirror, "503"));
   }
 
   private boolean hasVcsErrorContaining(BuildMirror mirror, String text) {
@@ -434,6 +492,17 @@ public class TeamCityBuildMirrorServiceTest {
     @Override
     public void report(long buildId, List<BuildMessage1> messages) {
       reports.add(new ArrayList<BuildMessage1>(messages));
+    }
+  }
+
+  private static class FailingStageReporter extends TeamCityStageReporter {
+    FailingStageReporter() {
+      super(null, null);
+    }
+
+    @Override
+    public void report(long buildId, List<BuildMessage1> messages) {
+      throw new TeamCityRunningBuildNotFoundException("TeamCity running build not found for id " + buildId);
     }
   }
 
@@ -503,6 +572,7 @@ public class TeamCityBuildMirrorServiceTest {
   private static class CapturingArtifactListPublisher extends TeamCityArtifactPublisher {
     List<JenkinsArtifact> published = new ArrayList<>();
     boolean fail;
+    boolean throwNullPointer;
 
     CapturingArtifactListPublisher() {
       super(null, null);
@@ -510,6 +580,9 @@ public class TeamCityBuildMirrorServiceTest {
 
     @Override
     public void publishArtifactList(long buildId, List<JenkinsArtifact> artifacts) throws IOException {
+      if (throwNullPointer) {
+        throw new NullPointerException("unexpected bridge defect");
+      }
       if (fail) {
         throw new IOException("boom");
       }
@@ -564,6 +637,17 @@ public class TeamCityBuildMirrorServiceTest {
     @Override
     public void addBuildLog(long buildId, String text) {
       texts.add(text);
+    }
+  }
+
+  private static class FailingLogger extends TeamCityBuildLogger {
+    FailingLogger() {
+      super(null, null);
+    }
+
+    @Override
+    public void addBuildLog(long buildId, String text) {
+      throw new TeamCityRunningBuildNotFoundException("TeamCity running build not found for id " + buildId);
     }
   }
 

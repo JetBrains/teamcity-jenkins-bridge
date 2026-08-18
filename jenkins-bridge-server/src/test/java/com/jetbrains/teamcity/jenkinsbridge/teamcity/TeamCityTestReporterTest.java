@@ -78,7 +78,7 @@ public class TeamCityTestReporterTest {
 
   @Test(expected = TeamCityRunningBuildNotFoundException.class)
   public void failsWhenTeamCityBuildIsNotRunning() {
-    TeamCityRunningBuildLocator locator = new TeamCityRunningBuildLocator(null, null) {
+    TeamCityRunningBuildLocator locator = new TeamCityRunningBuildLocator(null, null, null) {
       @Override
       public RunningBuildEx findRunningBuild(long id) {
         return null;

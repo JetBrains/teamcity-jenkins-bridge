@@ -7,6 +7,10 @@ package com.jetbrains.teamcity.jenkinsbridge.jenkins;
  * the response body was malformed or had an unexpected structure.</p>
  */
 public class JenkinsDataException extends Exception {
+  public JenkinsDataException(String message) {
+    super(message);
+  }
+
   public JenkinsDataException(String message, Throwable cause) {
     super(message, cause);
   }

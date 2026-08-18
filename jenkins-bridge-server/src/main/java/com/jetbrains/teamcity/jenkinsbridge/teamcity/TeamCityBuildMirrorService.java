@@ -33,6 +33,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Date;
 import java.util.EnumSet;
 import java.util.LinkedHashMap;
@@ -222,7 +223,7 @@ public class TeamCityBuildMirrorService {
   }
 
   public void ensureMetadataLogSent(BuildMirror mirror, long teamCityBuildId)
-      throws BridgeHttpException, IOException {
+      throws BridgeHttpException, IOException, TeamCityRunningBuildNotFoundException {
     if (mirror.isMetadataLogSent()) {
       return;
     }
@@ -242,7 +243,7 @@ public class TeamCityBuildMirrorService {
   }
 
   public void syncLogs(BuildMirror mirror, long teamCityBuildId, JenkinsLogChunk logChunk)
-      throws BridgeHttpException, IOException {
+      throws BridgeHttpException, IOException, TeamCityRunningBuildNotFoundException {
     String newLog = logChunk.getText();
     if (newLog.length() == 0) {
       // Nothing new since the last poll; do not append or rewrite state.
@@ -300,21 +301,12 @@ public class TeamCityBuildMirrorService {
           "Native TeamCity Pipeline chain: not attached to this build; graph confidence "
               + graph.getConfidence()
               + ", topology " + graph.getTopologyHash() + ".\n");
-      mirror.setLastError(null);
-      mirrorStore.saveMirror(mirror);
-    } catch (Exception e) {
-      mirror.setLastError("Pipeline chain creation failed: " + e.getClass().getSimpleName()
-          + (e.getMessage() == null ? "" : ": " + e.getMessage()));
-      appendPipelineChainLogOnce(
-          mirror,
-          teamCityBuildId,
-          pipelineChainMessageKey(graph, "failed"),
-          "Native TeamCity Pipeline chain: failed: " + e.getClass().getSimpleName()
-              + (e.getMessage() == null ? "" : ": " + e.getMessage()) + ".\n");
-      mirrorStore.saveMirror(mirror);
-      LOG.warn("Jenkins Bridge: failed to create native TeamCity Pipeline chain for "
-          + mirror.getJenkinsBuildKey(), e);
+    } catch (BridgeHttpException | IOException e) {
+      recordPipelineChainFailure(mirror, teamCityBuildId, graph, "Pipeline chain synchronization failed", e);
+      return;
     }
+    mirror.setLastError(null);
+    mirrorStore.saveMirror(mirror);
   }
 
   private void appendPipelineChainLogOnce(
@@ -406,8 +398,8 @@ public class TeamCityBuildMirrorService {
    * documented v1 limitation.
    */
   public void syncStages(BuildMirror mirror, long teamCityBuildId, JenkinsStages stages, JenkinsClient jenkinsClient)
-      throws BridgeHttpException, JenkinsDataException, IOException {
-    Map<String, StageMirror> state = mirror.getStages();
+      throws BridgeHttpException, JenkinsDataException, IOException, TeamCityRunningBuildNotFoundException {
+    Map<String, StageMirror> state = copyStageMirrors(mirror.getStages());
     List<BuildMessage1> messages = new ArrayList<BuildMessage1>();
 
     for (JenkinsStage stage : stages.getStages()) {
@@ -469,18 +461,38 @@ public class TeamCityBuildMirrorService {
     // Surface the current stage as the running build's status text ("Jenkins stage N/M: name") so a
     // long build's position is visible at a glance. Deduped: only sent when it changes.
     String progress = currentStageProgress(stages);
-    if (progress != null && !progress.equals(mirror.getLastStageProgress())) {
+    boolean progressChanged = progress != null && !progress.equals(mirror.getLastStageProgress());
+    if (progressChanged) {
       messages.add(teamCityStageReporter.progressMessage(progress));
-      mirror.setLastStageProgress(progress);
     }
 
     if (!messages.isEmpty()) {
       teamCityStageReporter.report(teamCityBuildId, messages);
     }
 
+    Map<String, StageMirror> persistedState = mirror.getStages();
+    persistedState.clear();
+    persistedState.putAll(state);
+    if (progressChanged) {
+      mirror.setLastStageProgress(progress);
+    }
     mirror.setSyncState(SyncState.LOG_SYNCING);
     mirror.setLastError(null);
     mirrorStore.saveMirror(mirror);
+  }
+
+  private Map<String, StageMirror> copyStageMirrors(Map<String, StageMirror> source) {
+    Map<String, StageMirror> copy = new LinkedHashMap<String, StageMirror>();
+    for (Map.Entry<String, StageMirror> entry : source.entrySet()) {
+      StageMirror original = entry.getValue();
+      StageMirror stage = new StageMirror(original.getName());
+      stage.setStatus(original.getStatus());
+      stage.setBlockOpened(original.isBlockOpened());
+      stage.setLogOffset(original.getLogOffset());
+      stage.setBlockClosed(original.isBlockClosed());
+      copy.put(entry.getKey(), stage);
+    }
+    return copy;
   }
 
   /**
@@ -621,7 +633,7 @@ public class TeamCityBuildMirrorService {
 
     try {
       teamCityArtifactPublisher.publishArtifactList(teamCityBuildId, safeArtifacts);
-    } catch (Exception e) {
+    } catch (IOException e) {
       artifactRegistrationFailed = true;
       failures.add(e.getClass().getSimpleName() + (e.getMessage() == null ? "" : ": " + e.getMessage()));
       LOG.warn("Jenkins Bridge: failed to register artifact list for "
@@ -637,7 +649,7 @@ public class TeamCityBuildMirrorService {
 
     try {
       teamCityBuildLogger.addBuildLog(teamCityBuildId, message);
-    } catch (Exception e) {
+    } catch (TeamCityRunningBuildNotFoundException e) {
       LOG.warn("Jenkins Bridge: failed to write artifact summary for "
           + mirror.getJenkinsBuildKey(), e);
       failures.add("Failed to write artifact summary: " + e.getClass().getSimpleName()
@@ -651,7 +663,7 @@ public class TeamCityBuildMirrorService {
     }
     try {
       mirrorStore.saveMirror(mirror);
-    } catch (Exception e) {
+    } catch (IOException e) {
       mirror.setArtifactsSynced(false);
       mirror.setArtifactSyncError(e.getClass().getSimpleName()
           + (e.getMessage() == null ? "" : ": " + e.getMessage()));
@@ -675,13 +687,26 @@ public class TeamCityBuildMirrorService {
     if (vcsInfo != null && !vcsInfo.repositories().isEmpty()) {
       try {
         result = teamCityVcsPublisher.applyVcsToBuild(mirror, vcsInfo);
-      } catch (Exception e) {
+      } catch (NullPointerException e) {
+        throw e;
+      } catch (RuntimeException e) {
         LOG.warn("VCS mirroring failed for " + mirror.getJenkinsBuildKey(), e);
         result.addError(describeException(e));
       }
     }
-    mirror.setVcsSynced(true);
+    mirror.setVcsSynced(result.getErrors().isEmpty());
     mirror.setVcsSyncErrors(result.getErrors());
+    mirrorStore.saveMirror(mirror);
+  }
+
+  /**
+   * Records that Jenkins VCS metadata could not be read. VCS is best-effort, so this does not
+   * prevent the mirror build from finishing; keeping {@code vcsSynced} false preserves the option
+   * to retry while the mirror remains active.
+   */
+  public void recordVcsFetchFailure(BuildMirror mirror, Exception failure) throws IOException {
+    mirror.setVcsSynced(false);
+    mirror.setVcsSyncErrors(Collections.singletonList(describeException(failure)));
     mirrorStore.saveMirror(mirror);
   }
 
@@ -755,28 +780,56 @@ public class TeamCityBuildMirrorService {
         || !teamCityPipelineChainService.isChainEnabled(mirror.getTeamCityBuildTypeId())) {
       return;
     }
+    PipelineChainMirror chain;
     try {
       BuildPromotion topPromotion = teamCityBuildLocator.findPromotion(teamCityBuildId);
-      PipelineChainMirror chain = teamCityPipelineChainService.retrofitFinishedChain(
+      chain = teamCityPipelineChainService.retrofitFinishedChain(
           mirror, graph, topPromotion);
       if (chain != null) {
-        mirror.setPipelineGraph(graph);
-        mirror.setPipelineChain(chain);
         // The live path reconciles generated node promotions on every poll. A finished
         // retrospective mirror will not be polled again, so perform the terminal node
         // start/finish reconciliation once before handing the chain to TeamCity.
         syncPipelineChainNodeStates(mirror, graph, chain);
-        mirror.setLastError(null);
-        mirrorStore.saveMirror(mirror);
       }
-    } catch (Exception e) {
-      mirror.setLastError("Retrospective Pipeline chain creation failed: "
-          + e.getClass().getSimpleName()
-          + (e.getMessage() == null ? "" : ": " + e.getMessage()));
-      mirrorStore.saveMirror(mirror);
-      LOG.warn("Jenkins Bridge: failed to retrofit native TeamCity Pipeline chain for "
-          + mirror.getJenkinsBuildKey(), e);
+    } catch (TeamCityPipelineChainException | BridgeHttpException | IOException e) {
+      recordPipelineChainFailure(
+          mirror, teamCityBuildId, graph, "Retrospective Pipeline chain creation failed", e);
+      return;
     }
+    if (chain != null) {
+      mirror.setPipelineGraph(graph);
+      mirror.setPipelineChain(chain);
+      mirror.setLastError(null);
+      mirrorStore.saveMirror(mirror);
+    }
+  }
+
+  private void recordPipelineChainFailure(
+      BuildMirror mirror,
+      long teamCityBuildId,
+      JenkinsPipelineGraph graph,
+      String message,
+      Exception failure
+  ) throws IOException {
+    mirror.setLastError(message + ": " + describeException(failure));
+    mirrorStore.saveMirror(mirror);
+    boolean failureLogged = false;
+    try {
+      appendPipelineChainLogOnce(
+          mirror,
+          teamCityBuildId,
+          pipelineChainMessageKey(graph, "failed"),
+          "Native TeamCity Pipeline chain: failed: " + describeException(failure) + ".\n");
+      failureLogged = true;
+    } catch (BridgeHttpException | IOException logFailure) {
+      failure.addSuppressed(logFailure);
+      LOG.error("Jenkins Bridge: failed to write native Pipeline chain failure for "
+          + mirror.getJenkinsBuildKey(), logFailure);
+    }
+    if (failureLogged) {
+      mirrorStore.saveMirror(mirror);
+    }
+    LOG.error("Jenkins Bridge: " + message + " for " + mirror.getJenkinsBuildKey(), failure);
   }
 
   private Date getJenkinsFinishTime(JenkinsBuildInfo jenkinsInfo) {

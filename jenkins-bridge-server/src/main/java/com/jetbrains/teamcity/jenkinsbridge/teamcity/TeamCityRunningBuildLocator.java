@@ -92,6 +92,7 @@ public class TeamCityRunningBuildLocator {
    * @throws TeamCityRunningBuildNotFoundException if no build or promotion can be found for
    * {@code id} at all.
    */
+  @Nullable
   public RunningBuildEx findRunningBuild(long id) throws TeamCityRunningBuildNotFoundException {
     SRunningBuild runningBuild = buildsManager.findRunningBuildById(id);
     if (runningBuild instanceof RunningBuildEx) {
@@ -130,6 +131,22 @@ public class TeamCityRunningBuildLocator {
 
     throw new TeamCityRunningBuildNotFoundException(
         "TeamCity build " + id + " is not a running build");
+  }
+
+  /**
+   * Resolves a running build that must accept bridge messages.
+   *
+   * <p>Use {@link #findRunningBuild(long)} for idempotent operations such as build finishing, where
+   * an already-finished build is a normal no-op. Use this method for data delivery, where accepting
+   * no messages must never be treated as success.</p>
+   */
+  public RunningBuildEx requireRunningBuild(long id) throws TeamCityRunningBuildNotFoundException {
+    RunningBuildEx runningBuild = findRunningBuild(id);
+    if (runningBuild == null) {
+      throw new TeamCityRunningBuildNotFoundException(
+          "TeamCity running build not found for id " + id);
+    }
+    return runningBuild;
   }
 
   /**

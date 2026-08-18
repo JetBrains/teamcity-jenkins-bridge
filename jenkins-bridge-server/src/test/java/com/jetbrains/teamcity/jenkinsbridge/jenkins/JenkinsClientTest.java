@@ -52,6 +52,34 @@ public class JenkinsClientTest {
   }
 
   @Test
+  public void getBuildInfoRejectsMalformedJsonAsJenkinsDataException() throws Exception {
+    StubResponseHttpClient httpClient = new StubResponseHttpClient();
+    httpClient.body = "{";
+    JenkinsClient client = new JenkinsClient(testConnection(), httpClient, newJaxbUnmarshaller());
+
+    try {
+      client.getBuildInfo("job", 7);
+      fail("Expected JenkinsDataException");
+    } catch (JenkinsDataException expected) {
+      assertTrue(expected.getMessage().contains("build information"));
+    }
+  }
+
+  @Test
+  public void getPipelineGraphRejectsMalformedJsonAsJenkinsDataException() throws Exception {
+    RoutingHttpClient httpClient = new RoutingHttpClient();
+    httpClient.responses.put("/blue/rest/organizations/jenkins/pipelines/job/runs/7/nodes/", "{");
+    JenkinsClient client = new JenkinsClient(testConnection(), httpClient, newJaxbUnmarshaller());
+
+    try {
+      client.getPipelineGraph("job", 7);
+      fail("Expected JenkinsDataException");
+    } catch (JenkinsDataException expected) {
+      assertTrue(expected.getMessage().contains("Blue Ocean Pipeline graph"));
+    }
+  }
+
+  @Test
   public void getArtifactsParsesArchivedArtifacts() throws Exception {
     StubResponseHttpClient httpClient = new StubResponseHttpClient();
     httpClient.body = "{\"artifacts\":["

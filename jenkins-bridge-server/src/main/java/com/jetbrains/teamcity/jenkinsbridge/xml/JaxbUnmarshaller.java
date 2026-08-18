@@ -6,6 +6,7 @@ import jakarta.xml.bind.JAXBException;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import javax.xml.stream.XMLStreamException;
 import javax.xml.stream.XMLStreamReader;
 import java.util.HashMap;
 import java.util.Map;
@@ -60,7 +61,7 @@ public class JaxbUnmarshaller {
       } finally {
         reader.close();
       }
-    } catch (Exception | Error e) {
+    } catch (JAXBException | XMLStreamException e) {
       LOG.error("Failed to read a document as " + type.getSimpleName(), e);
       return Optional.empty();
     } finally {

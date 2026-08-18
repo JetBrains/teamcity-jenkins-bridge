@@ -18,15 +18,11 @@ public class TeamCityBuildNumberPublisher {
    * @return true if the build number was successfully published, false otherwise
    */
   public boolean publishBuildNumber(long buildId, int jenkinsBuildNumber) {
-    try {
-      RunningBuildEx build = myBuildLocator.findRunningBuild(buildId);
-      if (build == null) {
-        return false;
-      }
-      build.setBuildNumber(String.valueOf(jenkinsBuildNumber));
-    } catch (Exception e) {
+    RunningBuildEx build = myBuildLocator.findRunningBuild(buildId);
+    if (build == null) {
       return false;
     }
+    build.setBuildNumber(String.valueOf(jenkinsBuildNumber));
     return true;
   }
 }
