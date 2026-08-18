@@ -8,6 +8,10 @@
   </parent>
   <artifactId>jenkins-bridge-server</artifactId>
   <packaging>jar</packaging>
+  <properties>
+    <mockito.version>5.23.0</mockito.version>
+  </properties>
+
   <dependencies>
 
     <dependency>
@@ -53,10 +57,29 @@
       <scope>provided</scope>
     </dependency>
 
+    <!-- tests-support is only an aggregator; server-test-core contains the database-backed fixture. -->
     <dependency>
       <groupId>org.jetbrains.teamcity</groupId>
-      <artifactId>tests-support</artifactId>
+      <artifactId>server-test-core</artifactId>
       <version>${teamcity-version}</version>
+      <scope>test</scope>
+    </dependency>
+
+    <dependency>
+      <groupId>org.jetbrains.teamcity</groupId>
+      <artifactId>license-protected</artifactId>
+      <!-- The public 2026.3 EAP repository omits this proprietary module, but server-core still
+           loads its ReleaseDateHolder interface while bootstrapping the test fixture. -->
+      <version>2026.2-SNAPSHOT</version>
+      <scope>test</scope>
+    </dependency>
+
+    <!-- server-test-core's legacy commons-httpclient otherwise wins Maven conflict resolution with
+         commons-codec 1.2, which lacks Hex.encodeHexString used by current TeamCity core. -->
+    <dependency>
+      <groupId>commons-codec</groupId>
+      <artifactId>commons-codec</artifactId>
+      <version>1.17.1</version>
       <scope>test</scope>
     </dependency>
 
@@ -70,7 +93,7 @@
     <dependency>
       <groupId>org.mockito</groupId>
       <artifactId>mockito-core</artifactId>
-      <version>5.23.0</version>
+      <version>${mockito.version}</version>
       <scope>test</scope>
     </dependency>
 
@@ -112,6 +135,9 @@
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
         <version>3.5.4</version>
+        <configuration>
+          <argLine>-javaagent:${settings.localRepository}/org/mockito/mockito-core/${mockito.version}/mockito-core-${mockito.version}.jar</argLine>
+        </configuration>
         <dependencies>
           <dependency>
             <groupId>org.apache.maven.surefire</groupId>
@@ -119,6 +145,20 @@
             <version>3.5.4</version>
           </dependency>
         </dependencies>
+      </plugin>
+
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-failsafe-plugin</artifactId>
+        <version>3.5.4</version>
+        <executions>
+          <execution>
+            <goals>
+              <goal>integration-test</goal>
+              <goal>verify</goal>
+            </goals>
+          </execution>
+        </executions>
       </plugin>
     </plugins>
   </build>
