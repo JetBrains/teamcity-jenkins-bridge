@@ -546,7 +546,12 @@ public class JenkinsBridgePollingService {
     return legacy == null;
   }
 
-  // Syncs a newly discovered Jenkins build, isolating failures so one bad build does not abort the poll cycle.
+  /**
+   * Synchronizes a discovered build and reports whether discovery/tracking succeeded.
+   *
+   * <p>False means the watermark must not advance past this build. True means a mirror exists;
+   * later synchronization failures are recorded for retry and do not block watermark progress.</p>
+   */
   private boolean syncDiscoveredBuild(JenkinsClient jenkinsClient, MirroredJob mirroredJob,
                                    JenkinsBuildInfo discoveredBuild, JobPollOutcome outcome) {
     String job = mirroredJob.jenkinsJob();
