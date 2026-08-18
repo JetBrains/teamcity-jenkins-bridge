@@ -89,9 +89,10 @@ public class TeamCityRunningBuildLocator {
   /**
    * @return the running build for {@code id}, or {@code null} if the build exists but is already
    * finished / not in a runnable state.
-   * @throws IllegalStateException if no build or promotion can be found for {@code id} at all.
+   * @throws TeamCityRunningBuildNotFoundException if no build or promotion can be found for
+   * {@code id} at all.
    */
-  public RunningBuildEx findRunningBuild(long id) {
+  public RunningBuildEx findRunningBuild(long id) throws TeamCityRunningBuildNotFoundException {
     SRunningBuild runningBuild = buildsManager.findRunningBuildById(id);
     if (runningBuild instanceof RunningBuildEx) {
       return (RunningBuildEx) runningBuild;
@@ -107,9 +108,18 @@ public class TeamCityRunningBuildLocator {
       }
     }
 
-    SBuild associatedBuild = findPromotion(id).getAssociatedBuild();
+    BuildPromotion promotion;
+    try {
+      promotion = findPromotion(id);
+    } catch (IllegalStateException e) {
+      throw new TeamCityRunningBuildNotFoundException(
+          "TeamCity build " + id + " was not found", e);
+    }
+
+    SBuild associatedBuild = promotion.getAssociatedBuild();
     if (associatedBuild == null) {
-      throw new IllegalStateException("TeamCity build " + id + " is not running");
+      throw new TeamCityRunningBuildNotFoundException(
+          "TeamCity build " + id + " is not running");
     }
     if (associatedBuild.isFinished()) {
       return null;
@@ -118,7 +128,8 @@ public class TeamCityRunningBuildLocator {
       return (RunningBuildEx) associatedBuild;
     }
 
-    throw new IllegalStateException("TeamCity build " + id + " is not a running build");
+    throw new TeamCityRunningBuildNotFoundException(
+        "TeamCity build " + id + " is not a running build");
   }
 
   /**

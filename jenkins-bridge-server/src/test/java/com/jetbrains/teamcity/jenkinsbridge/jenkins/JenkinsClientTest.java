@@ -32,6 +32,7 @@ import java.util.Map;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.fail;
 import static org.junit.Assert.assertTrue;
 
 public class JenkinsClientTest {
@@ -664,11 +665,16 @@ public class JenkinsClientTest {
   }
 
   @Test
-  public void getBuildParametersReturnsEmptyOn404() throws Exception {
+  public void getBuildParametersPropagates404ForMissingBuild() throws Exception {
     NotFoundHttpClient httpClient = new NotFoundHttpClient();
     JenkinsClient client = new JenkinsClient(testConnection(), httpClient, newJaxbUnmarshaller());
 
-    assertTrue(client.getBuildParameters("job", 5).isEmpty());
+    try {
+      client.getBuildParameters("job", 5);
+      fail("Expected the missing Jenkins build response to be propagated");
+    } catch (BridgeHttpException e) {
+      assertEquals(404, e.getStatusCode());
+    }
     assertEquals("http://jenkins/job/job/5/api/json?tree=actions%5Bparameters%5Bname%2Cvalue%2C_class%5D%5D",
         httpClient.url);
   }

@@ -23,14 +23,16 @@ public class TeamCityTestReporter {
     this.buildAgentMessagesQueue = buildAgentMessagesQueue;
   }
 
-  public void reportTests(long buildId, JenkinsTestReport report) {
+  public void reportTests(long buildId, JenkinsTestReport report)
+      throws TeamCityRunningBuildNotFoundException {
     if (report == null || report.isEmpty()) {
       return;
     }
 
     RunningBuildEx runningBuild = buildLocator.findRunningBuild(buildId);
     if (runningBuild == null) {
-      return;
+      throw new TeamCityRunningBuildNotFoundException(
+          "TeamCity running build not found for id " + buildId);
     }
 
     List<BuildMessage1> messages = createTestMessages(report);

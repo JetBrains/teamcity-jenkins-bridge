@@ -277,7 +277,7 @@ public class TeamCityBuildMirrorServiceTest {
   }
 
   @Test
-  public void syncArtifactMetadataRecordsFailureWhenPublishListThrows() throws Exception {
+  public void syncArtifactMetadataLeavesArtifactsUnsyncedWhenPublishListThrows() throws Exception {
     CapturingArtifactListPublisher publisher = new CapturingArtifactListPublisher();
     publisher.fail = true;
     CapturingLogger logger = new CapturingLogger();
@@ -289,7 +289,7 @@ public class TeamCityBuildMirrorServiceTest {
     service.syncArtifactMetadataIfNeeded(mirror, 77L, artifacts(
         "{\"artifacts\":[{\"fileName\":\"a\",\"relativePath\":\"a\"}]}"));
 
-    assertTrue(mirror.isArtifactsSynced());
+    assertTrue(!mirror.isArtifactsSynced());
     assertTrue(mirror.getArtifactSyncError().contains("IOException"));
     assertTrue(logger.texts.get(0).contains("Failures: 1"));
   }

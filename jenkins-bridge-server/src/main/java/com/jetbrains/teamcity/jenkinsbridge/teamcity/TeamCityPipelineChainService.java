@@ -67,7 +67,8 @@ public class TeamCityPipelineChainService {
     this.planner = planner;
   }
 
-  public PipelineChainMirror ensureChain(BuildMirror mirror, JenkinsPipelineGraph graph) throws Exception {
+  public PipelineChainMirror ensureChain(BuildMirror mirror, JenkinsPipelineGraph graph)
+      throws TeamCityPipelineChainException {
     // Per-build-config toggle. When off (default), return null -> the caller mirrors a single live build
     // (+ the Pipeline Graph tab). When on, we build the native TeamCity chain live and update node
     // statuses each poll. Lets one job demo the chain while another demos the single-build + tab.
@@ -85,7 +86,7 @@ public class TeamCityPipelineChainService {
 
     PipelineChainPlan plan = planner.plan(mirror, sourceBuildType.getExternalId(), graph);
     if (plan.getTerminalNodeIds().isEmpty()) {
-      throw new IllegalStateException("Pipeline graph has no terminal node to queue");
+      throw new TeamCityPipelineChainException("Pipeline graph has no terminal node to queue");
     }
 
     SProject generatedProject = ensureGeneratedProject(sourceBuildType.getProject());
@@ -105,14 +106,14 @@ public class TeamCityPipelineChainService {
       BuildMirror mirror,
       JenkinsPipelineGraph graph,
       BuildPromotion topPromotion
-  ) throws Exception {
+  ) throws TeamCityPipelineChainException {
     SBuildType sourceBuildType = findBuildType(mirror.getTeamCityBuildTypeId(), projectManager);
     if (sourceBuildType == null || !isChainEnabled(sourceBuildType)
         || !planner.canCreateNativeChain(graph)) {
       return null;
     }
     if (!(topPromotion instanceof BuildPromotionEx)) {
-      throw new IllegalStateException("TeamCity top promotion does not support retrospective dependencies");
+      throw new TeamCityPipelineChainException("TeamCity top promotion does not support retrospective dependencies");
     }
 
     PipelineChainMirror existing = mirror.getPipelineChain();
@@ -122,7 +123,7 @@ public class TeamCityPipelineChainService {
 
     PipelineChainPlan plan = planner.plan(mirror, sourceBuildType.getExternalId(), graph);
     if (plan.getTerminalNodeIds().isEmpty()) {
-      throw new IllegalStateException("Pipeline graph has no terminal node to attach");
+      throw new TeamCityPipelineChainException("Pipeline graph has no terminal node to attach");
     }
 
     SProject generatedProject = ensureGeneratedProject(sourceBuildType.getProject());
@@ -138,7 +139,7 @@ public class TeamCityPipelineChainService {
           nodeBuildType.getParametersProvider().getAll().keySet()));
       BuildPromotion promotion = customizer.createPromotion();
       if (!(promotion instanceof BuildPromotionEx)) {
-        throw new IllegalStateException("Generated Pipeline promotion does not support dependencies");
+        throw new TeamCityPipelineChainException("Generated Pipeline promotion does not support dependencies");
       }
       promotionsByNodeId.put(node.getNodeId(), (BuildPromotionEx) promotion);
     }
@@ -148,7 +149,7 @@ public class TeamCityPipelineChainService {
       for (String parentNodeId : node.getParentNodeIds()) {
         BuildPromotionEx parent = promotionsByNodeId.get(parentNodeId);
         if (parent == null) {
-          throw new IllegalStateException("Pipeline node " + node.getNodeId()
+          throw new TeamCityPipelineChainException("Pipeline node " + node.getNodeId()
               + " references missing parent node " + parentNodeId);
         }
         promotion.addDependency(parent, snapshotDependency(parent.getBuildTypeExternalId()));
@@ -161,7 +162,7 @@ public class TeamCityPipelineChainService {
     for (String terminalNodeId : plan.getTerminalNodeIds()) {
       BuildPromotionEx terminal = promotionsByNodeId.get(terminalNodeId);
       if (terminal == null) {
-        throw new IllegalStateException("Pipeline terminal node " + terminalNodeId + " is missing");
+        throw new TeamCityPipelineChainException("Pipeline terminal node " + terminalNodeId + " is missing");
       }
       top.addDependency(terminal, snapshotDependency(terminal.getBuildTypeExternalId()));
       terminalPromotionIds.add(terminal.getId());
@@ -188,18 +189,19 @@ public class TeamCityPipelineChainService {
         true);
   }
 
-  private SProject ensureGeneratedProject(SProject sourceProject) {
+  private SProject ensureGeneratedProject(SProject sourceProject)
+      throws TeamCityPipelineChainException {
     String externalId = truncate(sourceProject.getExternalId() + GENERATED_PROJECT_SUFFIX, 225);
     SProject existing = projectManager.findProjectByExternalId(externalId);
     if (existing != null) {
       if (!existing.isVirtual()) {
-        throw new IllegalStateException("Jenkins Bridge generated project " + externalId
+        throw new TeamCityPipelineChainException("Jenkins Bridge generated project " + externalId
             + " already exists but is not a virtual TeamCity project");
       }
       return existing;
     }
     if (!(sourceProject instanceof ProjectEx)) {
-      throw new IllegalStateException("TeamCity project " + sourceProject.getExternalId()
+      throw new TeamCityPipelineChainException("TeamCity project " + sourceProject.getExternalId()
           + " does not support virtual generated projects");
     }
     ProjectEx parent = (ProjectEx) sourceProject;
@@ -214,14 +216,14 @@ public class TeamCityPipelineChainService {
       JenkinsPipelineGraph graph,
       PipelineChainPlan plan,
       SProject project
-  ) throws Exception {
+  ) throws TeamCityPipelineChainException {
     Map<String, SBuildType> buildTypesByNodeId = new LinkedHashMap<String, SBuildType>();
     for (PipelineChainPlan.Node node : plan.getNodes()) {
       SBuildType buildType = projectManager.findBuildTypeByExternalId(node.getBuildTypeExternalId());
       if (buildType == null) {
         buildType = createBuildType(project, mirror, node);
       } else if (!buildType.belongsTo(project)) {
-        throw new IllegalStateException("Generated Pipeline build type " + node.getBuildTypeExternalId()
+        throw new TeamCityPipelineChainException("Generated Pipeline build type " + node.getBuildTypeExternalId()
             + " belongs to a different TeamCity project");
       }
 
@@ -246,7 +248,7 @@ public class TeamCityPipelineChainService {
   }
 
   private SBuildType createBuildType(SProject project, BuildMirror mirror, PipelineChainPlan.Node node)
-      throws Exception {
+      throws TeamCityPipelineChainException {
     String baseName = "Jenkins " + mirror.getJenkinsJob() + " #" + mirror.getJenkinsBuildNumber()
         + " - " + node.getName();
     for (int attempt = 0; attempt < 100; attempt++) {
@@ -261,7 +263,7 @@ public class TeamCityPipelineChainService {
         // Retry with a numeric suffix; the external id remains deterministic for this Jenkins node.
       }
     }
-    throw new IllegalStateException("Could not find an available TeamCity build type name for "
+    throw new TeamCityPipelineChainException("Could not find an available TeamCity build type name for "
         + node.getBuildTypeExternalId());
   }
 
@@ -269,7 +271,7 @@ public class TeamCityPipelineChainService {
       PipelineChainPlan plan,
       Map<String, SBuildType> buildTypesByNodeId,
       SBuildType sourceBuildType
-  ) {
+  ) throws TeamCityPipelineChainException {
     final Map<String, List<Dependency>> dependenciesByInternalBuildTypeId =
         new LinkedHashMap<String, List<Dependency>>();
 
@@ -277,7 +279,7 @@ public class TeamCityPipelineChainService {
     for (String terminalNodeId : plan.getTerminalNodeIds()) {
       SBuildType terminalBuildType = buildTypesByNodeId.get(terminalNodeId);
       if (terminalBuildType == null) {
-        throw new IllegalStateException("Pipeline terminal node " + terminalNodeId + " is missing a build type");
+        throw new TeamCityPipelineChainException("Pipeline terminal node " + terminalNodeId + " is missing a build type");
       }
       topDependencies.add(snapshotDependency(terminalBuildType.getExternalId()));
     }
@@ -286,13 +288,13 @@ public class TeamCityPipelineChainService {
     for (PipelineChainPlan.Node node : plan.getNodes()) {
       SBuildType nodeBuildType = buildTypesByNodeId.get(node.getNodeId());
       if (nodeBuildType == null) {
-        throw new IllegalStateException("Pipeline node " + node.getNodeId() + " is missing a build type");
+        throw new TeamCityPipelineChainException("Pipeline node " + node.getNodeId() + " is missing a build type");
       }
       List<Dependency> dependencies = new ArrayList<Dependency>();
       for (String parentNodeId : node.getParentNodeIds()) {
         SBuildType parentBuildType = buildTypesByNodeId.get(parentNodeId);
         if (parentBuildType == null) {
-          throw new IllegalStateException("Pipeline node " + node.getNodeId()
+          throw new TeamCityPipelineChainException("Pipeline node " + node.getNodeId()
               + " references missing parent node " + parentNodeId);
         }
         dependencies.add(snapshotDependency(parentBuildType.getExternalId()));
@@ -314,7 +316,7 @@ public class TeamCityPipelineChainService {
       PipelineChainPlan plan,
       SBuildType sourceBuildType,
       Map<String, SBuildType> buildTypesByNodeId
-  ) {
+  ) throws TeamCityPipelineChainException {
     Map<String, PipelineChainNodeMirror> nodeMirrors =
         new LinkedHashMap<String, PipelineChainNodeMirror>();
     for (PipelineChainPlan.Node node : plan.getNodes()) {
@@ -325,7 +327,7 @@ public class TeamCityPipelineChainService {
     List<Long> terminalPromotionIds = new ArrayList<Long>();
     BuildCustomizer customizer = buildCustomizerFactory.createBuildCustomizer(sourceBuildType, null);
     if (!(customizer instanceof BuildCustomizerEx)) {
-      throw new IllegalStateException("TeamCity BuildCustomizer does not support dynamic Jenkins Pipeline dependencies");
+      throw new TeamCityPipelineChainException("TeamCity BuildCustomizer does not support dynamic Jenkins Pipeline dependencies");
     }
     customizer.setParameters(TeamCityBuildParameters.mergeWithJenkinsParameters(
         topBuildParameters(mirror),
@@ -337,7 +339,7 @@ public class TeamCityPipelineChainService {
     BuildPromotion promotion = customizer.createPromotion();
     SQueuedBuild queuedBuild = promotion.addToQueue(TRIGGERED_BY);
     if (queuedBuild == null) {
-      throw new IllegalStateException("Failed to queue Pipeline source build type "
+      throw new TeamCityPipelineChainException("Failed to queue Pipeline source build type "
           + plan.getSourceBuildTypeExternalId());
     }
 

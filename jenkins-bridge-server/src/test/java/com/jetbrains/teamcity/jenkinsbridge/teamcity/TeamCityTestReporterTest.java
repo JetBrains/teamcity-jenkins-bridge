@@ -10,6 +10,7 @@ import jetbrains.buildServer.messages.IgnoredTestData;
 import jetbrains.buildServer.messages.TestFinishBlockData;
 import jetbrains.buildServer.messages.TestOutputData;
 import jetbrains.buildServer.messages.TestProblemData;
+import jetbrains.buildServer.serverSide.RunningBuildEx;
 import org.junit.Test;
 
 import java.util.List;
@@ -73,6 +74,22 @@ public class TeamCityTestReporterTest {
     for (BuildMessage1 message : messages) {
       assertTrue(message.hasTag(DefaultMessagesInfo.TAG_SERVER));
     }
+  }
+
+  @Test(expected = TeamCityRunningBuildNotFoundException.class)
+  public void failsWhenTeamCityBuildIsNotRunning() {
+    TeamCityRunningBuildLocator locator = new TeamCityRunningBuildLocator(null, null) {
+      @Override
+      public RunningBuildEx findRunningBuild(long id) {
+        return null;
+      }
+    };
+    TeamCityTestReporter reporter = new TeamCityTestReporter(locator, null);
+    JenkinsTestReport report = JenkinsTestReport.fromJson(parser.parse(
+        "{\"suites\":[{\"name\":\"suite\",\"cases\":[{\"name\":\"test\",\"status\":\"PASSED\"}]}]}"
+    ).getAsJsonObject());
+
+    reporter.reportTests(42L, report);
   }
 
   private void assertMessage(BuildMessage1 message, String type, String name) {

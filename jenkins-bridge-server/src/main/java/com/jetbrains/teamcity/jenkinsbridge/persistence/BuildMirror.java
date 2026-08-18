@@ -3,6 +3,7 @@ package com.jetbrains.teamcity.jenkinsbridge.persistence;
 import com.google.gson.annotations.SerializedName;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsBuildInfo;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsPipelineGraph;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -136,6 +137,7 @@ public class BuildMirror {
     this.lastLogOffset = lastLogOffset;
   }
 
+  @Nullable
   public Boolean getPipelineMode() {
     return pipelineMode;
   }

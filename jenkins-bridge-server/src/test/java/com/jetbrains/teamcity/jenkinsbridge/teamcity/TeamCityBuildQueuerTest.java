@@ -57,7 +57,7 @@ public class TeamCityBuildQueuerTest {
   }
 
   @Test
-  public void queueAgentlessBuildPinsBranchFromJobNameForMultibranchJob() {
+  public void queueAgentlessBuildPinsBranchFromJobNameForMultibranchJob() throws Exception {
     withMultibranchFeature("team/my-pipeline/main");
 
     queuer.queueAgentlessBuild(BUILD_TYPE_ID, properties(), Collections.emptyMap(), null);
@@ -66,7 +66,7 @@ public class TeamCityBuildQueuerTest {
   }
 
   @Test
-  public void queueAgentlessBuildDecodesBranchNameOfMultibranchJob() {
+  public void queueAgentlessBuildDecodesBranchNameOfMultibranchJob() throws Exception {
     withMultibranchFeature("team/my-pipeline/someone%2Ffeature");
     Map<String, String> properties = new LinkedHashMap<>();
     properties.put("jenkins.job", "team/my-pipeline/someone%2Ffeature");
@@ -77,7 +77,7 @@ public class TeamCityBuildQueuerTest {
   }
 
   @Test
-  public void queueAgentlessBuildUsesSourceBranchAndPullRequestParametersForMultibranchJob() {
+  public void queueAgentlessBuildUsesSourceBranchAndPullRequestParametersForMultibranchJob() throws Exception {
     withMultibranchFeature("team/my-pipeline/PR-1-merge");
     Map<String, String> properties = new LinkedHashMap<>();
     properties.put("jenkins.job", "team/my-pipeline/PR-1-merge");
@@ -99,7 +99,7 @@ public class TeamCityBuildQueuerTest {
   }
 
   @Test
-  public void queueAgentlessBuildFallsBackToRawBranchNameWhenPullRequestInfoIsUnavailable() {
+  public void queueAgentlessBuildFallsBackToRawBranchNameWhenPullRequestInfoIsUnavailable() throws Exception {
     withMultibranchFeature("team/my-pipeline/PR-1-merge");
     Map<String, String> properties = new LinkedHashMap<>();
     properties.put("jenkins.job", "team/my-pipeline/PR-1-merge");
@@ -111,7 +111,7 @@ public class TeamCityBuildQueuerTest {
   }
 
   @Test
-  public void queueAgentlessBuildPinsFirstDiscoveredBranchForNormalJobWithVcsInfo() {
+  public void queueAgentlessBuildPinsFirstDiscoveredBranchForNormalJobWithVcsInfo() throws Exception {
     when(buildType.getBuildFeaturesOfType(BridgeBuildFeatureConstants.TYPE))
         .thenReturn(Collections.emptyList());
 
@@ -122,7 +122,7 @@ public class TeamCityBuildQueuerTest {
   }
 
   @Test
-  public void queueAgentlessBuildDoesNotPinBranchForNormalJobWithoutVcsInfo() {
+  public void queueAgentlessBuildDoesNotPinBranchForNormalJobWithoutVcsInfo() throws Exception {
     when(buildType.getBuildFeaturesOfType(BridgeBuildFeatureConstants.TYPE))
         .thenReturn(Collections.emptyList());
 
