@@ -3,6 +3,7 @@ package com.jetbrains.teamcity.jenkinsbridge.teamcity;
 import com.google.gson.JsonParser;
 import com.jetbrains.teamcity.jenkinsbridge.feature.BridgeBuildFeatureConstants;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClient;
+import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClientFactory;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsPullRequestInfo;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsVcsInfo;
 import jetbrains.buildServer.parameters.ParametersProvider;
@@ -31,15 +32,17 @@ public class TeamCityBuildQueuerTest {
   private final ProjectManager projectManager = mock(ProjectManager.class);
   private final BuildCustomizerFactory customizerFactory = mock(BuildCustomizerFactory.class);
   private final JenkinsClient jenkinsClient = mock(JenkinsClient.class);
+  private final JenkinsClientFactory jenkinsClientFactory = mock(JenkinsClientFactory.class);
   private final SBuildType buildType = mock(SBuildType.class);
   private final BuildCustomizerEx customizer = mock(BuildCustomizerEx.class);
 
   private final BuildPromotionEx promotion = mock(BuildPromotionEx.class);
-  private final TeamCityBuildQueuer queuer = new TeamCityBuildQueuer(projectManager, customizerFactory, jenkinsClient);
+  private final TeamCityBuildQueuer queuer = new TeamCityBuildQueuer(projectManager, customizerFactory, jenkinsClientFactory);
 
   @Before
   public void setUp() {
     when(projectManager.findBuildTypeByExternalId(BUILD_TYPE_ID)).thenReturn(buildType);
+    when(jenkinsClientFactory.forBuildType(buildType)).thenReturn(jenkinsClient);
     ParametersProvider parametersProvider = mock(ParametersProvider.class);
     when(parametersProvider.getAll()).thenReturn(Collections.emptyMap());
     when(buildType.getParametersProvider()).thenReturn(parametersProvider);
@@ -60,6 +63,17 @@ public class TeamCityBuildQueuerTest {
     queuer.queueAgentlessBuild(BUILD_TYPE_ID, properties(), Collections.emptyMap(), null);
 
     verify(customizer).setDesiredBranchName("main", false);
+  }
+
+  @Test
+  public void queueAgentlessBuildDecodesBranchNameOfMultibranchJob() {
+    withMultibranchFeature("team/my-pipeline/someone%2Ffeature");
+    Map<String, String> properties = new LinkedHashMap<>();
+    properties.put("jenkins.job", "team/my-pipeline/someone%2Ffeature");
+
+    queuer.queueAgentlessBuild(BUILD_TYPE_ID, properties, Collections.emptyMap(), null);
+
+    verify(customizer).setDesiredBranchName("someone/feature", false);
   }
 
   @Test
@@ -121,12 +135,12 @@ public class TeamCityBuildQueuerTest {
 
   private void withMultibranchFeature(String jenkinsJob) {
     Map<String, String> params = new LinkedHashMap<>();
-    params.put(BridgeBuildFeatureConstants.PARAM_IN_MULTIBRANCH, "true");
     params.put(BridgeBuildFeatureConstants.PARAM_JENKINS_JOB, jenkinsJob);
     SBuildFeatureDescriptor descriptor = mock(SBuildFeatureDescriptor.class);
     when(descriptor.getParameters()).thenReturn(params);
     when(buildType.getBuildFeaturesOfType(BridgeBuildFeatureConstants.TYPE))
         .thenReturn(Collections.singletonList(descriptor));
+    when(buildType.getParameterValue(BridgeBuildFeatureConstants.INTERNAL_MULTIBRANCH_PARAM)).thenReturn("true");
   }
 
   private Map<String, String> properties() {

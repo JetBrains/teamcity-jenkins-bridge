@@ -5,6 +5,7 @@ import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsArtifact;
 import jetbrains.buildServer.ArtifactsConstants;
 import jetbrains.buildServer.artifacts.util.ArtifactListUtil;
 import jetbrains.buildServer.artifacts.util.SerializableArtifactListData;
+import jetbrains.buildServer.serverSide.BuildPromotionEx;
 import jetbrains.buildServer.serverSide.RunningBuildEx;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
@@ -52,6 +53,11 @@ public class TeamCityArtifactPublisherTest {
   public void publishArtifactListWritesSerializedArtifactsWhenStorageActivated() throws Exception {
     RunningBuildEx runningBuild = mock(RunningBuildEx.class);
     when(runningBuild.getProjectExternalId()).thenReturn("Project1");
+    BuildPromotionEx promotion = mock(BuildPromotionEx.class);
+    when(promotion.getParameterValue("jenkins.job")).thenReturn("job");
+    when(promotion.getParameterValue("jenkins.build.number")).thenReturn("7");
+    when(promotion.getParameterValue("jenkins.connection.id")).thenReturn("conn1");
+    when(runningBuild.getBuildPromotion()).thenReturn(promotion);
     JenkinsStorageAutomaticActivator activator = mock(JenkinsStorageAutomaticActivator.class);
     when(activator.activateJenkinsStorage("Project1")).thenReturn("STORAGE-1");
     TeamCityArtifactPublisher publisher =
@@ -73,6 +79,9 @@ public class TeamCityArtifactPublisherTest {
     assertEquals("target/app.jar", listData.getArtifactList().get(0).getPath());
     assertEquals(100L, listData.getArtifactList().get(0).getSize());
     assertEquals("reports/report.txt", listData.getArtifactList().get(1).getPath());
+    assertEquals("job", listData.getCommonProperties().get("jenkins.job"));
+    assertEquals("7", listData.getCommonProperties().get("jenkins.build.number"));
+    assertEquals("conn1", listData.getCommonProperties().get("jenkins.connection.id"));
   }
 
   @Test
@@ -130,7 +139,7 @@ public class TeamCityArtifactPublisherTest {
     private final RunningBuildEx runningBuild;
 
     FixedLocator(RunningBuildEx runningBuild) {
-      super(null, null);
+      super(null, null, null);
       this.runningBuild = runningBuild;
     }
 

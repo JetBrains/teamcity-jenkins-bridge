@@ -37,27 +37,30 @@ public class JenkinsArtifactDownloadSigner {
    * Computes the signature for the given artifact coordinates. Callers pass this alongside
    * the parameters it covers. {@link #isValid} recomputes it and compares.
    */
-  public ExpiringSignature sign(String jobName, int buildNumber, String relativePath) {
+  public ExpiringSignature sign(long teamCityBuildId, String jobName, int buildNumber, String relativePath) {
     long expiry = issueExpiry();
-    return new ExpiringSignature(hmac(safePayloadFrom(jobName, buildNumber, relativePath, expiry)), expiry);
+    return sign(teamCityBuildId, jobName, buildNumber, relativePath, expiry);
   }
 
-  private ExpiringSignature sign(String jobName, int buildNumber, String relativePath, long expiry) {
-    return new ExpiringSignature(hmac(safePayloadFrom(jobName, buildNumber, relativePath, expiry)), expiry);
+  private ExpiringSignature sign(long teamCityBuildId, String jobName, int buildNumber, String relativePath,
+                                 long expiry) {
+    return new ExpiringSignature(
+        hmac(safePayloadFrom(teamCityBuildId, jobName, buildNumber, relativePath, expiry)), expiry);
   }
 
   /**
    * Verifies that {@code signature} matches the given parameters and that {@code expiry} has not
    * passed yet.
    */
-  public boolean isValid(String jobName, int buildNumber, String relativePath, long expiry, String signature) {
+  public boolean isValid(long teamCityBuildId, String jobName, int buildNumber, String relativePath, long expiry,
+                         String signature) {
     if (expiry < System.currentTimeMillis()) {
       return false;
     }
     if (signature == null) {
       return false;
     }
-    ExpiringSignature expected = sign(jobName, buildNumber, relativePath, expiry);
+    ExpiringSignature expected = sign(teamCityBuildId, jobName, buildNumber, relativePath, expiry);
     return MessageDigest.isEqual(
         expected.signature().getBytes(OUR_CHARSET),
         signature.getBytes(OUR_CHARSET));
@@ -67,8 +70,10 @@ public class JenkinsArtifactDownloadSigner {
    * Length-prefixes the variable-length fields (job name, relative path) so that, e.g., job="a",
    * path="b/c" cannot be signed identically to job="a/b", path="c".
    */
-  private String safePayloadFrom(String jobName, int buildNumber, String relativePath, long expiry) {
-    return jobName.length() + ":" + jobName
+  private String safePayloadFrom(long teamCityBuildId, String jobName, int buildNumber, String relativePath,
+                                 long expiry) {
+    return teamCityBuildId
+        + "|" + jobName.length() + ":" + jobName
         + "|" + buildNumber
         + "|" + relativePath.length() + ":" + relativePath
         + "|" + expiry;

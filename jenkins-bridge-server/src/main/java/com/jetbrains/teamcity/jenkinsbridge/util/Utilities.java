@@ -7,9 +7,9 @@ import jetbrains.buildServer.serverSide.SBuildType;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Objects;
-
 import java.net.URI;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -61,14 +61,25 @@ public final class Utilities {
   }
 
   /**
-   * Whether the build config's Jenkins Bridge build feature is marked as mirroring a multibranch pipeline.
+   * Decodes the URL-encoded branch fragment of the full name of a branch job inside a multibranch pipeline.
+   * TODO: This is not needed if we use displayName instead of fullName from the API. Decide if that should be used instead.
    */
+  @NotNull
+  public static String decodeBranchFragment(@NotNull String name) {
+    if (name.indexOf('%') < 0) {
+      return name;
+    }
+    try {
+      // Prevents literal "+"s from becoming spaces
+      return URLDecoder.decode(name.replace("+", "%2B"), StandardCharsets.UTF_8);
+    } catch (IllegalArgumentException malformedEscape) {
+      return name;
+    }
+  }
+
+  /** Whether the build configuration mirrors a Jenkins multibranch pipeline. */
   public static boolean isBuildConfigMultibranch(@NotNull SBuildType buildType) {
-    return buildType.getBuildFeaturesOfType(BridgeBuildFeatureConstants.TYPE).stream()
-        .findFirst()
-        .map(feature -> Objects.equals("true",
-            feature.getParameters().get(BridgeBuildFeatureConstants.PARAM_IN_MULTIBRANCH)))
-        .orElse(false);
+    return Boolean.parseBoolean(buildType.getParameterValue(BridgeBuildFeatureConstants.INTERNAL_MULTIBRANCH_PARAM));
   }
 
   @NotNull

@@ -16,8 +16,10 @@ import com.jetbrains.teamcity.jenkinsbridge.vcs.VcsSyncResult;
 import jetbrains.buildServer.messages.BuildMessage1;
 import jetbrains.buildServer.messages.DefaultMessagesInfo;
 import jetbrains.buildServer.serverSide.CustomDataStorage;
+import jetbrains.buildServer.serverSide.BuildPromotionEx;
 import jetbrains.buildServer.serverSide.ProjectManager;
 import jetbrains.buildServer.serverSide.SProject;
+import org.mockito.ArgumentCaptor;
 import org.junit.Test;
 
 import java.io.ByteArrayInputStream;
@@ -30,6 +32,7 @@ import java.util.Map;
 
 import static org.junit.Assert.*;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 public class TeamCityBuildMirrorServiceTest {
@@ -90,19 +93,42 @@ public class TeamCityBuildMirrorServiceTest {
   public void ensureTeamCityBuildPassesSavedJenkinsParametersToQueuer() throws Exception {
     CapturingQueuer queuer = new CapturingQueuer();
     TeamCityBuildMirrorService service = new TeamCityBuildMirrorService(
-        null, new NoExistingBuildClient(), queuer, null, null, null, null, null, null, null, null, null, new NoopStore());
+        null, new NoExistingBuildLocator(), queuer, null, null, null, null, null, null, null, null, null, new NoopStore());
 
     BuildMirror mirror = BuildMirror.create("job#4@1710000000004", "job", buildInfo(4), "buildType", "now");
     Map<String, String> parameters = new LinkedHashMap<String, String>();
     parameters.put("BRANCH", "feature/x");
     mirror.setJenkinsBuildParameters(parameters);
 
-    service.ensureTeamCityBuild(mirror, buildInfo(4), null, null);
+    service.ensureTeamCityBuild(mirror, "conn1", buildInfo(4), null, null);
 
+    assertEquals("conn1", queuer.bridgeParameters.get("jenkins.connection.id"));
     assertEquals("job", queuer.bridgeParameters.get("jenkins.job"));
     assertEquals("job#4@1710000000004", queuer.bridgeParameters.get("jenkins.build.key"));
     assertEquals("1710000000004", queuer.bridgeParameters.get("jenkins.build.timestamp"));
     assertEquals("feature/x", queuer.jenkinsParameters.get("BRANCH"));
+  }
+
+  @Test
+  public void stampExistingPromotionAddsJenkinsIdentityBeforeFinishing() {
+    TeamCityRunningBuildLocator locator = mock(TeamCityRunningBuildLocator.class);
+    BuildPromotionEx promotion = mock(BuildPromotionEx.class);
+    when(locator.findPromotion(42L)).thenReturn(promotion);
+    when(promotion.getCustomParameters()).thenReturn(new LinkedHashMap<String, String>());
+
+    TeamCityBuildMirrorService service = new TeamCityBuildMirrorService(
+        null, locator, null, null, null, null, null, null, null, null, null, null, new NoopStore());
+    BuildMirror mirror = BuildMirror.create("job#4@1710000000004", "job", buildInfo(4), "buildType", "now");
+
+    service.stampExistingPromotion(42L, mirror, "conn1", buildInfo(4));
+
+    ArgumentCaptor<Map> captor = ArgumentCaptor.forClass(Map.class);
+    verify(promotion).setCustomParameters(captor.capture());
+    Map parameters = captor.getValue();
+    assertEquals("job", parameters.get("jenkins.job"));
+    assertEquals("4", parameters.get("jenkins.build.number"));
+    assertEquals("job#4@1710000000004", parameters.get("jenkins.build.key"));
+    assertEquals("conn1", parameters.get("jenkins.connection.id"));
   }
 
   @Test
@@ -564,6 +590,7 @@ public class TeamCityBuildMirrorServiceTest {
     }
   }
 
+  @Deprecated
   private static class NoExistingBuildClient extends TeamCityClient {
     NoExistingBuildClient() {
       super(null, null);
@@ -571,6 +598,20 @@ public class TeamCityBuildMirrorServiceTest {
 
     @Override
     public Long findBuildIdByJenkinsBuildKey(String jenkinsBuildKey) {
+      return null;
+    }
+  }
+
+  /**
+   * Reports that no mirror build exists yet, so the service has to queue one.
+   */
+  private static class NoExistingBuildLocator extends TeamCityRunningBuildLocator {
+    NoExistingBuildLocator() {
+      super(null, null, null);
+    }
+
+    @Override
+    public Long recoverBuildId(String buildTypeId, String jenkinsBuildKey) {
       return null;
     }
   }

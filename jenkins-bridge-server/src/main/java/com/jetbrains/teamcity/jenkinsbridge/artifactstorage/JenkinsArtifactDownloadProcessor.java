@@ -1,6 +1,6 @@
 package com.jetbrains.teamcity.jenkinsbridge.artifactstorage;
 
-import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClient;
+import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClientFactory;
 import com.jetbrains.teamcity.jenkinsbridge.web.JenkinsArtifactSignedDownloadController;
 import jetbrains.buildServer.serverSide.BuildPromotion;
 import jetbrains.buildServer.serverSide.artifacts.StoredBuildArtifactInfo;
@@ -20,16 +20,16 @@ public class JenkinsArtifactDownloadProcessor implements ArtifactDownloadProcess
   private static final Charset OUR_CHARSET = StandardCharsets.UTF_8;
   private final JenkinsArtifactInfoUtils myJenkinsArtifactInfoUtils;
   private final JenkinsArtifactDownloadSigner mySigner;
-  private final JenkinsClient myJenkinsClient;
+  private final JenkinsClientFactory myJenkinsClientFactory;
 
   public JenkinsArtifactDownloadProcessor(
       @NotNull JenkinsArtifactInfoUtils jenkinsArtifactInfoUtils,
       @NotNull JenkinsArtifactDownloadSigner signer,
-      @NotNull JenkinsClient jenkinsClient
+      @NotNull JenkinsClientFactory jenkinsClientFactory
   ) {
     myJenkinsArtifactInfoUtils = jenkinsArtifactInfoUtils;
     mySigner = signer;
-    myJenkinsClient = jenkinsClient;
+    myJenkinsClientFactory = jenkinsClientFactory;
   }
 
   @NotNull
@@ -48,17 +48,20 @@ public class JenkinsArtifactDownloadProcessor implements ArtifactDownloadProcess
     String relativePath = myJenkinsArtifactInfoUtils.jenkinsRelativePath(info);
 
     if (!WebUtil.isTeamCityAgent(httpServletRequest)) {
-      httpServletResponse.sendRedirect(myJenkinsClient.artifactUrl(job, buildNumber, relativePath));
+      httpServletResponse.sendRedirect(
+          myJenkinsClientFactory.forBuildPromotion(buildPromotion).artifactUrl(job, buildNumber, relativePath));
       return true;
     }
 
-    ExpiringSignature signature = mySigner.sign(job, buildNumber, relativePath);
+    long teamCityBuildId = buildPromotion.getId();
+    ExpiringSignature signature = mySigner.sign(teamCityBuildId, job, buildNumber, relativePath);
 
     // Agents are not authenticated, so redirect to a custom endpoint that adds the Authorization header,
     // since it cannot be added here directly.
     String redirectUrl = httpServletRequest.getContextPath()
         + JenkinsArtifactSignedDownloadController.PATH
-        + "?job=" + URLEncoder.encode(job, OUR_CHARSET)
+        + "?buildId=" + teamCityBuildId
+        + "&job=" + URLEncoder.encode(job, OUR_CHARSET)
         + "&build=" + buildNumber
         + "&path=" + URLEncoder.encode(relativePath, OUR_CHARSET)
         + "&expires=" + signature.expiry()

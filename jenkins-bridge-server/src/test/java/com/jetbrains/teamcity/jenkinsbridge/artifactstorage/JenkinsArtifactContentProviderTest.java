@@ -3,6 +3,7 @@ package com.jetbrains.teamcity.jenkinsbridge.artifactstorage;
 import com.jetbrains.teamcity.jenkinsbridge.http.BridgeHttpClient;
 import com.jetbrains.teamcity.jenkinsbridge.http.BridgeHttpException;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClient;
+import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClientFactory;
 import jetbrains.buildServer.artifacts.ArtifactData;
 import jetbrains.buildServer.serverSide.BuildPromotion;
 import jetbrains.buildServer.serverSide.artifacts.StoredBuildArtifactInfo;
@@ -28,8 +29,13 @@ import static org.mockito.Mockito.when;
 
 public class JenkinsArtifactContentProviderTest {
   private final JenkinsClient jenkinsClient = mock(JenkinsClient.class);
+  private final JenkinsClientFactory jenkinsClientFactory = mock(JenkinsClientFactory.class);
   private final JenkinsArtifactContentProvider provider =
-      new JenkinsArtifactContentProvider(jenkinsClient, new JenkinsArtifactInfoUtils());
+      new JenkinsArtifactContentProvider(jenkinsClientFactory, new JenkinsArtifactInfoUtils());
+
+  public JenkinsArtifactContentProviderTest() {
+    when(jenkinsClientFactory.forBuildPromotion(any(BuildPromotion.class))).thenReturn(jenkinsClient);
+  }
 
   @Test
   public void getContentReturnsBytesStreamedFromJenkins() throws Exception {

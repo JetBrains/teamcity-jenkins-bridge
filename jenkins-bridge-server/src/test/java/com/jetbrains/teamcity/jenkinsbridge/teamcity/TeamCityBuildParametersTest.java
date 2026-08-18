@@ -7,6 +7,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -76,5 +77,20 @@ public class TeamCityBuildParametersTest {
     } catch (IllegalStateException e) {
       assertTrue(e.getMessage().contains(TeamCityBuildParameters.AGENTLESS_BUILD_PROPERTY));
     }
+  }
+
+  @Test
+  public void omitsBridgeInternalJenkinsParameters() {
+    Map<String, String> jenkins = new LinkedHashMap<String, String>();
+    jenkins.put("jenkins.bridge.generated.chain", "true");
+    jenkins.put("jenkins.bridge.internal.value", "hidden");
+    jenkins.put("VISIBLE", "shown");
+
+    Map<String, String> merged = TeamCityBuildParameters.mergeWithJenkinsParameters(
+        Collections.<String, String>emptyMap(), jenkins, Collections.<String>emptySet());
+
+    assertFalse(merged.containsKey("jenkins.bridge.generated.chain"));
+    assertFalse(merged.containsKey("jenkins.bridge.internal.value"));
+    assertEquals("shown", merged.get("VISIBLE"));
   }
 }

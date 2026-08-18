@@ -1,6 +1,9 @@
 package com.jetbrains.teamcity.jenkinsbridge.feature;
 
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClient;
+import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClientFactory;
+import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsJobParameters;
+import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsParameterDefinition;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsJob;
 import jetbrains.buildServer.serverSide.BuildTypeOptions;
 import jetbrains.buildServer.serverSide.DuplicateBuildTypeNameException;
@@ -36,25 +39,38 @@ public class JenkinsJobImporter {
   // Configuration parameter that marks a build as agentless (matches TeamCityBuildQueuer). Imported
   // configs carry it by default, so a manual run is also agentless rather than waiting for an agent.
   private static final String AGENTLESS_PARAM = "teamcity.build.agentLess";
+  // Hidden display so this technical parameter does not clutter the Run Custom Build dialog; hiding
+  // affects only the dialog, not the value (isAgentLessBuild() still reads it).
+  private static final String HIDDEN_SPEC = "text display='hidden'";
 
   private final ProjectManager projectManager;
   private final ParameterFactory parameterFactory;
-  private final JenkinsClient jenkinsClient;
+  private final JenkinsClientFactory jenkinsClientFactory;
 
   public JenkinsJobImporter(ProjectManager projectManager, ParameterFactory parameterFactory,
-                            JenkinsClient jenkinsClient) {
+                            JenkinsClientFactory jenkinsClientFactory) {
     this.projectManager = projectManager;
     this.parameterFactory = parameterFactory;
-    this.jenkinsClient = jenkinsClient;
+    this.jenkinsClientFactory = jenkinsClientFactory;
   }
 
-  public ImportResult importJobs(String targetProjectExternalId, List<String> jenkinsJobFullNames) {
+  /**
+   * Creates one build configuration per selected Jenkins job.
+   *
+   * @param targetProjectExternalId project the configurations are created in
+   * @param connectionId            id of the Jenkins connection the jobs are read from
+   * @param jenkinsJobFullNames     Jenkins job paths to import
+   * @return what was created, skipped and failed
+   */
+  public ImportResult importJobs(String targetProjectExternalId, String connectionId,
+                                 List<String> jenkinsJobFullNames) {
     SProject project = projectManager.findProjectByExternalId(targetProjectExternalId);
     if (project == null) {
       throw new IllegalArgumentException("Target project not found: " + targetProjectExternalId);
     }
+    JenkinsClient jenkinsClient = jenkinsClientFactory.forConnectionId(project, connectionId);
 
-    Set<String> alreadyMirrored = collectMirroredJobs(project);
+    Set<String> alreadyMirroredJobs = collectMirroredJobs(project);
     ImportResult result = new ImportResult();
 
     for (String rawFullName : jenkinsJobFullNames) {
@@ -62,11 +78,13 @@ public class JenkinsJobImporter {
       if (fullName.isEmpty()) {
         continue;
       }
+      if (alreadyMirroredJobs.contains(fullName)) {
+        result.addSkipped(fullName, "already imported");
+        continue;
+      }
 
       try {
-        // TODO: Check if this API call is needed, or if we can fetch the class from elsewhere
-        boolean isMultiBranch = JenkinsJob.isMultibranchClass(jenkinsClient.getJobClass(fullName));
-        importJob(project, fullName, isMultiBranch, alreadyMirrored, result);
+        importJob(project, connectionId, jenkinsClient, fullName, alreadyMirroredJobs, result);
       } catch (Exception e) {
         result.addFailed(fullName, describeException(e));
       }
@@ -75,32 +93,40 @@ public class JenkinsJobImporter {
     return result;
   }
 
-  private void importJob(SProject project, String fullName, boolean isMultibranch,
-                         Set<String> alreadyMirrored, ImportResult result) {
+  private void importJob(SProject project, String connectionId, JenkinsClient jenkinsClient, String fullName,
+                         Set<String> alreadyMirrored, ImportResult result)
+      throws Exception {
     if (alreadyMirrored.contains(fullName)) {
       result.addSkipped(fullName, "already imported");
       return;
     }
-    String externalId = createMirrorConfig(project, fullName, isMultibranch);
+    String externalId = createMirrorConfig(project, connectionId, jenkinsClient, fullName);
     alreadyMirrored.add(fullName);
     result.addCreated(fullName, externalId);
   }
 
   // Creates a mirror configuration for a single Jenkins job and returns its external id.
-  private String createMirrorConfig(SProject project, String fullName, boolean inMultibranchPipeline) {
+  private String createMirrorConfig(SProject project, String connectionId, JenkinsClient jenkinsClient,
+                                    String fullName) throws Exception {
+    String jenkinsType = jenkinsClient.getJobClass(fullName);
+    boolean isMultibranch = JenkinsJob.isMultibranchClass(jenkinsType);
     String externalId = ExternalIdGenerator.resolveUnique(
         ExternalIdGenerator.baseExternalId(project.getExternalId(), fullName),
         candidate -> projectManager.findBuildTypeByExternalId(candidate) != null);
 
     SBuildType buildType = createBuildType(project, externalId, fullName);
     Map<String, String> featureParams = new LinkedHashMap<>();
+    featureParams.put(BridgeBuildFeatureConstants.PARAM_CONNECTION_ID, connectionId);
     featureParams.put(BridgeBuildFeatureConstants.PARAM_JENKINS_JOB, fullName);
     featureParams.put(BridgeBuildFeatureConstants.PARAM_JENKINS_URL, jenkinsClient.jobUrl(fullName));
-    if (inMultibranchPipeline) {
-      featureParams.put(BridgeBuildFeatureConstants.PARAM_IN_MULTIBRANCH, "true");
+    if (!jenkinsType.isEmpty()) {
+      featureParams.put(BridgeBuildFeatureConstants.PARAM_JENKINS_TYPE, jenkinsType);
     }
     buildType.addBuildFeature(BridgeBuildFeatureConstants.TYPE, featureParams);
-    buildType.addConfigParameter(parameterFactory.createSimpleParameter(AGENTLESS_PARAM, "true"));
+    buildType.addConfigParameter(parameterFactory.createTypedParameter(AGENTLESS_PARAM, "true", HIDDEN_SPEC));
+    buildType.addConfigParameter(parameterFactory.createSimpleParameter(
+        BridgeBuildFeatureConstants.INTERNAL_MULTIBRANCH_PARAM, String.valueOf(isMultibranch)));
+    importJenkinsParameters(jenkinsClient, buildType, fullName);
     buildType.setOption(BuildTypeOptions.BT_FAIL_IF_TESTS_FAIL, false); // Let Jenkins decide if failing tests fail the build. Not the case for "unstable" builds.
     buildType.persist();
     return externalId;
@@ -122,6 +148,60 @@ public class JenkinsJobImporter {
     return project == null ? Collections.emptySet() : collectMirroredJobs(project);
   }
 
+  /** Jenkins job classes persisted on imported bridge features, keyed by Jenkins full name. */
+  public Map<String, String> alreadyMirroredJobTypes(String projectExternalId) {
+    SProject project = projectManager.findProjectByExternalId(projectExternalId);
+    if (project == null) {
+      return Collections.emptyMap();
+    }
+    Map<String, String> types = new LinkedHashMap<>();
+    for (SBuildFeatureDescriptor descriptor : allBridgeFeatures(project)) {
+      Map<String, String> params = descriptor.getParameters();
+      String job = params.get(BridgeBuildFeatureConstants.PARAM_JENKINS_JOB);
+      if (job != null && !job.trim().isEmpty()) {
+        types.put(job.trim(), params.get(BridgeBuildFeatureConstants.PARAM_JENKINS_TYPE));
+      }
+    }
+    return types;
+  }
+
+  /** Jenkins connection ids persisted on imported bridge features, keyed by Jenkins full name. */
+  public Map<String, String> alreadyMirroredJobConnections(String projectExternalId) {
+    SProject project = projectManager.findProjectByExternalId(projectExternalId);
+    if (project == null) {
+      return Collections.emptyMap();
+    }
+    Map<String, String> connections = new LinkedHashMap<>();
+    for (SBuildFeatureDescriptor descriptor : allBridgeFeatures(project)) {
+      Map<String, String> params = descriptor.getParameters();
+      String job = params.get(BridgeBuildFeatureConstants.PARAM_JENKINS_JOB);
+      if (job != null && !job.trim().isEmpty()) {
+        connections.put(job.trim(), params.get(BridgeBuildFeatureConstants.PARAM_CONNECTION_ID));
+      }
+    }
+    return connections;
+  }
+
+  /** Jenkins job URLs persisted on imported bridge features, keyed by Jenkins full name. */
+  public Map<String, String> alreadyMirroredJobUrls(String projectExternalId) {
+    SProject project = projectManager.findProjectByExternalId(projectExternalId);
+    if (project == null) {
+      return Collections.emptyMap();
+    }
+    Map<String, String> urls = new LinkedHashMap<>();
+    for (SBuildFeatureDescriptor descriptor : allBridgeFeatures(project)) {
+      Map<String, String> params = descriptor.getParameters();
+      String job = params.get(BridgeBuildFeatureConstants.PARAM_JENKINS_JOB);
+      if (job != null && !job.trim().isEmpty()) {
+        String url = params.get(BridgeBuildFeatureConstants.PARAM_JENKINS_URL);
+        if (url != null && !url.trim().isEmpty()) {
+          urls.put(job.trim(), url.trim());
+        }
+      }
+    }
+    return urls;
+  }
+
   private Set<String> collectMirroredJobs(SProject project) {
     Set<String> jobs = new HashSet<>();
     for (SBuildType buildType : project.getBuildTypes()) {
@@ -129,10 +209,41 @@ public class JenkinsJobImporter {
           : buildType.getBuildFeaturesOfType(BridgeBuildFeatureConstants.TYPE)) {
         String job = descriptor.getParameters().get(BridgeBuildFeatureConstants.PARAM_JENKINS_JOB);
         if (job != null && !job.trim().isEmpty()) {
-          jobs.add(job.trim());
+          String normalizedJob = job.trim();
+          jobs.add(normalizedJob);
         }
       }
     }
     return jobs;
+  }
+
+  private List<SBuildFeatureDescriptor> allBridgeFeatures(SProject project) {
+    List<SBuildFeatureDescriptor> features = new java.util.ArrayList<>();
+    for (SBuildType buildType : project.getBuildTypes()) {
+      features.addAll(buildType.getBuildFeaturesOfType(BridgeBuildFeatureConstants.TYPE));
+    }
+    return features;
+  }
+
+  private int importJenkinsParameters(JenkinsClient jenkinsClient, SBuildType buildType, String fullName)
+      throws Exception {
+    JenkinsJobParameters parameters = jenkinsClient.getJobParameters(fullName);
+    int imported = 0;
+    for (JenkinsParameterDefinition definition : parameters.getParameters()) {
+      String name = definition.getName();
+      if (!JenkinsTeamCityRunParameterFactory.canImport(definition)) {
+        continue;
+      }
+      if (buildType.getParametersProvider().get(name) != null) {
+        buildType.removeParameter(name);
+      }
+      buildType.addParameter(JenkinsTeamCityRunParameterFactory.create(parameterFactory, definition));
+      imported++;
+    }
+    return imported;
+  }
+  private static String leafName(String fullName) {
+    int slash = fullName.lastIndexOf('/');
+    return slash >= 0 && slash < fullName.length() - 1 ? fullName.substring(slash + 1) : fullName;
   }
 }

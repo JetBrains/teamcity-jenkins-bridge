@@ -2,7 +2,7 @@ package com.jetbrains.teamcity.jenkinsbridge.web;
 
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsPipelineGraph;
 import com.jetbrains.teamcity.jenkinsbridge.persistence.BuildMirror;
-import com.jetbrains.teamcity.jenkinsbridge.persistence.BuildMirrorStore;
+import com.jetbrains.teamcity.jenkinsbridge.persistence.BuildMirrorResolver;
 import jetbrains.buildServer.serverSide.SBuild;
 import jetbrains.buildServer.serverSide.SBuildServer;
 import jetbrains.buildServer.web.openapi.PagePlaces;
@@ -19,17 +19,17 @@ import java.util.Map;
  */
 public class JenkinsPipelineGraphTab extends ViewLogTab {
   private final PluginDescriptor pluginDescriptor;
-  private final BuildMirrorStore mirrorStore;
+  private final BuildMirrorResolver mirrorResolver;
 
   public JenkinsPipelineGraphTab(
       PagePlaces pagePlaces,
       SBuildServer server,
       PluginDescriptor pluginDescriptor,
-      BuildMirrorStore mirrorStore
+      BuildMirrorResolver mirrorResolver
   ) {
     super("Pipeline Graph", "jenkinsBridgePipelineGraph", pagePlaces, server);
     this.pluginDescriptor = pluginDescriptor;
-    this.mirrorStore = mirrorStore;
+    this.mirrorResolver = mirrorResolver;
     setPluginName(pluginDescriptor.getPluginName());
     setIncludeUrl(pluginDescriptor.getPluginResourcesPath("jenkinsBridgePipelineGraph.jsp"));
     register();
@@ -49,11 +49,7 @@ public class JenkinsPipelineGraphTab extends ViewLogTab {
 
   private boolean hasPipelineGraph(SBuild build) {
     try {
-      String key = build.getParametersProvider().get(JenkinsPipelineGraphController.JENKINS_BUILD_KEY_PARAM);
-      if (key == null || key.trim().length() == 0) {
-        return false;
-      }
-      BuildMirror mirror = mirrorStore.findMirror(key);
+      BuildMirror mirror = mirrorResolver.resolve(build);
       JenkinsPipelineGraph graph = mirror == null ? null : mirror.getPipelineGraph();
       return graph != null && graph.isPipeline() && !graph.getNodes().isEmpty();
     } catch (Exception e) {

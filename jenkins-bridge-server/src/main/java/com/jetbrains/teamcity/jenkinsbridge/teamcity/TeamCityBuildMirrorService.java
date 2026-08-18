@@ -1,5 +1,6 @@
 package com.jetbrains.teamcity.jenkinsbridge.teamcity;
 
+import com.jetbrains.teamcity.jenkinsbridge.connection.JenkinsConnectionConstants;
 import com.jetbrains.teamcity.jenkinsbridge.http.BridgeHttpClient;
 import com.jetbrains.teamcity.jenkinsbridge.http.BridgeHttpException;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClient;
@@ -24,6 +25,8 @@ import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsVcsInfo;
 import com.jetbrains.teamcity.jenkinsbridge.settings.JenkinsBridgeSettingsProvider;
 import com.jetbrains.teamcity.jenkinsbridge.vcs.VcsSyncResult;
 import jetbrains.buildServer.messages.BuildMessage1;
+import jetbrains.buildServer.serverSide.BuildPromotion;
+import jetbrains.buildServer.serverSide.BuildPromotionEx;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -44,7 +47,6 @@ import static com.jetbrains.teamcity.jenkinsbridge.util.Utilities.nullToEmpty;
 public class TeamCityBuildMirrorService {
   private static final Logger LOG = Logger.getInstance(TeamCityBuildMirrorService.class.getName());
   /** ensureTeamCityBuild returns this when native-chain creation is deferred until the run stabilizes. */
-  public static final long DEFER_BUILD_CREATION = -1L;
   private static final Set<SyncState> RUNNING_DATA_ALREADY_SENT_STATES = EnumSet.of(
       SyncState.RUNNING_SENT,
       SyncState.LOG_SYNCING,
@@ -52,7 +54,7 @@ public class TeamCityBuildMirrorService {
   );
 
   private final JenkinsBridgeSettingsProvider settingsProvider;
-  private final TeamCityClient teamCityClient;
+  private final TeamCityRunningBuildLocator teamCityBuildLocator;
   private final TeamCityBuildQueuer teamCityBuildQueuer;
   private final TeamCityBuildStarter teamCityBuildStarter;
   private final TeamCityBuildLogger teamCityBuildLogger;
@@ -67,7 +69,7 @@ public class TeamCityBuildMirrorService {
 
   public TeamCityBuildMirrorService(
       JenkinsBridgeSettingsProvider settingsProvider,
-      TeamCityClient teamCityClient,
+      TeamCityRunningBuildLocator teamCityBuildLocator,
       TeamCityBuildQueuer teamCityBuildQueuer,
       TeamCityBuildStarter teamCityBuildStarter,
       TeamCityBuildLogger teamCityBuildLogger,
@@ -81,7 +83,7 @@ public class TeamCityBuildMirrorService {
       BuildMirrorStore mirrorStore
   ) {
     this.settingsProvider = settingsProvider;
-    this.teamCityClient = teamCityClient;
+    this.teamCityBuildLocator = teamCityBuildLocator;
     this.teamCityBuildQueuer = teamCityBuildQueuer;
     this.teamCityBuildStarter = teamCityBuildStarter;
     this.teamCityBuildLogger = teamCityBuildLogger;
@@ -99,6 +101,7 @@ public class TeamCityBuildMirrorService {
   // May need better naming
   public long ensureTeamCityBuild(
       BuildMirror mirror,
+      String connectionId,
       JenkinsBuildInfo jenkinsInfo,
       JenkinsPipelineGraph graph,
       JenkinsVcsInfo vcsInfo
@@ -108,14 +111,11 @@ public class TeamCityBuildMirrorService {
       return mirror.getTeamCityBuildId();
     }
 
-    if (graph != null && teamCityPipelineChainService != null) {
-      // Native snapshot-dependency chain is created only AFTER the Jenkins run stabilizes (topology
-      // final), not during. While still building, defer so the graph settles first. The live single
-      // build + Pipeline Graph tab cover the running phase in the default (non-chain) mode.
-      if (jenkinsInfo.isBuilding()
-          && teamCityPipelineChainService.isChainEnabled(mirror.getTeamCityBuildTypeId())) {
-        return DEFER_BUILD_CREATION;
-      }
+    if (graph != null && teamCityPipelineChainService != null && !jenkinsInfo.isBuilding()) {
+      // The native chain is retrospective: while Jenkins runs, the bridge creates and updates one
+      // live top mirror. Once Jenkins finishes and the graph is stable, the normal chain path is
+      // used only when no top exists yet (Jenkins-first); TeamCity-first builds are retrofitted in
+      // ensureRetrospectivePipelineChain after their existing top has finished.
       try {
         PipelineChainMirror chain = teamCityPipelineChainService.ensureChain(mirror, graph);
         if (chain != null && chain.getTopPromotionId() != null) {
@@ -137,10 +137,11 @@ public class TeamCityBuildMirrorService {
       }
     }
 
-    Long restoredBuildId = teamCityClient.findBuildIdByJenkinsBuildKey(mirror.getJenkinsBuildKey());
+    String buildTypeId = mirror.getTeamCityBuildTypeId();
+    Long restoredBuildId = teamCityBuildLocator.recoverBuildId(buildTypeId, mirror.getJenkinsBuildKey());
     String legacyBuildKey = BuildMirrorStore.legacyBuildKey(mirror.getJenkinsBuildKey());
     if (restoredBuildId == null && !legacyBuildKey.equals(mirror.getJenkinsBuildKey())) {
-      restoredBuildId = teamCityClient.findBuildIdByJenkinsBuildKey(legacyBuildKey);
+      restoredBuildId = teamCityBuildLocator.recoverBuildId(buildTypeId, legacyBuildKey);
     }
 
     // If there already exists a build with the same Jenkins build key, use it
@@ -156,7 +157,7 @@ public class TeamCityBuildMirrorService {
     // Else create a new build (with the build queuer) and return the build ID
 
 
-    Map<String, String> properties = bridgeBuildParameters(mirror, jenkinsInfo);
+    Map<String, String> properties = bridgeBuildParameters(mirror, connectionId, jenkinsInfo);
 
     long buildId = teamCityBuildQueuer.queueAgentlessBuild(
         mirror.getTeamCityBuildTypeId(),
@@ -170,14 +171,37 @@ public class TeamCityBuildMirrorService {
     return buildId;
   }
 
-  Map<String, String> bridgeBuildParameters(BuildMirror mirror, JenkinsBuildInfo jenkinsInfo) {
+  Map<String, String> bridgeBuildParameters(BuildMirror mirror, String connectionId, JenkinsBuildInfo jenkinsInfo) {
     Map<String, String> properties = new LinkedHashMap<String, String>();
+    properties.put(JenkinsConnectionConstants.BUILD_PARAM_CONNECTION_ID, nullToEmpty(connectionId));
     properties.put("jenkins.job", mirror.getJenkinsJob());
     properties.put("jenkins.build.number", String.valueOf(mirror.getJenkinsBuildNumber()));
     properties.put("jenkins.build.timestamp", String.valueOf(mirror.getJenkinsBuildTimestamp()));
     properties.put("jenkins.build.key", mirror.getJenkinsBuildKey());
     properties.put("jenkins.build.url", nullToEmpty(jenkinsInfo.getUrl()));
     return properties;
+  }
+
+  /**
+   * Stamps the Jenkins identity onto a promotion that TeamCity created before Jenkins was
+   * triggered. The normal queue path supplies these parameters to the customizer, but a
+   * TeamCity-first promotion already exists by the time the Jenkins build is resolved.
+   */
+  public void stampExistingPromotion(
+      long teamCityPromotionId,
+      BuildMirror mirror,
+      String connectionId,
+      JenkinsBuildInfo jenkinsInfo
+  ) {
+    BuildPromotion promotion = teamCityBuildLocator.findPromotion(teamCityPromotionId);
+    if (!(promotion instanceof BuildPromotionEx)) {
+      throw new IllegalStateException("TeamCity promotion " + teamCityPromotionId
+          + " does not support custom parameter updates");
+    }
+
+    Map<String, String> parameters = new LinkedHashMap<String, String>(promotion.getCustomParameters());
+    parameters.putAll(bridgeBuildParameters(mirror, connectionId, jenkinsInfo));
+    ((BuildPromotionEx) promotion).setCustomParameters(parameters);
   }
 
   public void ensureRunningDataSent(BuildMirror mirror, long teamCityBuildId)
@@ -705,6 +729,47 @@ public class TeamCityBuildMirrorService {
     mirrorStore.saveMirror(mirror);
   }
 
+  /**
+   * Retrofits the final Jenkins graph onto a TeamCity-first promotion after the live mirror has
+   * finished. This intentionally does not alter execution; it only adds historical chain nodes.
+   */
+  public void ensureRetrospectivePipelineChain(
+      BuildMirror mirror,
+      long teamCityBuildId,
+      JenkinsPipelineGraph graph
+  ) throws IOException {
+
+    // Only add the chain if the build has finished
+    if (graph == null || teamCityPipelineChainService == null
+        || mirror.getPipelineChain() != null
+        || mirror.getSyncState() != SyncState.TEAMCITY_FINISHED
+        || !teamCityPipelineChainService.isChainEnabled(mirror.getTeamCityBuildTypeId())) {
+      return;
+    }
+    try {
+      BuildPromotion topPromotion = teamCityBuildLocator.findPromotion(teamCityBuildId);
+      PipelineChainMirror chain = teamCityPipelineChainService.retrofitFinishedChain(
+          mirror, graph, topPromotion);
+      if (chain != null) {
+        mirror.setPipelineGraph(graph);
+        mirror.setPipelineChain(chain);
+        // The live path reconciles generated node promotions on every poll. A finished
+        // retrospective mirror will not be polled again, so perform the terminal node
+        // start/finish reconciliation once before handing the chain to TeamCity.
+        syncPipelineChainNodeStates(mirror, graph, chain);
+        mirror.setLastError(null);
+        mirrorStore.saveMirror(mirror);
+      }
+    } catch (Exception e) {
+      mirror.setLastError("Retrospective Pipeline chain creation failed: "
+          + e.getClass().getSimpleName()
+          + (e.getMessage() == null ? "" : ": " + e.getMessage()));
+      mirrorStore.saveMirror(mirror);
+      LOG.warn("Jenkins Bridge: failed to retrofit native TeamCity Pipeline chain for "
+          + mirror.getJenkinsBuildKey(), e);
+    }
+  }
+
   private Date getJenkinsFinishTime(JenkinsBuildInfo jenkinsInfo) {
     long finishMillis = jenkinsInfo.getTimestamp() + Math.max(0L, jenkinsInfo.getDuration());
     return new Date(finishMillis);
@@ -754,7 +819,7 @@ public class TeamCityBuildMirrorService {
 
   private String formatTeamCityFinishDate(Date finishTime) {
     SimpleDateFormat formatter = new SimpleDateFormat("yyyyMMdd'T'HHmmssZ");
-    formatter.setTimeZone(TimeZone.getTimeZone(settingsProvider.load().getZoneId()));
+    formatter.setTimeZone(TimeZone.getTimeZone("UTC"));
     return formatter.format(finishTime);
   }
 

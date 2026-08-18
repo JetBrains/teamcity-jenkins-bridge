@@ -11,14 +11,15 @@ import java.util.Map;
 
 /**
  * TeamCity build feature that marks a build configuration as a Jenkins Bridge mirror target. The
- * feature carries the Jenkins job path (the Jenkins server/credentials are global); the hosting
- * build configuration is the mirror target. Discovered by {@link MirroredJobProvider}.
+ * feature names the Jenkins connection to mirror from and the Jenkins job path. The hosting build
+ * configuration is the mirror target. Discovered by {@link MirroredJobProvider}.
  */
 public class BridgeBuildFeature extends BuildFeature {
   private final String editUrl;
 
   public BridgeBuildFeature(PluginDescriptor pluginDescriptor) {
-    this.editUrl = pluginDescriptor.getPluginResourcesPath("editJenkinsBridge.jsp");
+    this.editUrl = pluginDescriptor.getPluginResourcesPath(
+        BridgeBuildFeatureController.EDIT_PARAMS_RELATIVE_URL);
   }
 
   @Override
@@ -62,14 +63,18 @@ public class BridgeBuildFeature extends BuildFeature {
   public PropertiesProcessor getParametersProcessor() {
     return props -> {
       List<InvalidProperty> errors = new ArrayList<InvalidProperty>();
+      if (isBlank(props.get(BridgeBuildFeatureConstants.PARAM_CONNECTION_ID))) {
+        errors.add(new InvalidProperty(BridgeBuildFeatureConstants.PARAM_CONNECTION_ID,
+            "A Jenkins connection is required"));
+      }
       if (isBlank(props.get(BridgeBuildFeatureConstants.PARAM_JENKINS_JOB))) {
         errors.add(new InvalidProperty(BridgeBuildFeatureConstants.PARAM_JENKINS_JOB,
             "Jenkins job path is required"));
       }
       String limit = props.get(BridgeBuildFeatureConstants.PARAM_RECENT_LIMIT);
-      if (!isBlank(limit) && !isPositiveInt(limit)) {
+      if (!isBlank(limit) && !isNonNegativeInt(limit)) {
         errors.add(new InvalidProperty(BridgeBuildFeatureConstants.PARAM_RECENT_LIMIT,
-            "Recent build limit must be a positive whole number"));
+            "The number of builds to import must be zero or a positive whole number"));
       }
       return errors;
     };
@@ -79,9 +84,9 @@ public class BridgeBuildFeature extends BuildFeature {
     return value == null || value.trim().length() == 0;
   }
 
-  private static boolean isPositiveInt(String value) {
+  private static boolean isNonNegativeInt(String value) {
     try {
-      return Integer.parseInt(value.trim()) > 0;
+      return Integer.parseInt(value.trim()) >= 0;
     } catch (NumberFormatException e) {
       return false;
     }

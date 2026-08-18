@@ -15,11 +15,17 @@
   <bean id="jenkinsBridgeXmlUnmarshaller"
         class="com.jetbrains.teamcity.jenkinsbridge.xml.JaxbUnmarshaller"/>
 
-  <bean id="jenkinsClient"
-        class="com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClient"/>
+  <bean id="jenkinsConnectionProvider"
+        class="com.jetbrains.teamcity.jenkinsbridge.connection.JenkinsConnectionProvider"/>
 
-  <bean id="teamCityClient"
-        class="com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityClient"/>
+  <bean id="jenkinsConnectionResolver"
+        class="com.jetbrains.teamcity.jenkinsbridge.connection.JenkinsConnectionResolver"/>
+
+  <bean id="jenkinsConnectionTestController"
+        class="com.jetbrains.teamcity.jenkinsbridge.connection.JenkinsConnectionTestController"/>
+
+  <bean id="jenkinsClientFactory"
+        class="com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClientFactory"/>
 
   <bean id="teamCityRunningBuildLocator"
         class="com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityRunningBuildLocator"/>
@@ -57,11 +63,24 @@
   <bean id="buildMirrorStore"
         class="com.jetbrains.teamcity.jenkinsbridge.persistence.BuildMirrorStore"/>
 
+  <bean id="buildMirrorResolver"
+        class="com.jetbrains.teamcity.jenkinsbridge.persistence.BuildMirrorResolver"/>
+
   <bean id="bridgeBuildFeature"
         class="com.jetbrains.teamcity.jenkinsbridge.feature.BridgeBuildFeature"/>
 
+  <bean id="bridgeBuildFeatureController"
+        class="com.jetbrains.teamcity.jenkinsbridge.feature.BridgeBuildFeatureController"/>
+
   <bean id="mirroredJobProvider"
         class="com.jetbrains.teamcity.jenkinsbridge.feature.MirroredJobProvider"/>
+
+  <bean id="jenkinsTriggerOnRunListener"
+        class="com.jetbrains.teamcity.jenkinsbridge.feature.JenkinsTriggerOnRunListener"
+        destroy-method="dispose"/>
+
+  <bean id="jenkinsQueueAgentlessPreprocessor"
+        class="com.jetbrains.teamcity.jenkinsbridge.feature.JenkinsQueueAgentlessPreprocessor"/>
 
   <bean id="jenkinsJobImporter"
         class="com.jetbrains.teamcity.jenkinsbridge.feature.JenkinsJobImporter"/>
@@ -72,22 +91,12 @@
   <bean id="jenkinsBridgeImportTab"
         class="com.jetbrains.teamcity.jenkinsbridge.web.JenkinsBridgeImportTab"/>
 
-  <bean id="jenkinsTriggerController"
-        class="com.jetbrains.teamcity.jenkinsbridge.web.JenkinsTriggerController"/>
-
-  <bean id="jenkinsTriggerTab"
-        class="com.jetbrains.teamcity.jenkinsbridge.web.JenkinsTriggerTab"/>
-
   <bean id="jenkinsBuildResultExtension"
         class="com.jetbrains.teamcity.jenkinsbridge.web.JenkinsBuildResultExtension"
         destroy-method="dispose"/>
 
   <bean id="jenkinsPullRequestExtension"
         class="com.jetbrains.teamcity.jenkinsbridge.web.JenkinsPullRequestExtension"
-        destroy-method="dispose"/>
-
-  <bean id="jenkinsBuildSummaryExtension"
-        class="com.jetbrains.teamcity.jenkinsbridge.web.JenkinsBuildSummaryExtension"
         destroy-method="dispose"/>
 
   <bean id="jenkinsPipelineGraphController"
@@ -101,6 +110,9 @@
 
   <bean id="jenkinsBridgePollingService"
         class="com.jetbrains.teamcity.jenkinsbridge.polling.JenkinsBridgePollingService"/>
+
+  <bean id="jenkinsBridgeSystemProblemReporter"
+        class="com.jetbrains.teamcity.jenkinsbridge.polling.JenkinsBridgeSystemProblemReporter"/>
 
   <bean id="jenkinsBridgeServerLifecycle"
         class="com.jetbrains.teamcity.jenkinsbridge.polling.JenkinsBridgeServerLifecycle"

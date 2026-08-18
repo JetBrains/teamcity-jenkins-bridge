@@ -20,6 +20,7 @@ public class JenkinsJobTest {
     assertEquals("my-job", job.getName());
     assertEquals("my-job", job.getFullName());
     assertEquals("http://jenkins/job/my-job/", job.getUrl());
+    assertEquals("Freestyle project", job.getDisplayType());
     assertTrue(job.isImportable());
   }
 
@@ -56,5 +57,15 @@ public class JenkinsJobTest {
     assertFalse(JenkinsJob.isMultibranchClass("jenkins.branch.OrganizationFolder"));
     assertFalse(JenkinsJob.isMultibranchClass("org.jenkinsci.plugins.workflow.job.WorkflowJob"));
     assertFalse(JenkinsJob.isMultibranchClass(null));
+  }
+
+  @Test
+  public void mapsJenkinsClassesToFriendlyDisplayNames() {
+    assertEquals("Pipeline", JenkinsJob.displayType("org.jenkinsci.plugins.workflow.job.WorkflowJob"));
+    assertEquals("Multibranch Pipeline",
+        JenkinsJob.displayType("org.jenkinsci.plugins.workflow.multibranch.WorkflowMultiBranchProject"));
+    assertEquals("Folder", JenkinsJob.displayType("com.cloudbees.hudson.plugins.folder.Folder"));
+    assertEquals("SomeNewJobPlugin", JenkinsJob.displayType("com.example.SomeNewJobPlugin"));
+    assertEquals("Unknown", JenkinsJob.displayType(null));
   }
 }
