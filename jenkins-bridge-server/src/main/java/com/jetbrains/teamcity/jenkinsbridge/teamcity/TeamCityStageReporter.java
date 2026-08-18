@@ -74,15 +74,13 @@ public class TeamCityStageReporter {
     return serverMessage(DefaultMessagesInfo.createProgressMessage(text));
   }
 
-  public void report(long buildId, List<BuildMessage1> messages) {
+  public void report(long buildId, List<BuildMessage1> messages)
+      throws TeamCityRunningBuildNotFoundException {
     if (messages == null || messages.isEmpty()) {
       return;
     }
 
-    RunningBuildEx runningBuild = buildLocator.findRunningBuild(buildId);
-    if (runningBuild == null) {
-      return;
-    }
+    RunningBuildEx runningBuild = buildLocator.requireRunningBuild(buildId);
 
     try {
       buildAgentMessagesQueue.processMessages(runningBuild, messages);

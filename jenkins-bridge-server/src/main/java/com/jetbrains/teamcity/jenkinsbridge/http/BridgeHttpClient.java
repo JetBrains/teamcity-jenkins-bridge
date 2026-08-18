@@ -258,7 +258,7 @@ public class BridgeHttpClient {
             if (name.length() > 0 && Charset.isSupported(name)) {
               return Charset.forName(name);
             }
-          } catch (RuntimeException ignored) {
+          } catch (IllegalArgumentException ignored) {
             // Illegal/unsupported charset name: fall back to UTF-8.
           }
         }

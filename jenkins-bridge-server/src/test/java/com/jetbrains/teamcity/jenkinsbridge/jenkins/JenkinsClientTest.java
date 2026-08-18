@@ -32,6 +32,7 @@ import java.util.Map;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.fail;
 import static org.junit.Assert.assertTrue;
 
 public class JenkinsClientTest {
@@ -48,6 +49,43 @@ public class JenkinsClientTest {
 
     assertTrue(report.isEmpty());
     assertEquals("http://jenkins/job/folder/job/job/7/testReport/api/json?tree=suites%5Bname%2Ccases%5BclassName%2Cname%2Cstatus%2Cduration%2CerrorDetails%2CerrorStackTrace%2CskippedMessage%2Cstdout%2Cstderr%5D%5D", httpClient.url);
+  }
+
+  @Test
+  public void getBuildInfoRejectsMalformedJsonAsJenkinsDataException() throws Exception {
+    StubResponseHttpClient httpClient = new StubResponseHttpClient();
+    httpClient.body = "{";
+    JenkinsClient client = new JenkinsClient(testConnection(), httpClient, newJaxbUnmarshaller());
+
+    try {
+      client.getBuildInfo("job", 7);
+      fail("Expected JenkinsDataException");
+    } catch (JenkinsDataException expected) {
+      assertTrue(expected.getMessage().contains("build information"));
+    }
+  }
+
+  @Test
+  public void rawJsonEndpointsRejectMalformedOrNonObjectResponsesAsJenkinsDataException() throws Exception {
+    assertJenkinsDataFailure("{", client -> client.getBuildNumbers("job"));
+    assertJenkinsDataFailure("[]", client -> client.listJobs(""));
+    assertJenkinsDataFailure("{", client -> client.getJobParameters("job"));
+    assertJenkinsDataFailure("[]", client -> client.getCrumb());
+    assertJenkinsDataFailure("{", client -> client.resolveQueuedBuildNumber("http://jenkins/queue/item/7/"));
+  }
+
+  @Test
+  public void getPipelineGraphRejectsMalformedJsonAsJenkinsDataException() throws Exception {
+    RoutingHttpClient httpClient = new RoutingHttpClient();
+    httpClient.responses.put("/blue/rest/organizations/jenkins/pipelines/job/runs/7/nodes/", "{");
+    JenkinsClient client = new JenkinsClient(testConnection(), httpClient, newJaxbUnmarshaller());
+
+    try {
+      client.getPipelineGraph("job", 7);
+      fail("Expected JenkinsDataException");
+    } catch (JenkinsDataException expected) {
+      assertTrue(expected.getMessage().contains("Blue Ocean Pipeline graph"));
+    }
   }
 
   @Test
@@ -664,11 +702,16 @@ public class JenkinsClientTest {
   }
 
   @Test
-  public void getBuildParametersReturnsEmptyOn404() throws Exception {
+  public void getBuildParametersPropagates404ForMissingBuild() throws Exception {
     NotFoundHttpClient httpClient = new NotFoundHttpClient();
     JenkinsClient client = new JenkinsClient(testConnection(), httpClient, newJaxbUnmarshaller());
 
-    assertTrue(client.getBuildParameters("job", 5).isEmpty());
+    try {
+      client.getBuildParameters("job", 5);
+      fail("Expected the missing Jenkins build response to be propagated");
+    } catch (BridgeHttpException e) {
+      assertEquals(404, e.getStatusCode());
+    }
     assertEquals("http://jenkins/job/job/5/api/json?tree=actions%5Bparameters%5Bname%2Cvalue%2C_class%5D%5D",
         httpClient.url);
   }
@@ -750,6 +793,21 @@ public class JenkinsClientTest {
         client.resolveQueuedBuildNumber("http://jenkins/queue/item/99/");
 
     assertTrue(resolution.isCancelled());
+  }
+
+  private void assertJenkinsDataFailure(String body, JenkinsClientOperation operation) throws Exception {
+    StubResponseHttpClient httpClient = new StubResponseHttpClient();
+    httpClient.body = body;
+    try {
+      operation.run(new JenkinsClient(testConnection(), httpClient, newJaxbUnmarshaller()));
+      fail("Expected JenkinsDataException");
+    } catch (JenkinsDataException expected) {
+      // Expected: malformed JSON and non-object payloads are remote-data failures.
+    }
+  }
+
+  private interface JenkinsClientOperation {
+    void run(JenkinsClient client) throws Exception;
   }
 
   private static class StubResponseHttpClient extends BridgeHttpClient {

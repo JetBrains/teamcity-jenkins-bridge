@@ -20,15 +20,12 @@ public class TeamCityBuildLogger {
     this.buildAgentMessagesQueue = buildAgentMessagesQueue;
   }
 
-  public void addBuildLog(long buildId, String text) {
+  public void addBuildLog(long buildId, String text) throws TeamCityRunningBuildNotFoundException {
     if (text == null || text.length() == 0) {
       return;
     }
 
-    RunningBuildEx runningBuild = buildLocator.findRunningBuild(buildId);
-    if (runningBuild == null) {
-      return;
-    }
+    RunningBuildEx runningBuild = buildLocator.requireRunningBuild(buildId);
 
     try {
       // Split by lines to avoid giant messages (P6 in RELIABILITY_AND_PERFORMANCE.md)

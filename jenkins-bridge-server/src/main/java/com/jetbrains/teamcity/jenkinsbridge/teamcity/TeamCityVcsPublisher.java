@@ -133,7 +133,12 @@ public class TeamCityVcsPublisher {
                 }
                 attached.add(new AttachedRepository(repo, root, branch));
                 result.incrementAttached();
-            } catch (Exception e) {
+            } catch (NullPointerException e) {
+                throw e;
+            } catch (RuntimeException e) {
+                // TeamCity's VCS mutation APIs report operational failures as unchecked
+                // exceptions. VCS is explicitly best-effort, but an NPE indicates a bridge bug
+                // and must reach the per-build isolation boundary unchanged.
                 result.addError(repo.remoteUrl() + ": " + describeException(e));
                 LOG.warn("Jenkins Bridge: failed to attach VCS root for " + repo.remoteUrl(), e);
             }

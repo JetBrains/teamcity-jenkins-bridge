@@ -26,38 +26,47 @@ public class TeamCityBuildFinisher {
     this.buildAgentMessagesQueue = buildAgentMessagesQueue;
   }
 
-  public void finishBuild(long buildId, Date finishTime, String jenkinsResult) {
+  public void finishBuild(long buildId, Date finishTime, String jenkinsResult)
+      throws TeamCityBuildFinishException, TeamCityRunningBuildNotFoundException {
     RunningBuildEx runningBuild = buildLocator.findRunningBuild(buildId);
     if (runningBuild == null) {
       // Build is not in a runnable state (e.g. already finished) — nothing to finish.
       return;
     }
-    finishRunningBuild(runningBuild, finishTime, jenkinsResult);
+    finishRunningBuild(runningBuild, finishTime, jenkinsResult, buildId);
   }
 
-  private void finishRunningBuild(RunningBuildEx runningBuild, Date finishTime, String jenkinsResult) {
-    // The verdict (build problem / interruption / status text) must be applied while the build is
-    // still running, i.e. before buildFinished(...) finalizes it.
-    applyJenkinsVerdict(runningBuild, jenkinsResult);
-
+  private void finishRunningBuild(
+      RunningBuildEx runningBuild, Date finishTime, String jenkinsResult, long buildId)
+      throws TeamCityBuildFinishException {
     try {
+      // The verdict (build problem / interruption / status text) must be applied while the build is
+      // still running, i.e. before buildFinished(...) finalizes it.
+      applyJenkinsVerdict(runningBuild, jenkinsResult);
+
       buildAgentMessagesQueue.processMessages(
           runningBuild,
           Collections.singletonList(
               DefaultMessagesInfo.createTextMessage(FINISH_REQUEST_MESSAGE).updateTags(DefaultMessagesInfo.TAG_SERVER)
           )
       );
+
+      // buildFailedOnAgent must stay false: per the TeamCity API it only exists for backwards
+      // compatibility with old agents and otherwise produces a generic "Unknown build problem".
+      // The real verdict is carried by the build problem / interruption applied above.
+      buildAgentMessagesQueue.buildFinished(runningBuild, finishTime, false);
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
-      throw new IllegalStateException("Interrupted while logging TeamCity build finish request", e);
+      throw new TeamCityBuildFinishException(
+          "Interrupted while logging TeamCity build finish request for TeamCity build " + buildId, e);
     } catch (BuildAgentMessagesQueue.BuildMessagesQueueFullException e) {
-      throw new IllegalStateException("TeamCity build messages queue is full", e);
+      throw new TeamCityBuildFinishException(
+          "TeamCity build messages queue is full while finishing build " + buildId, e);
+    } catch (IllegalStateException e) {
+      throw new TeamCityBuildFinishException(
+          "Failed to finish TeamCity build " + buildId, e);
     }
 
-    // buildFailedOnAgent must stay false: per the TeamCity API it only exists for backwards
-    // compatibility with old agents and otherwise produces a generic "Unknown build problem".
-    // The real verdict is carried by the build problem / interruption applied above.
-    buildAgentMessagesQueue.buildFinished(runningBuild, finishTime, false);
   }
 
   /**

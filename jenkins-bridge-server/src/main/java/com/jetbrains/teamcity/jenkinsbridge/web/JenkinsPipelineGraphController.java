@@ -1,8 +1,10 @@
 package com.jetbrains.teamcity.jenkinsbridge.web;
 
 import com.google.gson.Gson;
+import com.jetbrains.teamcity.jenkinsbridge.http.BridgeHttpException;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClient;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClientFactory;
+import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsDataException;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsPipelineGraph;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsPipelineGraphNode;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsStageLog;
@@ -121,7 +123,7 @@ public class JenkinsPipelineGraphController extends BaseController {
       JenkinsStageLog log = jenkinsClientFor(build).getStageLog(
           mirror.getJenkinsJob(), mirror.getJenkinsBuildNumber(), nodeId);
       return new StageLogView(nodeId, log.getText());
-    } catch (Exception e) {
+    } catch (BridgeHttpException | JenkinsDataException e) {
       StageLogView view = new StageLogView(nodeId, "");
       view.error = e.getClass().getSimpleName() + (e.getMessage() == null ? "" : ": " + e.getMessage());
       return view;
@@ -147,7 +149,7 @@ public class JenkinsPipelineGraphController extends BaseController {
           mirror.getJenkinsJob(), mirror.getJenkinsBuildNumber(), nodeId, nodeName)) {
         view.steps.add(new StepView(step));
       }
-    } catch (Exception e) {
+    } catch (BridgeHttpException | JenkinsDataException e) {
       view.error = e.getClass().getSimpleName() + (e.getMessage() == null ? "" : ": " + e.getMessage());
     }
     return view;

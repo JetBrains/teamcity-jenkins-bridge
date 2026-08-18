@@ -394,6 +394,25 @@ public class JenkinsBridgePollingServiceTest {
     assertNull(outcome.getConnectivityFailure());
   }
 
+  @Test
+  public void vcsFetchFailureIsRecordedAndDoesNotBlockFinishing() throws Exception {
+    JenkinsBridgeSettingsProvider provider = providerWithTempStateFile();
+    BuildMirrorStore store = new BuildMirrorStore(null, provider, buildMockProjectManager());
+    FakeJenkinsClient jenkinsClient = new FakeJenkinsClient();
+    jenkinsClient.addBuild(finishedBuildInfo());
+    jenkinsClient.vcsFailure =
+        new BridgeHttpException("GET", "http://jenkins/job/job/1/api/json", 503, "unavailable");
+    CapturingMirrorService mirrorService = new CapturingMirrorService();
+
+    JenkinsBridgePollingService.JobPollOutcome outcome = pollJob(
+        newService(provider, jenkinsClient, mirrorService, store),
+        jenkinsClient, new MirroredJob("conn1", "job", "buildType", "Build", 1, false), 1);
+
+    assertTrue(outcome.isSuccessful());
+    assertEquals(2, mirrorService.vcsFetchFailureCalls);
+    assertEquals(1, mirrorService.finishCalls);
+  }
+
   private static JenkinsBuildInfo buildInfo() {
     return buildInfo(1, 1710000000001L);
   }
@@ -518,6 +537,7 @@ public class JenkinsBridgePollingServiceTest {
     int getBuildInfoCalls;
     BridgeHttpException buildInfoFailure;
     BridgeHttpException artifactFailure;
+    BridgeHttpException vcsFailure;
 
     FakeJenkinsClient() {
       super(new com.jetbrains.teamcity.jenkinsbridge.connection.JenkinsConnection(
@@ -555,7 +575,10 @@ public class JenkinsBridgePollingServiceTest {
 
     @NotNull
     @Override
-    public JenkinsVcsInfo getBuildVcs(String jobName, int buildNumber) {
+    public JenkinsVcsInfo getBuildVcs(String jobName, int buildNumber) throws BridgeHttpException {
+      if (vcsFailure != null) {
+        throw vcsFailure;
+      }
       return JenkinsVcsInfo.empty();
     }
 
@@ -595,6 +618,7 @@ public class JenkinsBridgePollingServiceTest {
     int testSyncCalls;
     int artifactSyncCalls;
     int finishCalls;
+    int vcsFetchFailureCalls;
 
     CapturingMirrorService() {
       super(null, null, null, null, null, null, null, null, null, null, null, null, null);
@@ -642,6 +666,11 @@ public class JenkinsBridgePollingServiceTest {
     @Override
     public void syncVcsIfNeeded(BuildMirror mirror, JenkinsVcsInfo vcsInfo) {
       // no-op
+    }
+
+    @Override
+    public void recordVcsFetchFailure(BuildMirror mirror, Exception failure) {
+      vcsFetchFailureCalls++;
     }
 
     @Override

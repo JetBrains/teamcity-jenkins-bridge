@@ -3,9 +3,11 @@ package com.jetbrains.teamcity.jenkinsbridge.web;
 import com.google.gson.Gson;
 import com.jetbrains.teamcity.jenkinsbridge.feature.ImportResult;
 import com.jetbrains.teamcity.jenkinsbridge.feature.JenkinsJobImporter;
+import com.jetbrains.teamcity.jenkinsbridge.http.BridgeHttpException;
 import com.jetbrains.teamcity.jenkinsbridge.connection.JenkinsConnectionResolver;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClient;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClientFactory;
+import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsDataException;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsJob;
 import jetbrains.buildServer.controllers.BaseController;
 import jetbrains.buildServer.serverSide.ProjectManager;
@@ -90,7 +92,7 @@ public class JenkinsBridgeImportController extends BaseController {
         return handleImport(request, response, projectExternalId, connectionId);
       }
       return handleList(request, response, project, projectExternalId, connectionId);
-    } catch (Exception e) {
+    } catch (BridgeHttpException | JenkinsDataException e) {
       return error(response, 502, e.getClass().getSimpleName()
           + (e.getMessage() == null ? "" : ": " + e.getMessage()));
     }

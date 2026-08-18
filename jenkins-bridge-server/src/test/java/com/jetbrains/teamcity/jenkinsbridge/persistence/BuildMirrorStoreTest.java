@@ -10,7 +10,6 @@ import com.jetbrains.teamcity.jenkinsbridge.settings.JenkinsBridgeSettingsProvid
 import jetbrains.buildServer.serverSide.CustomDataStorage;
 import jetbrains.buildServer.serverSide.ProjectManager;
 import jetbrains.buildServer.serverSide.SProject;
-import org.junit.Ignore;
 import org.junit.Test;
 
 import java.io.File;
@@ -144,31 +143,54 @@ public class BuildMirrorStoreTest {
   }
 
   @Test
-  @Ignore
-  public void corruptStateFileIsQuarantinedAndBridgeStartsFresh() throws Exception {
+  public void corruptCustomDataStateIsPreservedAndReported() throws Exception {
     Map<String, String> corruptValues = new LinkedHashMap<String, String>();
-    corruptValues.put("STATE", "@@@ definitely not json @@@");
+    corruptValues.put("version", "2");
+    corruptValues.put("build-job#1", "@@@ definitely not json @@@");
 
     CustomDataStorage storage = mock(CustomDataStorage.class);
     when(storage.getValues()).thenReturn(corruptValues);
-
-    CustomDataStorage quarantineStorage = mock(CustomDataStorage.class);
+    when(storage.getValue("version")).thenReturn("2");
 
     SProject rootProject = mock(SProject.class);
     when(rootProject.getCustomDataStorage(BuildMirrorStore.CUSTOM_DATA_STORAGE_NAME)).thenReturn(storage);
-    when(rootProject.getCustomDataStorage(startsWith(BuildMirrorStore.CUSTOM_DATA_STORAGE_NAME + "-corrupt-")))
-        .thenReturn(quarantineStorage);
 
     ProjectManager projectManager = mock(ProjectManager.class);
     when(projectManager.getRootProject()).thenReturn(rootProject);
 
     BuildMirrorStore store = new BuildMirrorStore(null, providerWithTempStateFile(), projectManager);
 
-    // Must not throw, and must start from empty state.
-    assertEquals(0, store.getLastSeenBuildNumber("job"));
-    assertNull(store.findMirror(BuildMirrorStore.buildKey("job", 1)));
+    try {
+      store.getLastSeenBuildNumber("job");
+      org.junit.Assert.fail("Expected corrupted state to be reported");
+    } catch (BridgeStateCorruptionException expected) {
+      assertTrue(expected.getMessage().contains("build-job#1"));
+    }
 
-    verify(quarantineStorage, atLeastOnce()).putValues(corruptValues);
+    verify(storage, never()).clear();
+    verify(storage, never()).putValue(anyString(), anyString());
+  }
+
+  @Test
+  public void unexpectedStorageRuntimeFailureIsNotReclassifiedAsCorruption() throws Exception {
+    CustomDataStorage storage = mock(CustomDataStorage.class);
+    when(storage.getValues()).thenThrow(new NullPointerException("storage bug"));
+
+    SProject rootProject = mock(SProject.class);
+    when(rootProject.getCustomDataStorage(BuildMirrorStore.CUSTOM_DATA_STORAGE_NAME)).thenReturn(storage);
+
+    ProjectManager projectManager = mock(ProjectManager.class);
+    when(projectManager.getRootProject()).thenReturn(rootProject);
+
+    BuildMirrorStore store = new BuildMirrorStore(null, providerWithTempStateFile(), projectManager);
+
+    try {
+      store.getLastSeenBuildNumber("job");
+      org.junit.Assert.fail("Expected storage failure to propagate");
+    } catch (NullPointerException expected) {
+      assertEquals("storage bug", expected.getMessage());
+    }
+    verify(storage, never()).clear();
   }
 
   @Test

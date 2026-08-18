@@ -28,6 +28,7 @@ import java.util.Map;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -220,6 +221,22 @@ public class TeamCityVcsPublisherTest {
     verify(created).persist();
     assertTrue(result.hasErrors());
     assertEquals(0, result.getNumberOfAttachedRepositories());
+  }
+
+  @Test
+  public void nullPointerDuringVcsAttachmentPropagates() {
+    SVcsRoot created = gitRoot("https://github.com/org/repo.git");
+    when(project.createVcsRoot(eq("jetbrains.git"), anyString(), anyMap())).thenReturn(created);
+    when(buildType.getVcsRootInstanceEntryForParent(created)).thenReturn(null);
+    when(buildType.addVcsRoot(created)).thenThrow(new NullPointerException("VCS bridge bug"));
+
+    try {
+      publisher.applyVcsToBuild(
+          mirror(), gitInfo("https://github.com/org/repo.git", "abc123", "refs/remotes/origin/main"));
+      fail("Expected NullPointerException");
+    } catch (NullPointerException expected) {
+      assertEquals("VCS bridge bug", expected.getMessage());
+    }
   }
 
   private SVcsRoot gitRoot(String url) {

@@ -3,6 +3,7 @@ package com.jetbrains.teamcity.jenkinsbridge.teamcity;
 import jetbrains.buildServer.messages.BlockData;
 import jetbrains.buildServer.messages.BuildMessage1;
 import jetbrains.buildServer.messages.DefaultMessagesInfo;
+import jetbrains.buildServer.serverSide.RunningBuildEx;
 import org.junit.Test;
 
 import java.util.Date;
@@ -69,6 +70,19 @@ public class TeamCityStageReporterTest {
     assertEquals(2, messages.size());
     assertEquals(DefaultMessagesInfo.MSG_BLOCK_START, messages.get(0).getTypeId());
     assertEquals(DefaultMessagesInfo.MSG_BLOCK_END, messages.get(1).getTypeId());
+  }
+
+  @Test(expected = TeamCityRunningBuildNotFoundException.class)
+  public void reportFailsWhenTeamCityBuildIsNotRunning() {
+    TeamCityRunningBuildLocator locator = new TeamCityRunningBuildLocator(null, null, null) {
+      @Override
+      public RunningBuildEx findRunningBuild(long id) {
+        return null;
+      }
+    };
+    TeamCityStageReporter missingBuildReporter = new TeamCityStageReporter(locator, null);
+
+    missingBuildReporter.report(17L, reporter.messagesForStage("Build", null, null, true, "log", false));
   }
 
   private static String textOf(BuildMessage1 message) {

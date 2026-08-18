@@ -38,10 +38,10 @@ public class TeamCityBuildQueuer {
       Map<String, String> properties,
       Map<String, String> jenkinsBuildParameters,
       @Nullable JenkinsVcsInfo vcsInfo
-  ) {
+  ) throws TeamCityBuildQueueException {
     SBuildType buildType = findBuildType(buildTypeId, projectManager);
     if (buildType == null) {
-      throw new IllegalStateException("TeamCity build type " + buildTypeId + " was not found");
+      throw new TeamCityBuildQueueException("TeamCity build type " + buildTypeId + " was not found");
     }
 
     BranchResolution branchResolution = resolveBranch(buildType, properties, vcsInfo);
@@ -69,7 +69,8 @@ public class TeamCityBuildQueuer {
     BuildPromotion promotion = customizer.createPromotion();
     SQueuedBuild queuedBuild = promotion.addToQueue(TRIGGERED_BY);
     if (queuedBuild == null) {
-      throw new IllegalStateException("Failed to add TeamCity build type " + buildTypeId + " to the queue");
+      throw new TeamCityBuildQueueException(
+          "Failed to add TeamCity build type " + buildTypeId + " to the queue");
     }
 
     return queuedBuild.getBuildPromotion().getId();

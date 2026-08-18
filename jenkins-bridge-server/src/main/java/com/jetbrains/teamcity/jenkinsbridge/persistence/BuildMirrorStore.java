@@ -49,8 +49,12 @@ public class BuildMirrorStore {
   }
 
   private void initializeCustomDataStorage() {
-    myStorage = projectManager.getRootProject().getCustomDataStorage(CUSTOM_DATA_STORAGE_NAME);
-    state = new BridgeState(myStorage);
+    if (myStorage == null) {
+      myStorage = projectManager.getRootProject().getCustomDataStorage(CUSTOM_DATA_STORAGE_NAME);
+    }
+    if (state == null) {
+      state = new BridgeState(myStorage);
+    }
   }
 
   /**
@@ -118,7 +122,8 @@ public class BuildMirrorStore {
     return findPendingTriggerInternal(controller, queueId);
   }
 
-  private PendingTrigger findPendingTriggerInternal(String controller, long queueId) {
+  private PendingTrigger findPendingTriggerInternal(String controller, long queueId)
+      throws BridgeStateCorruptionException {
     if (queueId < 0) {
       return null;
     }
@@ -235,34 +240,22 @@ public class BuildMirrorStore {
     state.putLastSeenBuildNumber(jobName, buildNumber);
   }
 
-  public synchronized void markBuildError(BuildMirror mirror, Exception error) {
-    try {
-      mirror.setSyncState(SyncState.FAILED_TO_SYNC);
-      mirror.setLastError(error.getMessage());
-      saveMirror(mirror);
-    } catch (IOException saveError) {
-      LOG.warn("Failed to persist Jenkins Bridge build error", saveError);
-    }
+  public synchronized void markBuildError(BuildMirror mirror, Exception error) throws IOException {
+    mirror.setSyncState(SyncState.FAILED_TO_SYNC);
+    mirror.setLastError(error.getMessage());
+    saveMirror(mirror);
   }
 
-  public synchronized void markPollSuccess() {
-    try {
-      ensureStateIsLoaded();
-      state.setLastPollTime(now());
-      state.setLastError(null);
-    } catch (IOException e) {
-      LOG.warn("Failed to persist Jenkins Bridge poll status", e);
-    }
+  public synchronized void markPollSuccess() throws IOException {
+    ensureStateIsLoaded();
+    state.setLastPollTime(now());
+    state.setLastError(null);
   }
 
-  public synchronized void markPollError(Exception error) {
-    try {
-      ensureStateIsLoaded();
-      state.setLastPollTime(now());
-      state.setLastError(error.getMessage());
-    } catch (IOException e) {
-      LOG.warn("Failed to persist Jenkins Bridge poll error", e);
-    }
+  public synchronized void markPollError(Exception error) throws IOException {
+    ensureStateIsLoaded();
+    state.setLastPollTime(now());
+    state.setLastError(error.getMessage());
   }
 
   /**
@@ -348,31 +341,25 @@ public class BuildMirrorStore {
   }
 
   private void ensureStateIsLoaded() throws IOException {
-    if (state == null) {
-      myStorage = projectManager.getRootProject().getCustomDataStorage(CUSTOM_DATA_STORAGE_NAME);
-      state = new BridgeState(myStorage);
+    initializeCustomDataStorage();
+    Map<String, String> storedValues = getCustomDataStorage().getValues();
+    if (storedValues == null || storedValues.isEmpty()) {
+      state.setVersion(2);
+      return;
     }
 
-    initializeCustomDataStorage();
-
-    Exception parseError = null;
-    try { // Deserialize all fields from custom data storage and check if there are any errors
+    try {
       state.getVersion();
       state.getBuilds();
+      state.getPendingTriggers();
       state.getLastSeenBuildNumbers();
       state.getLastPollTime();
       state.getLastError();
-    } catch (Exception e) {
-      parseError = e;
-    }
-
-    if (parseError != null) {
-      // A corrupt/truncated storage entry must not brick the bridge (R7). It's better to start fresh.
-      // Mirrors re-bind to existing TeamCity builds via restore-by-key on the next sync.
-      // The quarantine logic was removed since the log works for observability, and polluting the TeamCity DB is a bigger problem.
-      LOG.warn("Jenkins Bridge state is corrupt and will be reset. Removed state: " + getCustomDataStorage().getValues(),
-          parseError);
-      getCustomDataStorage().clear();
+    } catch (BridgeStateCorruptionException e) {
+      // Do not erase state we cannot prove is disposable. The caller receives a typed storage
+      // failure and the existing state remains available for diagnosis or manual recovery.
+      LOG.warn("Jenkins Bridge state is corrupt; preserving it and stopping this operation", e);
+      throw e;
     }
   }
 

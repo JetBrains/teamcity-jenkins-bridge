@@ -2,6 +2,7 @@ package com.jetbrains.teamcity.jenkinsbridge.feature;
 
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClient;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClientFactory;
+import com.jetbrains.teamcity.jenkinsbridge.http.BridgeHttpException;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsJobParameters;
 import jetbrains.buildServer.parameters.ParametersProvider;
 import jetbrains.buildServer.serverSide.Parameter;
@@ -86,6 +87,25 @@ public class JenkinsJobImporterTest {
     assertEquals("already imported", result.getSkipped().getFirst().detail);
     verify(jenkinsClient, never()).getJobParameters("pipeline");
     verify(existing, never()).persist();
+  }
+
+  @Test
+  public void importJobsRecordsKnownJenkinsFailureForOnlyThatJob() throws Exception {
+    when(jenkinsClient.getJobClass("pipeline"))
+        .thenThrow(new BridgeHttpException("GET", "http://jenkins/job/pipeline/api/json", 503, "unavailable"));
+
+    ImportResult result = importer.importJobs("TeamA", "conn1", Collections.singletonList("pipeline"));
+
+    assertEquals(1, result.getFailed().size());
+    assertEquals("pipeline", result.getFailed().getFirst().jenkinsJob);
+    assertEquals(0, result.getCreated().size());
+  }
+
+  @Test(expected = NullPointerException.class)
+  public void importJobsDoesNotHideUnexpectedRuntimeFailure() throws Exception {
+    when(jenkinsClient.getJobClass("pipeline")).thenThrow(new NullPointerException("bridge defect"));
+
+    importer.importJobs("TeamA", "conn1", Collections.singletonList("pipeline"));
   }
 
   @SuppressWarnings("unchecked")

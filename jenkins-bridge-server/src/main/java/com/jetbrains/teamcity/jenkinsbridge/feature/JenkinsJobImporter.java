@@ -1,7 +1,9 @@
 package com.jetbrains.teamcity.jenkinsbridge.feature;
 
+import com.jetbrains.teamcity.jenkinsbridge.http.BridgeHttpException;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClient;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClientFactory;
+import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsDataException;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsJobParameters;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsParameterDefinition;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsJob;
@@ -85,7 +87,7 @@ public class JenkinsJobImporter {
 
       try {
         importJob(project, connectionId, jenkinsClient, fullName, alreadyMirroredJobs, result);
-      } catch (Exception e) {
+      } catch (BridgeHttpException | JenkinsDataException e) {
         result.addFailed(fullName, describeException(e));
       }
     }
@@ -95,7 +97,7 @@ public class JenkinsJobImporter {
 
   private void importJob(SProject project, String connectionId, JenkinsClient jenkinsClient, String fullName,
                          Set<String> alreadyMirrored, ImportResult result)
-      throws Exception {
+      throws BridgeHttpException, JenkinsDataException {
     if (alreadyMirrored.contains(fullName)) {
       result.addSkipped(fullName, "already imported");
       return;
@@ -107,7 +109,7 @@ public class JenkinsJobImporter {
 
   // Creates a mirror configuration for a single Jenkins job and returns its external id.
   private String createMirrorConfig(SProject project, String connectionId, JenkinsClient jenkinsClient,
-                                    String fullName) throws Exception {
+                                    String fullName) throws BridgeHttpException, JenkinsDataException {
     String jenkinsType = jenkinsClient.getJobClass(fullName);
     boolean isMultibranch = JenkinsJob.isMultibranchClass(jenkinsType);
     String externalId = ExternalIdGenerator.resolveUnique(
@@ -226,7 +228,7 @@ public class JenkinsJobImporter {
   }
 
   private int importJenkinsParameters(JenkinsClient jenkinsClient, SBuildType buildType, String fullName)
-      throws Exception {
+      throws BridgeHttpException, JenkinsDataException {
     JenkinsJobParameters parameters = jenkinsClient.getJobParameters(fullName);
     int imported = 0;
     for (JenkinsParameterDefinition definition : parameters.getParameters()) {
