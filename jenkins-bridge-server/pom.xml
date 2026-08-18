@@ -70,7 +70,7 @@
       <artifactId>license-protected</artifactId>
       <!-- The public 2026.3 EAP repository omits this proprietary module, but server-core still
            loads its ReleaseDateHolder interface while bootstrapping the test fixture. -->
-      <version>2026.2-SNAPSHOT</version>
+      <version>${teamcity-license-version}</version>
       <scope>test</scope>
     </dependency>
 

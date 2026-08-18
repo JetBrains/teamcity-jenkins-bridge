@@ -64,8 +64,27 @@ Run from the repository root:
 mvn package
 ```
 
-The build uses local TeamCity 2026.3-SNAPSHOT EAP Maven artifacts. They must be
-available under `${user.home}/.m2/repository/TeamCity`.
+The default TeamCity API version is `2026.3-SNAPSHOT`, and Maven looks for its
+artifacts under `${user.home}/.m2/repository/TeamCity`. Both values are
+configurable, so plugin developers can build against a published TeamCity
+version or a local TeamCity source build.
+
+For a local TeamCity source build, point Maven at its `local-repo` directory:
+
+```bash
+mvn package \
+  -Dteamcity-version=2026.3-SNAPSHOT \
+  -Dteamcity-repository-url=file:///path/to/TeamCity/local-repo
+```
+
+If the selected TeamCity repository does not contain `license-protected` at the
+same version, override that test-only dependency separately:
+
+```bash
+mvn test \
+  -Dteamcity-version=2026.3-DSL-eap1-SNAPSHOT \
+  -Dteamcity-license-version=2026.2-SNAPSHOT
+```
 
 The latest plugin archive is written to:
 
