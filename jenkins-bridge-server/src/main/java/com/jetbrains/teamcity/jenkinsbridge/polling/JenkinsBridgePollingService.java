@@ -212,15 +212,21 @@ public class JenkinsBridgePollingService {
 
     Set<Integer> handled = new HashSet<Integer>();
     int maxNumber = lastSeen;
+    boolean watermarkCanAdvance = true;
 
     for (JenkinsBuildInfo build : toProcess) {
-      maxNumber = Math.max(maxNumber, build.getNumber());
-      syncDiscoveredBuild(mirroredJob, build);
-      handled.add(build.getNumber());
-    }
+      TrackedBuild trackedBuild = discoverAndTrackBuild(mirroredJob, build);
+      if (trackedBuild == null) {
+        watermarkCanAdvance = false;
+        continue;
+      }
 
-    int prunedCount = mirrorStore.pruneFinishedMirrors().size();
-    LOG.info("[Jenkins Bridge DEBUG] " + mirroredJob.describeForLog() + ": " + prunedCount + " build(s) pruned");
+      if (watermarkCanAdvance) {
+        maxNumber = Math.max(maxNumber, trackedBuild.buildInfo().getNumber());
+      }
+      handled.add(build.getNumber());
+      syncTrackedBuild(trackedBuild);
+    }
 
     // Keep syncing builds that are still in progress but already past the watermark.
     List<BuildMirror> active = mirroredJob.isLegacy()
@@ -237,6 +243,12 @@ public class JenkinsBridgePollingService {
     if (!resetDetected && maxNumber > mirrorStore.getLastSeenBuildNumber(keyPrefix)) {
       mirrorStore.setLastSeenBuildNumber(keyPrefix, maxNumber);
     }
+
+    // Keep finished mirrors until the watermark has been persisted successfully. If persistence
+    // fails, the mirror is still available for restore-by-key on the next poll instead of being
+    // pruned while the watermark remains behind it.
+    int prunedCount = mirrorStore.pruneFinishedMirrors().size();
+    LOG.info("[Jenkins Bridge DEBUG] " + mirroredJob.describeForLog() + ": " + prunedCount + " build(s) pruned");
   }
 
   private boolean shouldProcessDiscoveredBuild(
@@ -269,29 +281,48 @@ public class JenkinsBridgePollingService {
     return legacy == null;
   }
 
-  // Syncs a newly discovered Jenkins build, isolating failures so one bad build does not abort the poll cycle.
-  private void syncDiscoveredBuild(MirroredJob mirroredJob, JenkinsBuildInfo discoveredBuild) {
+  /**
+   * Loads the detailed Jenkins identity and ensures that the build has a durable mirror record.
+   * This is the discovery boundary: synchronization failures after this method returns must not
+   * affect the discovery watermark.
+   */
+  @Nullable
+  private TrackedBuild discoverAndTrackBuild(MirroredJob mirroredJob, JenkinsBuildInfo discoveredBuild) {
     String job = mirroredJob.getJenkinsJob();
-    BuildMirror mirror = null;
     int buildNumber = discoveredBuild.getNumber();
     try {
       JenkinsBuildInfo buildInfo = jenkinsClient.getBuildInfo(job, buildNumber);
       String mirrorKey = BuildMirrorStore.buildKey(mirroredJob.getMirrorKeyPrefix(), buildInfo);
-      mirror = mirrorStore.getOrCreateMirror(mirrorKey, job, mirroredJob.getTeamCityBuildTypeExternalId(), buildInfo);
+      BuildMirror mirror = mirrorStore.getOrCreateMirror(
+          mirrorKey, job, mirroredJob.getTeamCityBuildTypeExternalId(), buildInfo);
       LOG.info("[Jenkins Bridge DEBUG] Syncing Jenkins build " + mirror.getJenkinsBuildKey()
           + " in state " + mirror.getSyncState()
           + " with TeamCity build id " + mirror.getTeamCityBuildId());
-      syncBuild(mirror, buildInfo);
+      return new TrackedBuild(mirror, buildInfo);
+    } catch (Exception e) {
+      LOG.warn("Failed to discover and track Jenkins build " + job + "#" + buildNumber, e);
+      return null;
+    }
+  }
+
+  /**
+   * Synchronizes an already-tracked build, isolating failures so one bad build does not abort the
+   * poll cycle. The mirror remains retryable when synchronization fails.
+   */
+  private void syncTrackedBuild(TrackedBuild trackedBuild) {
+    BuildMirror mirror = trackedBuild.mirror();
+    try {
+      syncBuild(mirror, trackedBuild.buildInfo());
       LOG.info("[Jenkins Bridge DEBUG] Synced Jenkins build " + mirror.getJenkinsBuildKey()
           + " now in state " + mirror.getSyncState()
           + " with TeamCity build id " + mirror.getTeamCityBuildId());
     } catch (Exception e) {
-      if (mirror != null) {
-        mirrorStore.markBuildError(mirror, e);
-      }
-      LOG.warn("Failed to sync Jenkins build " + job + "#" + buildNumber, e);
+      mirrorStore.markBuildError(mirror, e);
+      LOG.warn("Failed to sync Jenkins build " + mirror.getJenkinsBuildKey(), e);
     }
   }
+
+  private record TrackedBuild(BuildMirror mirror, JenkinsBuildInfo buildInfo) {}
 
   private void syncActiveMirror(BuildMirror mirror) {
     try {
