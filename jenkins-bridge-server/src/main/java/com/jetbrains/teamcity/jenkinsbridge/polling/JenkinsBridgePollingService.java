@@ -500,11 +500,6 @@ public class JenkinsBridgePollingService {
       mirrorStore.setLastSeenBuildNumber(keyPrefix, watermark);
     }
 
-    // Keep finished mirrors until the watermark has been persisted successfully. If persistence
-    // fails, the mirror is still available for restore-by-key on the next poll instead of being
-    // pruned while the watermark remains behind it.
-    int prunedCount = mirrorStore.pruneFinishedMirrors().size();
-    LOG.info("[Jenkins Bridge DEBUG] " + mirroredJob.describeForLog() + ": " + prunedCount + " build(s) pruned");
     return outcome;
   }
 
