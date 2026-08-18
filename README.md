@@ -64,8 +64,60 @@ Run from the repository root:
 mvn package
 ```
 
-The build uses local TeamCity 2026.3-SNAPSHOT EAP Maven artifacts. They must be
-available under `${user.home}/.m2/repository/TeamCity`.
+The default TeamCity API version is `2026.3-SNAPSHOT`, and Maven looks for its
+artifacts under `${user.home}/.m2/repository/TeamCity`. Both values are
+configurable, so plugin developers can build against a published TeamCity
+version or a local TeamCity source build.
+
+For a local TeamCity source build, point Maven at its `local-repo` directory:
+
+```bash
+mvn package \
+  -Dteamcity-version=2026.3-SNAPSHOT \
+  -Dteamcity-repository-url=file:///path/to/TeamCity/local-repo
+```
+
+If the selected TeamCity repository does not contain `license-protected` at the
+same version, override that test-only dependency separately:
+
+```bash
+mvn test \
+  -Dteamcity-version=2026.3-DSL-eap1-SNAPSHOT \
+  -Dteamcity-license-version=2026.2-SNAPSHOT
+```
+
+### Persistent local Maven settings
+
+Instead of passing these properties on every command, define them in a personal
+Maven profile in `${user.home}/.m2/settings.xml`. Do not commit this file because
+the repository path is machine-specific:
+
+```xml
+<settings>
+  <profiles>
+    <profile>
+      <id>teamcity-local</id>
+      <properties>
+        <teamcity-version>2026.3-SNAPSHOT</teamcity-version>
+        <teamcity-repository-url>file:///path/to/TeamCity/local-repo</teamcity-repository-url>
+        <teamcity-license-version>2026.3-SNAPSHOT</teamcity-license-version>
+      </properties>
+    </profile>
+  </profiles>
+  <activeProfiles>
+    <activeProfile>teamcity-local</activeProfile>
+  </activeProfiles>
+</settings>
+```
+
+After that, the normal command uses the configured version and repository:
+
+```bash
+mvn package
+```
+
+For a repository where `license-protected` is only available from another
+TeamCity line, change only `teamcity-license-version` in this personal profile.
 
 The latest plugin archive is written to:
 
