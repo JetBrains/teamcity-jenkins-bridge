@@ -8,6 +8,7 @@ import com.jetbrains.teamcity.jenkinsbridge.persistence.BuildMirror;
 import com.jetbrains.teamcity.jenkinsbridge.vcs.VcsRefType;
 import com.jetbrains.teamcity.jenkinsbridge.vcs.VcsSyncResult;
 import jetbrains.buildServer.serverSide.BuildPromotionEx;
+import jetbrains.buildServer.serverSide.ReadOnlyEntityException;
 import jetbrains.buildServer.serverSide.ProjectManager;
 import jetbrains.buildServer.serverSide.RepositoryVersion;
 import jetbrains.buildServer.serverSide.SBuildType;
@@ -65,7 +66,7 @@ public class TeamCityVcsPublisherTest {
   }
 
   @Test
-  public void createsRootAttachesAndPinsRevisionWhenNoneExists() {
+  public void createsRootAttachesAndPinsRevisionWhenNoneExists() throws Exception {
     SVcsRoot created = gitRoot("https://github.com/org/repo.git");
     when(project.createVcsRoot(eq("jetbrains.git"), anyString(), anyMap())).thenReturn(created);
     VcsRootInstanceEntry entry = entry(11L);
@@ -87,7 +88,7 @@ public class TeamCityVcsPublisherTest {
   }
 
   @Test
-  public void pinsRevisionsForRepositoryUsingCapturedRevisionMap() {
+  public void pinsRevisionsForRepositoryUsingCapturedRevisionMap() throws Exception {
     SVcsRoot created = gitRoot("https://github.com/org/repo.git");
     when(project.createVcsRoot(eq("jetbrains.git"), anyString(), anyMap())).thenReturn(created);
     VcsRootInstanceEntry entry = entry(11L);
@@ -105,7 +106,7 @@ public class TeamCityVcsPublisherTest {
   }
 
   @Test
-  public void reusesExistingRootAndDoesNotCreateOrReattach() {
+  public void reusesExistingRootAndDoesNotCreateOrReattach() throws Exception {
     SVcsRoot existing = gitRoot("https://github.com/org/repo.git");
     when(project.getVcsRoots()).thenReturn(Collections.singletonList(existing));
     VcsRootInstanceEntry entry = entry(12L);
@@ -122,7 +123,7 @@ public class TeamCityVcsPublisherTest {
   }
 
   @Test
-  public void matchesExistingRootAcrossUrlShapes() {
+  public void matchesExistingRootAcrossUrlShapes() throws Exception {
     SVcsRoot existing = gitRoot("git@github.com:org/repo.git");
     VcsRootInstanceEntry entry = entry(13L);
     when(project.getVcsRoots()).thenReturn(Collections.singletonList(existing));
@@ -135,7 +136,7 @@ public class TeamCityVcsPublisherTest {
   }
 
   @Test
-  public void pinsOneRevisionPerRepositoryForMultipleRepositories() {
+  public void pinsOneRevisionPerRepositoryForMultipleRepositories() throws Exception {
     SVcsRoot first = gitRoot("git@github.com:org/first.git");
     SVcsRoot second = gitRoot("https://github.com/org/second.git");
     VcsRootInstanceEntry firstEntry = entry(21L);
@@ -159,7 +160,7 @@ public class TeamCityVcsPublisherTest {
   }
 
   @Test
-  public void applyVcsToBuildCreatesTagsSuffixedRootWithTagsBranchSpecForTagBuild() {
+  public void applyVcsToBuildCreatesTagsSuffixedRootWithTagsBranchSpecForTagBuild() throws Exception {
     when(jenkinsClient.getBranchRefType(any())).thenReturn(VcsRefType.TAGS);
     SVcsRoot created = gitRoot("https://github.com/org/repo.git");
     ArgumentCaptor<String> nameCaptor = ArgumentCaptor.captor();
@@ -179,7 +180,7 @@ public class TeamCityVcsPublisherTest {
   }
 
   @Test
-  public void applyVcsToBuildDoesNotReuseHeadsRootForTagBuildWithSameUrl() {
+  public void applyVcsToBuildDoesNotReuseHeadsRootForTagBuildWithSameUrl() throws Exception {
     when(jenkinsClient.getBranchRefType(any())).thenReturn(VcsRefType.TAGS);
     SVcsRoot headsRoot = gitRoot("https://github.com/org/repo.git");
     when(headsRoot.getName()).thenReturn("https://github.com/org/repo.git");
@@ -198,7 +199,7 @@ public class TeamCityVcsPublisherTest {
   }
 
   @Test
-  public void recordsErrorWhenBuildTypeMissing() {
+  public void recordsErrorWhenBuildTypeMissing() throws Exception {
     when(projectManager.findBuildTypeByExternalId(BUILD_TYPE_ID)).thenReturn(null);
     when(projectManager.findBuildTypeById(BUILD_TYPE_ID)).thenReturn(null);
 
@@ -209,11 +210,11 @@ public class TeamCityVcsPublisherTest {
   }
 
   @Test
-  public void leavesCreatedRootAndRecordsErrorWhenAttachFails() {
+  public void leavesCreatedRootAndRecordsErrorWhenAttachFails() throws Exception {
     SVcsRoot created = gitRoot("https://github.com/org/repo.git");
     when(project.createVcsRoot(eq("jetbrains.git"), anyString(), anyMap())).thenReturn(created);
     when(buildType.getVcsRootInstanceEntryForParent(created)).thenReturn(null);
-    when(buildType.addVcsRoot(created)).thenThrow(new RuntimeException("read only"));
+    when(buildType.addVcsRoot(created)).thenThrow(new ReadOnlyEntityException("read only"));
 
     VcsSyncResult result = publisher.applyVcsToBuild(
         mirror(), gitInfo("https://github.com/org/repo.git", "abc123", "refs/remotes/origin/main"));
@@ -224,7 +225,7 @@ public class TeamCityVcsPublisherTest {
   }
 
   @Test
-  public void nullPointerDuringVcsAttachmentPropagates() {
+  public void nullPointerDuringVcsAttachmentPropagates() throws Exception {
     SVcsRoot created = gitRoot("https://github.com/org/repo.git");
     when(project.createVcsRoot(eq("jetbrains.git"), anyString(), anyMap())).thenReturn(created);
     when(buildType.getVcsRootInstanceEntryForParent(created)).thenReturn(null);
