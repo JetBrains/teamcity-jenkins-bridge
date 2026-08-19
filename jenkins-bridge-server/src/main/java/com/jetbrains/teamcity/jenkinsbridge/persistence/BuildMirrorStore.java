@@ -4,7 +4,6 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonParseException;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsBuildInfo;
-import com.jetbrains.teamcity.jenkinsbridge.settings.JenkinsBridgeSettings;
 import com.jetbrains.teamcity.jenkinsbridge.settings.JenkinsBridgeSettingsProvider;
 import jetbrains.buildServer.serverSide.CustomDataStorage;
 import jetbrains.buildServer.serverSide.ProjectManager;
@@ -32,7 +31,6 @@ public class BuildMirrorStore {
   private static final Logger LOG = Logger.getInstance(BuildMirrorStore.class.getName());
   public static final String CUSTOM_DATA_STORAGE_NAME = "jenkinsBridgeStateStorage";
 
-  private final JenkinsBridgeSettingsProvider settingsProvider;
   private final ServerPaths serverPaths;
   private final ProjectManager projectManager;
   private final Gson gson = new GsonBuilder().setPrettyPrinting().create();
@@ -44,7 +42,6 @@ public class BuildMirrorStore {
 
   public BuildMirrorStore(ServerPaths serverPaths, JenkinsBridgeSettingsProvider settingsProvider, ProjectManager projectManager) {
     this.serverPaths = serverPaths;
-    this.settingsProvider = settingsProvider;
     this.projectManager = projectManager;
   }
 
@@ -263,11 +260,6 @@ public class BuildMirrorStore {
    */
   @Deprecated
   public Path getStateFile() {
-    JenkinsBridgeSettings settings = settings();
-    if (settings.hasCustomStateFile()) {
-      return settings.getCustomStateFile();
-    }
-
     return serverPaths.getPluginDataDirectory().toPath()
         .resolve("jenkins-bridge")
         .resolve("jenkins-teamcity-mapping.json");
@@ -403,10 +395,6 @@ public class BuildMirrorStore {
 
   private String now() {
     return Instant.now().toString();
-  }
-
-  private JenkinsBridgeSettings settings() {
-    return settingsProvider.load();
   }
 
 }

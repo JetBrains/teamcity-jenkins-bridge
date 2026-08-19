@@ -1,7 +1,6 @@
 package com.jetbrains.teamcity.jenkinsbridge.settings;
 
 import java.nio.file.Path;
-import java.nio.file.Paths;
 
 import static com.jetbrains.teamcity.jenkinsbridge.util.Utilities.nullToEmpty;
 
@@ -13,7 +12,6 @@ public class JenkinsBridgeSettings {
   private final boolean enabled;
   private final int pollSeconds;
   private final int pendingTriggerTimeoutMinutes;
-  private final String stateFile;
   private final String teamCityUrl;
   private final String teamCityUser;
   private final String teamCityPassword;
@@ -22,7 +20,6 @@ public class JenkinsBridgeSettings {
       boolean enabled,
       int pollSeconds,
       int pendingTriggerTimeoutMinutes,
-      String stateFile,
       String teamCityUrl,
       String teamCityUser,
       String teamCityPassword
@@ -30,7 +27,6 @@ public class JenkinsBridgeSettings {
     this.enabled = enabled;
     this.pollSeconds = Math.max(1, pollSeconds);
     this.pendingTriggerTimeoutMinutes = Math.max(1, pendingTriggerTimeoutMinutes);
-    this.stateFile = nullToEmpty(stateFile);
     this.teamCityUrl = trimTrailingSlash(teamCityUrl);
     this.teamCityUser = nullToEmpty(teamCityUser);
     this.teamCityPassword = nullToEmpty(teamCityPassword);
@@ -66,19 +62,10 @@ public class JenkinsBridgeSettings {
     return pendingTriggerTimeoutMinutes;
   }
 
-  public boolean hasCustomStateFile() {
-    return isNotBlank(stateFile);
-  }
-
-  public Path getCustomStateFile() {
-    return Paths.get(stateFile);
-  }
-
   public String describeForLog() {
     return "enabled=" + enabled
         + ", pollSeconds=" + pollSeconds
-        + ", pendingTriggerTimeoutMinutes=" + pendingTriggerTimeoutMinutes
-        + ", stateFile=" + stateFile;
+        + ", pendingTriggerTimeoutMinutes=" + pendingTriggerTimeoutMinutes;
   }
 
   private static String trimTrailingSlash(String value) {

@@ -316,15 +316,14 @@ public class BuildMirrorStoreTest {
   }
 
   private static JenkinsBridgeSettingsProvider providerForStateFile(final String path) {
-    return new JenkinsBridgeSettingsProvider(null) {
+    return new JenkinsBridgeSettingsProvider() {
       @Override
       public JenkinsBridgeSettings load() {
         try {
           Constructor<JenkinsBridgeSettings> constructor = JenkinsBridgeSettings.class.getDeclaredConstructor(
-              boolean.class, int.class, int.class, String.class,
-              String.class, String.class, String.class);
+              boolean.class, int.class, int.class, String.class, String.class, String.class);
           constructor.setAccessible(true);
-          return constructor.newInstance(true, 10, 1440, path, "", "", "");
+          return constructor.newInstance(true, 10, 1440, "", "", "");
         } catch (Exception e) {
           throw new AssertionError(e);
         }

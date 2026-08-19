@@ -32,19 +32,15 @@ view. This screen will let you automatically create build configurations which h
 
 ## Server settings
 
-The remaining settings are server-wide. They are read from a root project
-parameter first, then a Java system property, then an environment variable, then
-the default.
+The remaining settings are server-wide TeamCity internal properties. Configure
+them in TeamCity's data-directory properties configuration. Changes require a
+server restart to take effect.
 
-| TeamCity/system property                      | Environment variable              | Default               |
-|-----------------------------------------------|-----------------------------------|-----------------------|
-| `jenkins.bridge.enabled`                      | `JENKINS_BRIDGE_ENABLED`          | `true`                |
-| `jenkins.bridge.pollSeconds`                  | `BRIDGE_POLL_SECONDS`             | `10`                  |
-| `jenkins.bridge.pendingTriggerTimeoutMinutes` | `PENDING_TRIGGER_TIMEOUT_MINUTES` | `1440`                |
-| `jenkins.bridge.stateFile` (deprecated)       | `BRIDGE_STATE_FILE`               | plugin data directory |
-
-TeamCity parameter references such as `%another.param%` are resolved through
-TeamCity's value resolver.
+| TeamCity internal property                    | Default               |
+|-----------------------------------------------|-----------------------|
+| `jenkins.bridge.enabled`                      | `true`                |
+| `jenkins.bridge.pollSeconds`                  | `10`                  |
+| `jenkins.bridge.pendingTriggerTimeoutMinutes` | `1440`                |
 
 ## State
 
@@ -58,10 +54,10 @@ bridge also uses the Jenkins build timestamp to identify the run.
 
 ## Build
 
-Run from the repository root:
+Run unit tests from the repository root:
 
 ```bash
-mvn package
+mvn test
 ```
 
 ### Pre-commit gate
@@ -78,6 +74,11 @@ targets the Java server module: the root `build` module only assembles the plugi
 requires the separate Maven `replacer` plugin setup. Archive packaging remains a separate
 `mvn package` check. The hook also runs an optional `gitleaks` staged secret scan when `gitleaks`
 is installed. Set `JENKINS_BRIDGE_MAVEN_REPO` when Maven should use an isolated local repository.
+
+`mvn verify` additionally runs the database-backed TeamCity integration tests. Those
+fixture tests require Java 21 because the current TeamCity test server still uses
+the legacy Security Manager; the Maven profile enables the required Java 21 flag
+automatically.
 
 The default TeamCity API version is `2026.3-SNAPSHOT`, and Maven looks for its
 artifacts under `${user.home}/.m2/repository/TeamCity`. Both values are
