@@ -32,6 +32,7 @@ import java.util.Map;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.fail;
 import static org.junit.Assert.assertTrue;
 
@@ -63,6 +64,18 @@ public class JenkinsClientTest {
     } catch (JenkinsDataException expected) {
       assertTrue(expected.getMessage().contains("build information"));
     }
+  }
+
+  @Test
+  public void getBuildInfoAllowsMissingResultForRunningBuild() throws Exception {
+    StubResponseHttpClient httpClient = new StubResponseHttpClient();
+    httpClient.body = "{\"number\":7,\"building\":true,\"result\":null}";
+    JenkinsClient client = new JenkinsClient(testConnection(), httpClient, newJaxbUnmarshaller());
+
+    JenkinsBuildInfo build = client.getBuildInfo("job", 7);
+
+    assertTrue(build.isBuilding());
+    assertNull(build.getResult());
   }
 
   @Test

@@ -6,10 +6,11 @@ import com.google.gson.JsonObject;
 import com.jetbrains.teamcity.jenkinsbridge.vcs.VcsProvider;
 
 import java.util.*;
+import org.jetbrains.annotations.NotNull;
 
 import static com.jetbrains.teamcity.jenkinsbridge.util.Utilities.stringValue;
 
-public record JenkinsVcsInfo(List<JenkinsVcsRepository> repositories) {
+public record JenkinsVcsInfo(@NotNull List<JenkinsVcsRepository> repositories) {
 
   public JenkinsVcsInfo {
     repositories = List.copyOf(repositories);

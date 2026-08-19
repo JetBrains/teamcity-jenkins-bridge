@@ -2,6 +2,7 @@ package com.jetbrains.teamcity.jenkinsbridge.model;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import org.jetbrains.annotations.NotNull;
 
 import static com.jetbrains.teamcity.jenkinsbridge.util.Utilities.nullToEmpty;
 
@@ -20,7 +21,7 @@ public class JenkinsTestCase {
   private String stdout;
   private String stderr;
 
-  public static JenkinsTestCase fromJson(JsonObject json) {
+  public static JenkinsTestCase fromJson(@NotNull JsonObject json) {
     JenkinsTestCase testCase = new JenkinsTestCase();
     testCase.className = getString(json, "className", "");
     testCase.name = getString(json, "name", "");
@@ -34,14 +35,17 @@ public class JenkinsTestCase {
     return testCase;
   }
 
+  @NotNull
   public String getClassName() {
     return className;
   }
 
+  @NotNull
   public String getName() {
     return name;
   }
 
+  @NotNull
   public String getStatus() {
     return status;
   }
@@ -50,22 +54,27 @@ public class JenkinsTestCase {
     return durationMillis;
   }
 
+  @NotNull
   public String getErrorDetails() {
     return errorDetails;
   }
 
+  @NotNull
   public String getErrorStackTrace() {
     return errorStackTrace;
   }
 
+  @NotNull
   public String getSkippedMessage() {
     return skippedMessage;
   }
 
+  @NotNull
   public String getStdout() {
     return stdout;
   }
 
+  @NotNull
   public String getStderr() {
     return stderr;
   }

@@ -2,6 +2,8 @@ package com.jetbrains.teamcity.jenkinsbridge.model;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 /**
  * Jenkins CSRF crumb from {@code /crumbIssuer/api/json}. When crumb protection is disabled
@@ -20,7 +22,7 @@ public class JenkinsCrumb {
     return new JenkinsCrumb(null, null);
   }
 
-  public static JenkinsCrumb fromJson(JsonObject json) {
+  public static JenkinsCrumb fromJson(@NotNull JsonObject json) {
     String field = getString(json, "crumbRequestField");
     String value = getString(json, "crumb");
     if (field == null || value == null) {
@@ -34,10 +36,12 @@ public class JenkinsCrumb {
     return field != null && value != null;
   }
 
+  @Nullable
   public String getField() {
     return field;
   }
 
+  @Nullable
   public String getValue() {
     return value;
   }
