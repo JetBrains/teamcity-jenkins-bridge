@@ -610,11 +610,9 @@ public class TeamCityBuildMirrorService {
     if (vcsInfo != null && !vcsInfo.repositories().isEmpty()) {
       try {
         result = teamCityVcsPublisher.applyVcsToBuild(mirror, vcsInfo);
-      } catch (NullPointerException e) {
-        throw e;
-      } catch (RuntimeException e) {
+      } catch (TeamCityVcsOperationalException e) {
         LOG.warn("VCS mirroring failed for " + mirror.getJenkinsBuildKey(), e);
-        result.addError(describeException(e));
+        result.addError(describeException(e.getCause()));
       }
     }
     mirror.setVcsSynced(result.getErrors().isEmpty());

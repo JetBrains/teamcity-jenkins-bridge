@@ -10,7 +10,11 @@ import com.jetbrains.teamcity.jenkinsbridge.vcs.VcsRefType;
 import com.jetbrains.teamcity.jenkinsbridge.vcs.VcsSyncResult;
 import jetbrains.buildServer.serverSide.BuildPromotion;
 import jetbrains.buildServer.serverSide.BuildPromotionEx;
+import jetbrains.buildServer.serverSide.InvalidVcsRootScopeException;
+import jetbrains.buildServer.serverSide.PersistFailedException;
+import jetbrains.buildServer.serverSide.ProjectNotFoundException;
 import jetbrains.buildServer.serverSide.ProjectManager;
+import jetbrains.buildServer.serverSide.ReadOnlyEntityException;
 import jetbrains.buildServer.serverSide.RepositoryVersion;
 import jetbrains.buildServer.serverSide.SBuildType;
 import jetbrains.buildServer.serverSide.SProject;
@@ -19,6 +23,8 @@ import jetbrains.buildServer.vcs.CheckoutRules;
 import jetbrains.buildServer.vcs.DuplicateVcsRootNameException;
 import jetbrains.buildServer.vcs.SVcsRoot;
 import jetbrains.buildServer.vcs.VcsRootInstanceEntry;
+import jetbrains.buildServer.vcs.VcsRootNotFoundException;
+import jetbrains.buildServer.vcs.UnknownVcsException;
 import jetbrains.buildServer.vcs.impl.BuildChainChangesCollector;
 import org.jetbrains.annotations.NotNull;
 
@@ -49,7 +55,13 @@ public class TeamCityVcsPublisher {
         myJenkinsClientFactory = jenkinsClientFactory;
     }
 
-    public VcsSyncResult applyVcsToBuild(BuildMirror mirror, JenkinsVcsInfo vcsInfo) {
+    public VcsSyncResult applyVcsToBuild(BuildMirror mirror, JenkinsVcsInfo vcsInfo)
+            throws TeamCityVcsOperationalException {
+        return applyVcsToBuildInternal(mirror, vcsInfo);
+    }
+
+    private VcsSyncResult applyVcsToBuildInternal(BuildMirror mirror, JenkinsVcsInfo vcsInfo)
+            throws TeamCityVcsOperationalException {
         VcsSyncResult result = new VcsSyncResult();
         if (vcsInfo == null || vcsInfo.repositories().isEmpty()) {
             return result;
@@ -116,7 +128,7 @@ public class TeamCityVcsPublisher {
             JenkinsVcsInfo vcsInfo,
             VcsSyncResult result,
             VcsRefType refType
-    ) {
+    ) throws TeamCityVcsOperationalException {
         List<AttachedRepository> attached = new ArrayList<>();
         boolean buildTypeChanged = false;
 
@@ -139,27 +151,42 @@ public class TeamCityVcsPublisher {
             try {
                 SVcsRoot root = findOrCreateRoot(project, provider, repo, normalized, branch, refType);
                 if (buildType.getVcsRootInstanceEntryForParent(root) == null) {
-                    buildType.addVcsRoot(root);
-                    buildType.setCheckoutRules(root, CheckoutRules.DEFAULT);
+                    attachVcsRoot(buildType, root);
                     buildTypeChanged = true;
                 }
                 attached.add(new AttachedRepository(repo, root, branch));
                 result.incrementAttached();
-            } catch (NullPointerException e) {
-                throw e;
-            } catch (RuntimeException e) {
-                // TeamCity's VCS mutation APIs report operational failures as unchecked
-                // exceptions. VCS is explicitly best-effort, but an NPE indicates a bridge bug
-                // and must reach the per-build isolation boundary unchanged.
-                result.addError(repo.remoteUrl() + ": " + describeException(e));
+            } catch (TeamCityVcsOperationalException e) {
+                // VCS is explicitly best-effort; unexpected runtime failures, including NPEs,
+                // must reach the per-build isolation boundary unchanged.
+                result.addError(repo.remoteUrl() + ": " + describeException(e.getCause()));
                 LOG.warn("Jenkins Bridge: failed to attach VCS root for " + repo.remoteUrl(), e);
             }
         }
 
         if (buildTypeChanged) {
-            buildType.persist();
+            persistBuildType(buildType);
         }
         return attached;
+    }
+
+    private void persistBuildType(SBuildType buildType) throws TeamCityVcsOperationalException {
+        try {
+            buildType.persist();
+        } catch (PersistFailedException e) {
+            throw new TeamCityVcsOperationalException(e);
+        }
+    }
+
+    private void attachVcsRoot(SBuildType buildType, SVcsRoot root)
+            throws TeamCityVcsOperationalException {
+        try {
+            buildType.addVcsRoot(root);
+            buildType.setCheckoutRules(root, CheckoutRules.DEFAULT);
+        } catch (ReadOnlyEntityException | InvalidVcsRootScopeException
+                 | VcsRootNotFoundException e) {
+            throw new TeamCityVcsOperationalException(e);
+        }
     }
 
     private SVcsRoot findOrCreateRoot(
@@ -169,26 +196,42 @@ public class TeamCityVcsPublisher {
             String normalizedUrl,
             TeamCityBranch branch,
             VcsRefType refType
-    ) {
-        Optional<SVcsRoot> existing = findExistingRoot(project, provider, normalizedUrl, refType);
-        if (existing.isPresent()) {
-            return existing.get();
-        }
+    ) throws TeamCityVcsOperationalException {
+        return findOrCreateRootInternal(project, provider, repo, normalizedUrl, branch, refType);
+    }
 
-        String rootName = refType == VcsRefType.TAGS ? normalizedUrl + "/tags" : normalizedUrl;
+    private SVcsRoot findOrCreateRootInternal(
+            SProject project,
+            VcsProvider provider,
+            JenkinsVcsRepository repo,
+            String normalizedUrl,
+            TeamCityBranch branch,
+            VcsRefType refType
+    ) throws TeamCityVcsOperationalException {
         try {
-            SVcsRoot created = project.createVcsRoot(
-                    provider.teamCityVcsName(),
-                    rootName,
-                    provider.buildRootParameters(repo.remoteUrl(), branch.ref(), refType));
-            created.persist();
-            return created;
-        } catch (DuplicateVcsRootNameException duplicate) {
-            Optional<SVcsRoot> found = findExistingRoot(project, provider, normalizedUrl, refType);
-            if (found.isPresent()) {
-                return found.get();
+            Optional<SVcsRoot> existing = findExistingRoot(project, provider, normalizedUrl, refType);
+            if (existing.isPresent()) {
+                return existing.get();
             }
-            throw duplicate;
+
+            String rootName = refType == VcsRefType.TAGS ? normalizedUrl + "/tags" : normalizedUrl;
+            try {
+                SVcsRoot created = project.createVcsRoot(
+                        provider.teamCityVcsName(),
+                        rootName,
+                        provider.buildRootParameters(repo.remoteUrl(), branch.ref(), refType));
+                created.persist();
+                return created;
+            } catch (DuplicateVcsRootNameException duplicate) {
+                Optional<SVcsRoot> found = findExistingRoot(project, provider, normalizedUrl, refType);
+                if (found.isPresent()) {
+                    return found.get();
+                }
+                throw duplicate;
+            }
+        } catch (ReadOnlyEntityException | ProjectNotFoundException
+                 | UnknownVcsException | DuplicateVcsRootNameException e) {
+            throw new TeamCityVcsOperationalException(e);
         }
     }
 

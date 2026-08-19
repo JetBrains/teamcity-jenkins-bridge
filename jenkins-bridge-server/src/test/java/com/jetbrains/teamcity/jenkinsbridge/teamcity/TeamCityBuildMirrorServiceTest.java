@@ -332,6 +332,8 @@ public class TeamCityBuildMirrorServiceTest {
   public void syncVcsPublisherExceptionRemainsRetryable() throws Exception {
     CapturingVcsPublisher publisher = new CapturingVcsPublisher();
     publisher.throwError = true;
+    publisher.operationalError = new TeamCityVcsOperationalException(
+        new RuntimeException("read only"));
     TeamCityBuildMirrorService service = new TeamCityBuildMirrorService(
         null, null, null, null, new CapturingLogger(), null, null, null, publisher, null, null, null, new NoopStore());
 
@@ -341,6 +343,18 @@ public class TeamCityBuildMirrorServiceTest {
 
     assertFalse(mirror.isVcsSynced());
     assertTrue(hasVcsErrorContaining(mirror, "RuntimeException"));
+  }
+
+  @Test(expected = IllegalStateException.class)
+  public void syncVcsDoesNotHideUnexpectedRuntimeFailure() throws Exception {
+    CapturingVcsPublisher publisher = new CapturingVcsPublisher();
+    publisher.throwError = true;
+    publisher.unexpectedError = new IllegalStateException("unexpected bridge defect");
+    TeamCityBuildMirrorService service = new TeamCityBuildMirrorService(
+        null, null, null, null, new CapturingLogger(), null, null, null, publisher, null, null, null, new NoopStore());
+
+    service.syncVcsIfNeeded(
+        BuildMirror.create("job#1@1", "job", buildInfo(1), "buildType", "now"), gitVcsInfo());
   }
 
   @Test
@@ -450,6 +464,8 @@ public class TeamCityBuildMirrorServiceTest {
   private static class CapturingVcsPublisher extends TeamCityVcsPublisher {
     int calls;
     boolean throwError;
+    TeamCityVcsOperationalException operationalError;
+    RuntimeException unexpectedError;
     final VcsSyncResult result = new VcsSyncResult();
 
     CapturingVcsPublisher() {
@@ -457,10 +473,17 @@ public class TeamCityBuildMirrorServiceTest {
     }
 
     @Override
-    public VcsSyncResult applyVcsToBuild(BuildMirror mirror, JenkinsVcsInfo vcsInfo) {
+    public VcsSyncResult applyVcsToBuild(BuildMirror mirror, JenkinsVcsInfo vcsInfo)
+        throws TeamCityVcsOperationalException {
       calls++;
       if (throwError) {
-        throw new RuntimeException("boom");
+        if (operationalError != null) {
+          throw operationalError;
+        }
+        if (unexpectedError != null) {
+          throw unexpectedError;
+        }
+        throw new IllegalStateException("boom");
       }
       return result;
     }
