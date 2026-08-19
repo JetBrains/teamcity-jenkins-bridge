@@ -7,6 +7,7 @@ import com.google.gson.JsonObject;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import org.jetbrains.annotations.NotNull;
 
 public class JenkinsTestSuite {
   private static final String DEFAULT_SUITE_NAME = "Jenkins tests";
@@ -31,6 +32,7 @@ public class JenkinsTestSuite {
     return suite;
   }
 
+  @NotNull
   public String getName() {
     if (name == null || name.trim().length() == 0) {
       return DEFAULT_SUITE_NAME;
@@ -38,6 +40,7 @@ public class JenkinsTestSuite {
     return name;
   }
 
+  @NotNull
   public List<JenkinsTestCase> getCases() {
     return cases == null ? Collections.<JenkinsTestCase>emptyList() : cases;
   }

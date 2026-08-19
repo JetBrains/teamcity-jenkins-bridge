@@ -7,12 +7,13 @@ import com.google.gson.JsonObject;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import org.jetbrains.annotations.NotNull;
 
 public class JenkinsArtifacts {
   private final List<JenkinsArtifact> artifacts;
 
-  public JenkinsArtifacts(List<JenkinsArtifact> artifacts) {
-    this.artifacts = artifacts;
+  public JenkinsArtifacts(@NotNull List<JenkinsArtifact> artifacts) {
+    this.artifacts = Collections.unmodifiableList(new ArrayList<JenkinsArtifact>(artifacts));
   }
 
   public static JenkinsArtifacts empty() {
@@ -38,6 +39,7 @@ public class JenkinsArtifacts {
     return new JenkinsArtifacts(result);
   }
 
+  @NotNull
   public List<JenkinsArtifact> getArtifacts() {
     return Collections.unmodifiableList(artifacts);
   }

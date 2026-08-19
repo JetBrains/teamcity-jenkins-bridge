@@ -62,6 +62,9 @@ public class TeamCityVcsPublisher {
         }
         SProject project = buildType.getProject();
 
+        if (!hasSupportedRepository(vcsInfo)) {
+            return result;
+        }
         VcsRefType refType = myJenkinsClientFactory.forBuildType(buildType).getBranchRefType(mirror.getJenkinsJob());
         List<AttachedRepository> attached = ensureVcsRootsAttached(project, buildType, vcsInfo, result, refType);
 
@@ -92,6 +95,15 @@ public class TeamCityVcsPublisher {
         myChangesCollector.scheduleCheckingForChangesAndWait(promotionEx, new CancelableTaskHolder());
 
         return result;
+    }
+
+    private static boolean hasSupportedRepository(JenkinsVcsInfo vcsInfo) {
+        for (JenkinsVcsRepository repository : vcsInfo.repositories()) {
+            if (VcsProvider.fromJenkinsClass(repository.vcsClass()) != null) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

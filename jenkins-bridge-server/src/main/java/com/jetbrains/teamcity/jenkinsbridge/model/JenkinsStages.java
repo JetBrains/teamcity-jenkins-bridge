@@ -7,6 +7,7 @@ import com.google.gson.JsonObject;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import org.jetbrains.annotations.NotNull;
 
 /**
  * Result of {@code wfapi/describe}: the ordered Pipeline stages of one build, plus a flag for
@@ -45,6 +46,7 @@ public class JenkinsStages {
     return pipeline;
   }
 
+  @NotNull
   public List<JenkinsStage> getStages() {
     return stages;
   }
