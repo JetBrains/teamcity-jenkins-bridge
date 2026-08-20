@@ -134,6 +134,16 @@ public class JenkinsTriggerOnRunListener {
         promotion.getId(), job, buildType.getExternalId(), "", -1L, controller, now());
     mirrorStore.savePendingTrigger(provisional);
 
+    String testFailureMode = testFailureMode(promotion);
+    if ("before-jenkins".equals(testFailureMode)) {
+      failTeamCityFirstAttempt(
+          queued,
+          promotion.getId(),
+          "Jenkins Bridge test failure: Jenkins was intentionally not called (before-jenkins).",
+          null);
+      return;
+    }
+
     JenkinsJobParameters parameterDefinitions;
     try {
       parameterDefinitions = jenkinsClient.getJobParameters(job);
@@ -152,6 +162,14 @@ public class JenkinsTriggerOnRunListener {
       Map<String, String> parameters = jenkinsParameters(parameterDefinitions, promotion);
       attempt.markJenkinsRequestStarted();
       trigger = jenkinsClient.triggerBuildWithQueueId(job, parameters);
+      if ("after-jenkins".equals(testFailureMode)) {
+        failTeamCityFirstAttempt(
+            queued,
+            promotion.getId(),
+            "Jenkins Bridge test failure: Jenkins was intentionally called, then the TeamCity trigger was failed (after-jenkins).",
+            null);
+        return;
+      }
     } catch (BridgeHttpException | JenkinsDataException e) {
       failTeamCityFirstAttempt(
           queued,
@@ -264,8 +282,18 @@ public class JenkinsTriggerOnRunListener {
     result.putAll(promotion.getDefaultParameters());
     result.putAll(promotion.getCustomParameters());
     result.remove(BridgeBuildFeatureConstants.JENKINS_BUILD_KEY_PARAM);
+    result.remove(BridgeBuildFeatureConstants.TEST_FAILURE_MODE_PARAM);
     result.remove(TeamCityBuildParameters.AGENTLESS_BUILD_PROPERTY);
     return JenkinsParameterPayloadBuilder.build(parameterDefinitions, result);
+  }
+
+  @Nullable
+  private String testFailureMode(BuildPromotion promotion) {
+    String mode = promotion.getCustomParameters().get(BridgeBuildFeatureConstants.TEST_FAILURE_MODE_PARAM);
+    if (mode == null || mode.trim().isEmpty()) {
+      mode = promotion.getDefaultParameters().get(BridgeBuildFeatureConstants.TEST_FAILURE_MODE_PARAM);
+    }
+    return mode == null ? null : mode.trim().toLowerCase();
   }
 
   /**

@@ -45,6 +45,14 @@ public final class BridgeBuildFeatureConstants {
    */
   public static final String JENKINS_BUILD_KEY_PARAM = "jenkins.build.key";
 
+  /**
+   * Test-only TeamCity run parameter for exercising trigger-failure handling against a live server.
+   * Supported values are {@code before-jenkins} and {@code after-jenkins}; it is never sent to
+   * Jenkins. The latter intentionally creates a real Jenkins run before failing the TeamCity
+   * promotion, so it should only be used with a disposable Jenkins job.
+   */
+  public static final String TEST_FAILURE_MODE_PARAM = "jenkins.bridge.test.failureMode";
+
   private BridgeBuildFeatureConstants() {
   }
 }

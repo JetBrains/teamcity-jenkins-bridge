@@ -143,6 +143,17 @@ The build also keeps timestamped Git-SHA archives such as:
 
 `target/jenkins-bridge-20260608123456-2d8bab4.zip`
 
+### Live trigger-failure checks
+
+For a disposable TeamCity/Jenkins test job, add the custom TeamCity run parameter
+`jenkins.bridge.test.failureMode` with one of these values:
+
+- `before-jenkins`: records native `Failed to start build` without calling Jenkins.
+- `after-jenkins`: calls Jenkins, then intentionally records the TeamCity promotion as failed to start;
+  use only with a disposable Jenkins job because Jenkins may accept the run.
+
+The parameter is consumed by the bridge and is not forwarded to Jenkins. Remove it for normal runs.
+
 ## Install
 
 Copy `target/jenkins-bridge.zip` into the TeamCity data directory's `plugins`
