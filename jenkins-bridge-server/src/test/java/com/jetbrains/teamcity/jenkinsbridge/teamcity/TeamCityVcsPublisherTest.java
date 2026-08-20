@@ -8,6 +8,7 @@ import com.jetbrains.teamcity.jenkinsbridge.persistence.BuildMirror;
 import com.jetbrains.teamcity.jenkinsbridge.vcs.VcsRefType;
 import com.jetbrains.teamcity.jenkinsbridge.vcs.VcsSyncResult;
 import jetbrains.buildServer.serverSide.BuildPromotionEx;
+import jetbrains.buildServer.serverSide.PersistTask;
 import jetbrains.buildServer.serverSide.ReadOnlyEntityException;
 import jetbrains.buildServer.serverSide.ProjectManager;
 import jetbrains.buildServer.serverSide.RepositoryVersion;
@@ -46,6 +47,7 @@ public class TeamCityVcsPublisherTest {
   private final ProjectManager projectManager = mock(ProjectManager.class);
   private final SProject project = mock(SProject.class);
   private final SBuildType buildType = mock(SBuildType.class);
+  private final PersistTask persistTask = mock(PersistTask.class);
   private final TeamCityRunningBuildLocator buildLocator = mock(TeamCityRunningBuildLocator.class);
   private final BuildChainChangesCollector changesCollector = mock(BuildChainChangesCollector.class);
   private final BuildPromotionEx promotion = mock(BuildPromotionEx.class);
@@ -59,6 +61,7 @@ public class TeamCityVcsPublisherTest {
   public void setUp() {
     when(projectManager.findBuildTypeByExternalId(BUILD_TYPE_ID)).thenReturn(buildType);
     when(buildType.getProject()).thenReturn(project);
+    when(buildType.schedulePersisting(anyString())).thenReturn(persistTask);
     when(jenkinsClientFactory.forBuildType(buildType)).thenReturn(jenkinsClient);
     when(project.getVcsRoots()).thenReturn(Collections.emptyList());
     when(buildLocator.findPromotion(PROMOTION_ID)).thenReturn(promotion);
@@ -244,6 +247,7 @@ public class TeamCityVcsPublisherTest {
     SVcsRoot root = mock(SVcsRoot.class);
     when(root.getVcsName()).thenReturn("jetbrains.git");
     when(root.getProperty("url")).thenReturn(url);
+    when(root.schedulePersisting(anyString())).thenReturn(persistTask);
     return root;
   }
 
