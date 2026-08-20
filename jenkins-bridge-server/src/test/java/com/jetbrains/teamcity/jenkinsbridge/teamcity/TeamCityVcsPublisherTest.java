@@ -76,10 +76,10 @@ public class TeamCityVcsPublisherTest {
         mirror(), gitInfo("https://github.com/org/repo.git", "abc123def456", "refs/remotes/origin/main"));
 
     verify(project).createVcsRoot(eq("jetbrains.git"), anyString(), anyMap());
-    verify(created).persist();
+    verify(created).schedulePersisting("Jenkins Bridge: persist newly created Jenkins VCS root");
     verify(buildType).addVcsRoot(created);
     verify(buildType).setCheckoutRules(created, CheckoutRules.DEFAULT);
-    verify(buildType).persist();
+    verify(buildType).schedulePersisting("Jenkins Bridge: persist Jenkins VCS root attachment changes");
     verify(promotion).resetBuildRevisions();
     verify(promotion).setProvidedUpperLimitRevisions(anyMap());
     verify(changesCollector).scheduleCheckingForChangesAndWait(eq(promotion), any(CancelableTaskHolder.class));
@@ -117,7 +117,7 @@ public class TeamCityVcsPublisherTest {
 
     verify(project, never()).createVcsRoot(anyString(), anyString(), anyMap());
     verify(buildType, never()).addVcsRoot(any(SVcsRoot.class));
-    verify(buildType, never()).persist();
+    verify(buildType, never()).schedulePersisting(anyString());
     verify(promotion).setProvidedUpperLimitRevisions(anyMap());
     assertEquals(1, result.getNumberOfAttachedRepositories());
   }
@@ -219,7 +219,7 @@ public class TeamCityVcsPublisherTest {
     VcsSyncResult result = publisher.applyVcsToBuild(
         mirror(), gitInfo("https://github.com/org/repo.git", "abc123", "refs/remotes/origin/main"));
 
-    verify(created).persist();
+    verify(created).schedulePersisting("Jenkins Bridge: persist newly created Jenkins VCS root");
     assertTrue(result.hasErrors());
     assertEquals(0, result.getNumberOfAttachedRepositories());
   }

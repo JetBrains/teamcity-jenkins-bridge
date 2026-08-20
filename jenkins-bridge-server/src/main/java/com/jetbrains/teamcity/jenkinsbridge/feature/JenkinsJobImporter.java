@@ -130,7 +130,7 @@ public class JenkinsJobImporter {
         BridgeBuildFeatureConstants.INTERNAL_MULTIBRANCH_PARAM, String.valueOf(isMultibranch)));
     importJenkinsParameters(jenkinsClient, buildType, fullName);
     buildType.setOption(BuildTypeOptions.BT_FAIL_IF_TESTS_FAIL, false); // Let Jenkins decide if failing tests fail the build. Not the case for "unstable" builds.
-    buildType.persist();
+    buildType.schedulePersisting("Jenkins Bridge: persist imported Jenkins job build configuration").awaitUninterruptibly();
     return externalId;
   }
 

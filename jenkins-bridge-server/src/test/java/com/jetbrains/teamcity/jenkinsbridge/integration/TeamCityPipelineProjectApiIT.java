@@ -27,7 +27,8 @@ public class TeamCityPipelineProjectApiIT extends TeamCityIntegrationTestBase {
     ParameterFactory parameterFactory = myFixture.getSingletonService(ParameterFactory.class);
     myBuildType.addConfigParameter(parameterFactory.createSimpleParameter(
         "jenkins.bridge.pipelineChain.enabled", "true"));
-    myBuildType.persist();
+    myBuildType.schedulePersisting("Jenkins Bridge test: create build configuration")
+        .awaitUninterruptibly();
 
     BuildMirror mirror = BuildMirror.create(
         "source-job#21", "source-job", buildInfo(21), myBuildType.getExternalId(), "it-now");

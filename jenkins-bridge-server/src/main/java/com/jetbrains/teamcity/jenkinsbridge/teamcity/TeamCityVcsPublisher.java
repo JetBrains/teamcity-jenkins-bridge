@@ -172,7 +172,8 @@ public class TeamCityVcsPublisher {
 
     private void persistBuildType(SBuildType buildType) throws TeamCityVcsOperationalException {
         try {
-            buildType.persist();
+            buildType.schedulePersisting("Jenkins Bridge: persist Jenkins VCS root attachment changes")
+                    .awaitUninterruptibly();
         } catch (PersistFailedException e) {
             throw new TeamCityVcsOperationalException(e);
         }
@@ -220,7 +221,8 @@ public class TeamCityVcsPublisher {
                         provider.teamCityVcsName(),
                         rootName,
                         provider.buildRootParameters(repo.remoteUrl(), branch.ref(), refType));
-                created.persist();
+                created.schedulePersisting("Jenkins Bridge: persist newly created Jenkins VCS root")
+                        .awaitUninterruptibly();
                 return created;
             } catch (DuplicateVcsRootNameException duplicate) {
                 Optional<SVcsRoot> found = findExistingRoot(project, provider, normalizedUrl, refType);

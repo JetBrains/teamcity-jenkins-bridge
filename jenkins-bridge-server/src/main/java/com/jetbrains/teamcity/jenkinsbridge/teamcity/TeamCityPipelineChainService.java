@@ -207,7 +207,8 @@ public class TeamCityPipelineChainService {
     ProjectEx parent = (ProjectEx) sourceProject;
     SProject generated = parent.createVirtualProject(externalId, sourceProject.getName() + " (Jenkins Bridge generated)");
     generated.setDescription("Internal virtual project for Jenkins Bridge Pipeline chain demo builds.");
-    generated.persist();
+    generated.schedulePersisting("Jenkins Bridge: persist generated pipeline chain project")
+        .awaitUninterruptibly();
     return generated;
   }
 
@@ -240,7 +241,8 @@ public class TeamCityPipelineChainService {
       setConfigParameter(buildType, "jenkins.pipeline.source", graph.getSource());
       setConfigParameter(buildType, "jenkins.pipeline.topologyHash", graph.getTopologyHash());
       setConfigParameter(buildType, "jenkins.pipeline.sourceBuildType", plan.getSourceBuildTypeExternalId());
-      buildType.persist();
+      buildType.schedulePersisting("Jenkins Bridge: persist generated pipeline chain build configuration")
+          .awaitUninterruptibly();
 
       buildTypesByNodeId.put(node.getNodeId(), buildType);
     }

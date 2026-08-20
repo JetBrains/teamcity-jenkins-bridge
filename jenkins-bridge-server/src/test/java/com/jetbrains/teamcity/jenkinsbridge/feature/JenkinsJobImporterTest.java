@@ -86,7 +86,7 @@ public class JenkinsJobImporterTest {
     assertEquals("pipeline", result.getSkipped().getFirst().jenkinsJob);
     assertEquals("already imported", result.getSkipped().getFirst().detail);
     verify(jenkinsClient, never()).getJobParameters("pipeline");
-    verify(existing, never()).persist();
+    verify(existing, never()).schedulePersisting(anyString());
   }
 
   @Test
