@@ -64,6 +64,10 @@ public class PendingTrigger {
     return jenkinsQueueId;
   }
 
+  public boolean hasResolvedQueueId() {
+    return jenkinsQueueId >= 0;
+  }
+
   public String getJenkinsController() {
     return jenkinsController;
   }

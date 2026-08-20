@@ -6,7 +6,6 @@ import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsJobParameters;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsTriggerResponse;
 import com.jetbrains.teamcity.jenkinsbridge.persistence.BuildMirrorStore;
 import jetbrains.buildServer.serverSide.BuildPromotion;
-import jetbrains.buildServer.serverSide.BuildQueue;
 import jetbrains.buildServer.serverSide.BuildServerListener;
 import jetbrains.buildServer.serverSide.SBuildFeatureDescriptor;
 import jetbrains.buildServer.serverSide.SBuildType;
@@ -62,7 +61,6 @@ public class JenkinsTriggerOnRunListenerTest {
     final EventDispatcher<BuildServerListener> dispatcher = mock(EventDispatcher.class);
     final JenkinsClientFactory clientFactory = mock(JenkinsClientFactory.class);
     final BuildMirrorStore store = mock(BuildMirrorStore.class);
-    final BuildQueue buildQueue = mock(BuildQueue.class);
     final JenkinsClient client = mock(JenkinsClient.class);
     final SQueuedBuild queued = mock(SQueuedBuild.class);
 
@@ -85,7 +83,7 @@ public class JenkinsTriggerOnRunListenerTest {
       when(client.getControllerIdentity()).thenReturn("http://jenkins");
       when(store.getPendingTriggers()).thenReturn(Collections.emptyList());
 
-      new JenkinsTriggerOnRunListener(dispatcher, clientFactory, store, buildQueue);
+      new JenkinsTriggerOnRunListener(dispatcher, clientFactory, store);
     }
 
     BuildServerListener listener() {
