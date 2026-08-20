@@ -139,8 +139,14 @@ public class BuildMirrorStore {
   }
 
   public synchronized void removePendingTrigger(long teamCityPromotionId) throws IOException {
-    ensureStateIsLoaded();
-    state.removePendingTrigger(pendingTriggerKey(teamCityPromotionId));
+    try {
+      ensureStateIsLoaded();
+      state.removePendingTrigger(pendingTriggerKey(teamCityPromotionId));
+    } catch (IOException e) {
+      LOG.error("Jenkins Bridge could not remove pending TeamCity promotion "
+          + teamCityPromotionId + "; pending state may remain", e);
+      throw new IOException("Could not remove pending trigger for TeamCity promotion " + teamCityPromotionId, e);
+    }
   }
 
   /**
