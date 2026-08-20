@@ -21,6 +21,8 @@ import com.jetbrains.teamcity.jenkinsbridge.settings.JenkinsBridgeSettings;
 import com.jetbrains.teamcity.jenkinsbridge.settings.JenkinsBridgeSettingsProvider;
 import com.jetbrains.teamcity.jenkinsbridge.settings.MirroredJob;
 import com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityBuildMirrorService;
+import jetbrains.buildServer.serverSide.TeamCityNode;
+import jetbrains.buildServer.serverSide.TeamCityNodes;
 import org.jetbrains.annotations.NotNull;
 import org.junit.Test;
 
@@ -45,6 +47,19 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 public class JenkinsBridgePollingServiceTest {
+  @Test
+  public void secondaryNodeIsNotAllowedToPoll() {
+    TeamCityNodes nodes = org.mockito.Mockito.mock(TeamCityNodes.class);
+    TeamCityNode node = org.mockito.Mockito.mock(TeamCityNode.class);
+    org.mockito.Mockito.when(nodes.getCurrentNode()).thenReturn(node);
+    org.mockito.Mockito.when(node.isMainNode()).thenReturn(false);
+
+    JenkinsBridgePollingService service = new JenkinsBridgePollingService(
+        null, null, null, null, null, null, null, nodes, null);
+
+    assertFalse(service.mayPollOnCurrentNode());
+  }
+
   @Test
   public void pendingTriggerExpiryUsesConfiguredLifetime() {
     PendingTrigger trigger = new PendingTrigger(

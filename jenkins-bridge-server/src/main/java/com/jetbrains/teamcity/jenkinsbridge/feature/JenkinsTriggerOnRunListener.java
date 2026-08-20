@@ -17,6 +17,8 @@ import jetbrains.buildServer.serverSide.BuildServerListener;
 import jetbrains.buildServer.serverSide.SBuildFeatureDescriptor;
 import jetbrains.buildServer.serverSide.SBuildType;
 import jetbrains.buildServer.serverSide.SQueuedBuild;
+import jetbrains.buildServer.serverSide.TeamCityNode;
+import jetbrains.buildServer.serverSide.TeamCityNodes;
 import jetbrains.buildServer.util.EventDispatcher;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -38,9 +40,13 @@ public class JenkinsTriggerOnRunListener {
   private final JenkinsClientFactory jenkinsClientFactory;
   private final BuildMirrorStore mirrorStore;
   private final TeamCityQueuedBuildFailureService failureService;
+  private final TeamCityNodes teamCityNodes;
   private final BuildServerListener listener = new BuildServerAdapter() {
     @Override
     public void buildTypeAddedToQueue(SQueuedBuild queued) {
+      if (!mayTriggerOnCurrentNode()) {
+        return;
+      }
       triggerJenkinsSafely(queued);
     }
   };
@@ -49,13 +55,20 @@ public class JenkinsTriggerOnRunListener {
       @NotNull EventDispatcher<BuildServerListener> eventDispatcher,
       @NotNull JenkinsClientFactory jenkinsClientFactory,
       @NotNull BuildMirrorStore mirrorStore,
-      @NotNull TeamCityQueuedBuildFailureService failureService
+      @NotNull TeamCityQueuedBuildFailureService failureService,
+      @NotNull TeamCityNodes teamCityNodes
   ) {
     this.eventDispatcher = eventDispatcher;
     this.jenkinsClientFactory = jenkinsClientFactory;
     this.mirrorStore = mirrorStore;
     this.failureService = failureService;
+    this.teamCityNodes = teamCityNodes;
     this.eventDispatcher.addListener(listener);
+  }
+
+  private boolean mayTriggerOnCurrentNode() {
+    TeamCityNode currentNode = teamCityNodes.getCurrentNode();
+    return currentNode != null && currentNode.isMainNode();
   }
 
   public void dispose() {

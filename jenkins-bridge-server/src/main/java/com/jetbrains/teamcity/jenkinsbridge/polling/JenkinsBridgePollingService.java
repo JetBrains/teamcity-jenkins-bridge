@@ -31,6 +31,8 @@ import com.jetbrains.teamcity.jenkinsbridge.util.Utilities;
 
 import jetbrains.buildServer.serverSide.ProjectManager;
 import jetbrains.buildServer.serverSide.SBuildType;
+import jetbrains.buildServer.serverSide.TeamCityNode;
+import jetbrains.buildServer.serverSide.TeamCityNodes;
 
 import com.intellij.openapi.diagnostic.Logger;
 
@@ -64,6 +66,7 @@ public class JenkinsBridgePollingService {
   private final MirroredJobProvider mirroredJobProvider;
   private final TeamCityRunningBuildLocator buildLocator;
   private final TeamCityQueuedBuildFailureService failureService;
+  private final TeamCityNodes teamCityNodes;
   private final JenkinsBridgeSystemProblemReporter systemProblemReporter;
   private final Object systemProblemLifecycleLock = new Object();
   private final AtomicBoolean started = new AtomicBoolean(false);
@@ -78,6 +81,7 @@ public class JenkinsBridgePollingService {
       MirroredJobProvider mirroredJobProvider,
       TeamCityRunningBuildLocator buildLocator,
       TeamCityQueuedBuildFailureService failureService,
+      TeamCityNodes teamCityNodes,
       JenkinsBridgeSystemProblemReporter systemProblemReporter
   ) {
     this.settingsProvider = settingsProvider;
@@ -88,6 +92,7 @@ public class JenkinsBridgePollingService {
     this.mirroredJobProvider = mirroredJobProvider;
     this.buildLocator = buildLocator;
     this.failureService = failureService;
+    this.teamCityNodes = teamCityNodes;
     this.systemProblemReporter = systemProblemReporter;
   }
 
@@ -136,6 +141,9 @@ public class JenkinsBridgePollingService {
   }
 
   private void pollOnceSafely() {
+    if (!mayPollOnCurrentNode()) {
+      return;
+    }
     try {
       LOG.info("[Jenkins Bridge DEBUG] Poll cycle started");
       pollOnce();
@@ -150,6 +158,11 @@ public class JenkinsBridgePollingService {
       }
       LOG.error("Jenkins Bridge polling failed", e);
     }
+  }
+
+  boolean mayPollOnCurrentNode() {
+    TeamCityNode currentNode = teamCityNodes.getCurrentNode();
+    return currentNode != null && currentNode.isMainNode();
   }
 
   private void pollOnce() throws BridgeHttpException, JenkinsDataException, IOException {
