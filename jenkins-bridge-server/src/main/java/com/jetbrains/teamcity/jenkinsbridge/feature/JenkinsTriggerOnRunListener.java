@@ -10,15 +10,13 @@ import com.jetbrains.teamcity.jenkinsbridge.persistence.BuildMirrorStore;
 import com.jetbrains.teamcity.jenkinsbridge.persistence.PendingTrigger;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsTriggerResponse;
 import com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityBuildParameters;
-import com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityTriggeredBuildFailureHandler;
+import com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityQueuedBuildFailureService;
 import jetbrains.buildServer.serverSide.BuildPromotion;
 import jetbrains.buildServer.serverSide.BuildServerAdapter;
 import jetbrains.buildServer.serverSide.BuildServerListener;
 import jetbrains.buildServer.serverSide.SBuildFeatureDescriptor;
 import jetbrains.buildServer.serverSide.SBuildType;
 import jetbrains.buildServer.serverSide.SQueuedBuild;
-import jetbrains.buildServer.serverSide.TeamCityNode;
-import jetbrains.buildServer.serverSide.TeamCityNodes;
 import jetbrains.buildServer.util.EventDispatcher;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -39,14 +37,10 @@ public class JenkinsTriggerOnRunListener {
   private final EventDispatcher<BuildServerListener> eventDispatcher;
   private final JenkinsClientFactory jenkinsClientFactory;
   private final BuildMirrorStore mirrorStore;
-  private final TeamCityNodes teamCityNodes;
-  private final TeamCityTriggeredBuildFailureHandler failureHandler;
+  private final TeamCityQueuedBuildFailureService failureService;
   private final BuildServerListener listener = new BuildServerAdapter() {
     @Override
     public void buildTypeAddedToQueue(SQueuedBuild queued) {
-      if (!mayTriggerOnCurrentNode()) {
-        return;
-      }
       triggerJenkinsSafely(queued);
     }
   };
@@ -55,20 +49,13 @@ public class JenkinsTriggerOnRunListener {
       @NotNull EventDispatcher<BuildServerListener> eventDispatcher,
       @NotNull JenkinsClientFactory jenkinsClientFactory,
       @NotNull BuildMirrorStore mirrorStore,
-      @NotNull TeamCityNodes teamCityNodes,
-      @NotNull TeamCityTriggeredBuildFailureHandler failureHandler
+      @NotNull TeamCityQueuedBuildFailureService failureService
   ) {
     this.eventDispatcher = eventDispatcher;
     this.jenkinsClientFactory = jenkinsClientFactory;
     this.mirrorStore = mirrorStore;
-    this.teamCityNodes = teamCityNodes;
-    this.failureHandler = failureHandler;
+    this.failureService = failureService;
     this.eventDispatcher.addListener(listener);
-  }
-
-  private boolean mayTriggerOnCurrentNode() {
-    TeamCityNode currentNode = teamCityNodes.getCurrentNode();
-    return currentNode != null && currentNode.isMainNode();
   }
 
   public void dispose() {
@@ -99,7 +86,7 @@ public class JenkinsTriggerOnRunListener {
   private void failAfterJenkinsRequestIfNeeded(TriggerAttemptContext attempt, Throwable originalFailure) {
     long promotionId = attempt.getPromotionId();
     try {
-      failureHandler.fail(promotionId,
+      failureService.failQueuedPromotion(promotionId,
           "Jenkins Bridge called Jenkins, but did not receive a confirmed trigger response. "
               + "The result is uncertain; check Jenkins for an accepted build.");
       mirrorStore.removePendingTrigger(promotionId);
@@ -210,7 +197,7 @@ public class JenkinsTriggerOnRunListener {
     long promotionId = attempt.getPromotionId();
     boolean teamCityBuildFailed = false;
     try {
-      failureHandler.fail(promotionId,
+      failureService.failQueuedPromotion(promotionId,
           "Jenkins Bridge did not call Jenkins because it could not prepare or persist the trigger. "
               + "See the TeamCity build problem for details.");
       teamCityBuildFailed = true;
@@ -292,7 +279,7 @@ public class JenkinsTriggerOnRunListener {
       String reason,
       @Nullable Exception cause
   ) throws IOException {
-    failureHandler.fail(promotionId, reason);
+    failureService.failQueuedPromotion(promotionId, reason);
     mirrorStore.removePendingTrigger(promotionId);
     if (cause == null) {
       LOG.warn(reason);

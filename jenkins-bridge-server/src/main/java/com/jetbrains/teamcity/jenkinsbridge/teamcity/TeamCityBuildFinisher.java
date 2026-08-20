@@ -36,35 +36,13 @@ public class TeamCityBuildFinisher {
     finishRunningBuild(runningBuild, finishTime, jenkinsResult, buildId);
   }
 
-  public void finishBuildAsBridgeFailure(long buildId, Date finishTime, String reason)
-      throws TeamCityBuildFinishException, TeamCityRunningBuildNotFoundException {
-    RunningBuildEx runningBuild = buildLocator.findRunningBuild(buildId);
-    if (runningBuild == null) {
-      return;
-    }
-    finishRunningBuild(runningBuild, finishTime, null, buildId, reason);
-  }
-
   private void finishRunningBuild(
       RunningBuildEx runningBuild, Date finishTime, String jenkinsResult, long buildId)
-      throws TeamCityBuildFinishException {
-    finishRunningBuild(runningBuild, finishTime, jenkinsResult, buildId, null);
-  }
-
-  private void finishRunningBuild(
-      RunningBuildEx runningBuild, Date finishTime, String jenkinsResult, long buildId,
-      String bridgeFailureReason)
       throws TeamCityBuildFinishException {
     try {
       // The verdict (build problem / interruption / status text) must be applied while the build is
       // still running, i.e. before buildFinished(...) finalizes it.
-      if (bridgeFailureReason == null) {
-        applyJenkinsVerdict(runningBuild, jenkinsResult);
-      } else {
-        runningBuild.setCustomStatusText("Jenkins Bridge trigger failed");
-        runningBuild.addBuildProblem(BuildProblemData.createBuildProblem(
-            "jenkinsBridgeTriggerFailure", "jenkinsBridgeTrigger", bridgeFailureReason));
-      }
+      applyJenkinsVerdict(runningBuild, jenkinsResult);
 
       buildAgentMessagesQueue.processMessages(
           runningBuild,

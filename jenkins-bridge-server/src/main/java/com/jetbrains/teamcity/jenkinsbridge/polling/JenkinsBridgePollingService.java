@@ -26,7 +26,7 @@ import com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityRunningBuildLocator
 import com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityBuildFinishException;
 import com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityBuildQueueException;
 import com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityRunningBuildNotFoundException;
-import com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityTriggeredBuildFailureHandler;
+import com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityQueuedBuildFailureService;
 import com.jetbrains.teamcity.jenkinsbridge.util.Utilities;
 
 import jetbrains.buildServer.serverSide.ProjectManager;
@@ -63,7 +63,7 @@ public class JenkinsBridgePollingService {
   private final BuildMirrorStore mirrorStore;
   private final MirroredJobProvider mirroredJobProvider;
   private final TeamCityRunningBuildLocator buildLocator;
-  private final TeamCityTriggeredBuildFailureHandler failureHandler;
+  private final TeamCityQueuedBuildFailureService failureService;
   private final JenkinsBridgeSystemProblemReporter systemProblemReporter;
   private final Object systemProblemLifecycleLock = new Object();
   private final AtomicBoolean started = new AtomicBoolean(false);
@@ -77,7 +77,7 @@ public class JenkinsBridgePollingService {
       BuildMirrorStore mirrorStore,
       MirroredJobProvider mirroredJobProvider,
       TeamCityRunningBuildLocator buildLocator,
-      TeamCityTriggeredBuildFailureHandler failureHandler,
+      TeamCityQueuedBuildFailureService failureService,
       JenkinsBridgeSystemProblemReporter systemProblemReporter
   ) {
     this.settingsProvider = settingsProvider;
@@ -87,7 +87,7 @@ public class JenkinsBridgePollingService {
     this.mirrorStore = mirrorStore;
     this.mirroredJobProvider = mirroredJobProvider;
     this.buildLocator = buildLocator;
-    this.failureHandler = failureHandler;
+    this.failureService = failureService;
     this.systemProblemReporter = systemProblemReporter;
   }
 
@@ -332,12 +332,12 @@ public class JenkinsBridgePollingService {
 
   private boolean failTriggeredPromotion(PendingTrigger pendingTrigger, String reason) {
     try {
-      if (failureHandler == null) {
+      if (failureService == null) {
         LOG.warn("Jenkins Bridge cannot fail TeamCity promotion "
-            + pendingTrigger.getTeamCityPromotionId() + " because the failure handler is unavailable");
+            + pendingTrigger.getTeamCityPromotionId() + " because the failure service is unavailable");
         return false;
       }
-      failureHandler.fail(pendingTrigger.getTeamCityPromotionId(), reason);
+      failureService.failQueuedPromotion(pendingTrigger.getTeamCityPromotionId(), reason);
       return true;
     } catch (RuntimeException e) {
       LOG.warn("Jenkins Bridge failed to mark TeamCity promotion "

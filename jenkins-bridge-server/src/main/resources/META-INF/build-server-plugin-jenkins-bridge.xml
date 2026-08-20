@@ -54,8 +54,8 @@
   <bean id="teamCityBuildFinisher"
         class="com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityBuildFinisher"/>
 
-  <bean id="teamCityTriggeredBuildFailureHandler"
-        class="com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityTriggeredBuildFailureHandler"/>
+  <bean id="teamCityQueuedBuildFailureService"
+        class="com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityQueuedBuildFailureService"/>
 
   <bean id="teamCityPipelineChainService"
         class="com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityPipelineChainService"/>
