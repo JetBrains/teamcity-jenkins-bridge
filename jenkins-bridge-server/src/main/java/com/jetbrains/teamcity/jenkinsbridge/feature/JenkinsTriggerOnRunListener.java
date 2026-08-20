@@ -87,8 +87,9 @@ public class JenkinsTriggerOnRunListener {
     long promotionId = attempt.getPromotionId();
     try {
       failureService.failQueuedPromotion(promotionId,
-          "Jenkins Bridge called Jenkins, but did not receive a confirmed trigger response. "
-              + "The result is uncertain; check Jenkins for an accepted build.");
+          failureReason(originalFailure,
+              "Jenkins Bridge called Jenkins, but did not receive a confirmed trigger response. "
+                  + "The result is uncertain; check Jenkins for an accepted build."));
       mirrorStore.removePendingTrigger(promotionId);
     } catch (IOException | RuntimeException failureHandlingFailure) {
       originalFailure.addSuppressed(failureHandlingFailure);
@@ -136,12 +137,9 @@ public class JenkinsTriggerOnRunListener {
 
     String testFailureMode = testFailureMode(promotion);
     if ("before-jenkins".equals(testFailureMode)) {
-      failTeamCityFirstAttempt(
-          queued,
-          promotion.getId(),
-          "Jenkins Bridge test failure: Jenkins was intentionally not called (before-jenkins).",
-          null);
-      return;
+      throw new JenkinsBridgeTestFailureException(
+          "Test mode 'before-jenkins': intentionally failed before calling Jenkins. "
+              + "The TeamCity promotion should be marked as Failed to start.");
     }
 
     JenkinsJobParameters parameterDefinitions;
@@ -163,12 +161,9 @@ public class JenkinsTriggerOnRunListener {
       attempt.markJenkinsRequestStarted();
       trigger = jenkinsClient.triggerBuildWithQueueId(job, parameters);
       if ("after-jenkins".equals(testFailureMode)) {
-        failTeamCityFirstAttempt(
-            queued,
-            promotion.getId(),
-            "Jenkins Bridge test failure: Jenkins was intentionally called, then the TeamCity trigger was failed (after-jenkins).",
-            null);
-        return;
+        throw new JenkinsBridgeTestFailureException(
+            "Test mode 'after-jenkins': intentionally failed after calling Jenkins. "
+                + "The TeamCity trigger result is treated as uncertain; check Jenkins for the created build.");
       }
     } catch (BridgeHttpException | JenkinsDataException e) {
       failTeamCityFirstAttempt(
@@ -216,8 +211,9 @@ public class JenkinsTriggerOnRunListener {
     boolean teamCityBuildFailed = false;
     try {
       failureService.failQueuedPromotion(promotionId,
-          "Jenkins Bridge did not call Jenkins because it could not prepare or persist the trigger. "
-              + "See the TeamCity build problem for details.");
+          failureReason(originalFailure,
+              "Jenkins Bridge did not call Jenkins because it could not prepare or persist the trigger. "
+                  + "See the TeamCity build problem for details."));
       teamCityBuildFailed = true;
     } catch (RuntimeException cleanupFailure) {
       originalFailure.addSuppressed(cleanupFailure);
@@ -318,6 +314,19 @@ public class JenkinsTriggerOnRunListener {
 
   private static String now() {
     return Instant.now().toString();
+  }
+
+  private static String failureReason(Throwable failure, String defaultReason) {
+    if (failure instanceof JenkinsBridgeTestFailureException && failure.getMessage() != null) {
+      return failure.getMessage();
+    }
+    return defaultReason;
+  }
+
+  private static final class JenkinsBridgeTestFailureException extends RuntimeException {
+    private JenkinsBridgeTestFailureException(String message) {
+      super(message);
+    }
   }
 
   private static class TriggerAttemptContext {
