@@ -59,23 +59,25 @@ public class JenkinsTriggerOnRunListener {
   }
 
   private void triggerJenkinsSafely(SQueuedBuild queued) {
+    TriggerAttemptContext attempt = new TriggerAttemptContext();
     try {
-      triggerJenkins(queued);
+      triggerJenkins(queued, attempt);
     } catch (IOException e) {
+      cleanupBeforeJenkinsRequestIfNeeded(queued, attempt, e);
       LOG.error("Jenkins Bridge could not read or persist trigger state for a TeamCity queued build", e);
     } catch (RuntimeException e) {
-      // Listener isolation only. An unexpected bridge defect is not a known Jenkins trigger
-      // failure, so do not run the trigger-failure cleanup here.
+      cleanupBeforeJenkinsRequestIfNeeded(queued, attempt, e);
       LOG.error("Jenkins Bridge failed to process a TeamCity queued build", e);
     }
   }
 
-  private void triggerJenkins(SQueuedBuild queued) throws IOException {
+  private void triggerJenkins(SQueuedBuild queued, TriggerAttemptContext attempt) throws IOException {
+    BuildPromotion promotion = queued.getBuildPromotion();
+    attempt.setPromotionId(promotion.getId());
     if (shouldSkip(queued) || hasPendingTrigger(queued.getBuildPromotion().getId())) {
       return;
     }
 
-    BuildPromotion promotion = queued.getBuildPromotion();
     SBuildType buildType = promotion.getBuildType();
     if (buildType == null) {
       return;
@@ -93,6 +95,7 @@ public class JenkinsTriggerOnRunListener {
 
     // The Jenkins server is whichever connection this build configuration mirrors from.
     JenkinsClient jenkinsClient = jenkinsClientFactory.forBuildType(buildType);
+    attempt.markCleanupEligible();
 
     if (hasPendingTrigger(promotion.getId())) {
       return;
@@ -120,6 +123,7 @@ public class JenkinsTriggerOnRunListener {
     JenkinsTriggerResponse trigger;
     try {
       Map<String, String> parameters = jenkinsParameters(parameterDefinitions, promotion);
+      attempt.markJenkinsRequestStarted();
       trigger = jenkinsClient.triggerBuildWithQueueId(job, parameters);
     } catch (BridgeHttpException | JenkinsDataException e) {
       abandonTeamCityFirstAttempt(
@@ -150,6 +154,37 @@ public class JenkinsTriggerOnRunListener {
     mirrorStore.savePendingTrigger(pendingTrigger);
     LOG.info("Jenkins Bridge triggered " + job + " from TeamCity promotion " + promotion.getId()
         + " via Jenkins queue item " + trigger.getQueueItemUrl());
+  }
+
+  private void cleanupBeforeJenkinsRequestIfNeeded(
+      SQueuedBuild queued,
+      TriggerAttemptContext attempt,
+      Throwable originalFailure
+  ) {
+    if (!attempt.isCleanupEligible() || attempt.isJenkinsRequestStarted()) {
+      return;
+    }
+
+    long promotionId = attempt.getPromotionId();
+    try {
+      queued.removeFromQueue(
+          null,
+          "Jenkins Bridge could not prepare the Jenkins trigger"
+      );
+    } catch (RuntimeException cleanupFailure) {
+      originalFailure.addSuppressed(cleanupFailure);
+      LOG.error("Jenkins Bridge could not remove the TeamCity promotion " + promotionId, cleanupFailure);
+    }
+
+    try {
+      mirrorStore.removePendingTrigger(promotionId);
+    } catch (IOException | RuntimeException cleanupFailure) {
+      originalFailure.addSuppressed(cleanupFailure);
+      LOG.error(
+          "Jenkins Bridge could not remove the provisional pending trigger for TeamCity promotion "
+              + promotionId,
+          cleanupFailure);
+    }
   }
 
   /**
@@ -223,5 +258,35 @@ public class JenkinsTriggerOnRunListener {
 
   private static String now() {
     return Instant.now().toString();
+  }
+
+  private static class TriggerAttemptContext {
+    private long promotionId = -1L;
+    private boolean cleanupEligible;
+    private boolean jenkinsRequestStarted;
+
+    private void setPromotionId(long promotionId) {
+      this.promotionId = promotionId;
+    }
+
+    private long getPromotionId() {
+      return promotionId;
+    }
+
+    private void markCleanupEligible() {
+      cleanupEligible = true;
+    }
+
+    private boolean isCleanupEligible() {
+      return cleanupEligible;
+    }
+
+    private void markJenkinsRequestStarted() {
+      jenkinsRequestStarted = true;
+    }
+
+    private boolean isJenkinsRequestStarted() {
+      return jenkinsRequestStarted;
+    }
   }
 }
