@@ -138,6 +138,12 @@ public class UtilitiesTest {
     assertEquals("RuntimeException", Utilities.describeException(new RuntimeException()));
   }
 
+  @Test
+  public void describeThrowableIncludesClassNameAndMessage() {
+    assertEquals("AssertionError: failed assertion",
+        Utilities.describeException(new AssertionError("failed assertion")));
+  }
+
   @Deprecated
   @Test
   public void mapPullRequestBranchNameReturnsPullNumber() {
