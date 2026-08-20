@@ -27,7 +27,8 @@ public abstract class TeamCityIntegrationTestBase extends BaseServerTestCase {
     ParameterFactory parameterFactory = myFixture.getSingletonService(ParameterFactory.class);
     myBuildType.addConfigParameter(parameterFactory.createSimpleParameter(
         TeamCityBuildParameters.AGENTLESS_BUILD_PROPERTY, "true"));
-    myBuildType.persist();
+    myBuildType.schedulePersisting("Jenkins Bridge test: configure agentless build")
+        .awaitUninterruptibly();
 
     TeamCityRunningBuildLocator locator = new TeamCityRunningBuildLocator(
         myFixture.getBuildsManager(), myFixture.getBuildPromotionManager(), myProjectManager);

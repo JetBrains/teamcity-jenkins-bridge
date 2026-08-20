@@ -8,6 +8,7 @@ import com.jetbrains.teamcity.jenkinsbridge.persistence.BuildMirror;
 import com.jetbrains.teamcity.jenkinsbridge.vcs.VcsRefType;
 import com.jetbrains.teamcity.jenkinsbridge.vcs.VcsSyncResult;
 import jetbrains.buildServer.serverSide.BuildPromotionEx;
+import jetbrains.buildServer.serverSide.PersistTask;
 import jetbrains.buildServer.serverSide.ReadOnlyEntityException;
 import jetbrains.buildServer.serverSide.ProjectManager;
 import jetbrains.buildServer.serverSide.RepositoryVersion;
@@ -46,6 +47,7 @@ public class TeamCityVcsPublisherTest {
   private final ProjectManager projectManager = mock(ProjectManager.class);
   private final SProject project = mock(SProject.class);
   private final SBuildType buildType = mock(SBuildType.class);
+  private final PersistTask persistTask = mock(PersistTask.class);
   private final TeamCityRunningBuildLocator buildLocator = mock(TeamCityRunningBuildLocator.class);
   private final BuildChainChangesCollector changesCollector = mock(BuildChainChangesCollector.class);
   private final BuildPromotionEx promotion = mock(BuildPromotionEx.class);
@@ -59,6 +61,7 @@ public class TeamCityVcsPublisherTest {
   public void setUp() {
     when(projectManager.findBuildTypeByExternalId(BUILD_TYPE_ID)).thenReturn(buildType);
     when(buildType.getProject()).thenReturn(project);
+    when(buildType.schedulePersisting(anyString())).thenReturn(persistTask);
     when(jenkinsClientFactory.forBuildType(buildType)).thenReturn(jenkinsClient);
     when(project.getVcsRoots()).thenReturn(Collections.emptyList());
     when(buildLocator.findPromotion(PROMOTION_ID)).thenReturn(promotion);
@@ -76,10 +79,10 @@ public class TeamCityVcsPublisherTest {
         mirror(), gitInfo("https://github.com/org/repo.git", "abc123def456", "refs/remotes/origin/main"));
 
     verify(project).createVcsRoot(eq("jetbrains.git"), anyString(), anyMap());
-    verify(created).persist();
+    verify(created).schedulePersisting("Jenkins Bridge: persist newly created Jenkins VCS root");
     verify(buildType).addVcsRoot(created);
     verify(buildType).setCheckoutRules(created, CheckoutRules.DEFAULT);
-    verify(buildType).persist();
+    verify(buildType).schedulePersisting("Jenkins Bridge: persist Jenkins VCS root attachment changes");
     verify(promotion).resetBuildRevisions();
     verify(promotion).setProvidedUpperLimitRevisions(anyMap());
     verify(changesCollector).scheduleCheckingForChangesAndWait(eq(promotion), any(CancelableTaskHolder.class));
@@ -117,7 +120,7 @@ public class TeamCityVcsPublisherTest {
 
     verify(project, never()).createVcsRoot(anyString(), anyString(), anyMap());
     verify(buildType, never()).addVcsRoot(any(SVcsRoot.class));
-    verify(buildType, never()).persist();
+    verify(buildType, never()).schedulePersisting(anyString());
     verify(promotion).setProvidedUpperLimitRevisions(anyMap());
     assertEquals(1, result.getNumberOfAttachedRepositories());
   }
@@ -219,7 +222,7 @@ public class TeamCityVcsPublisherTest {
     VcsSyncResult result = publisher.applyVcsToBuild(
         mirror(), gitInfo("https://github.com/org/repo.git", "abc123", "refs/remotes/origin/main"));
 
-    verify(created).persist();
+    verify(created).schedulePersisting("Jenkins Bridge: persist newly created Jenkins VCS root");
     assertTrue(result.hasErrors());
     assertEquals(0, result.getNumberOfAttachedRepositories());
   }
@@ -244,6 +247,7 @@ public class TeamCityVcsPublisherTest {
     SVcsRoot root = mock(SVcsRoot.class);
     when(root.getVcsName()).thenReturn("jetbrains.git");
     when(root.getProperty("url")).thenReturn(url);
+    when(root.schedulePersisting(anyString())).thenReturn(persistTask);
     return root;
   }
 

@@ -138,7 +138,8 @@ public class TeamCityMirrorOrchestrationIT extends TeamCityIntegrationTestBase {
     ParameterFactory parameters = myFixture.getSingletonService(ParameterFactory.class);
     myBuildType.addConfigParameter(parameters.createSimpleParameter(
         TeamCityBuildParameters.AGENTLESS_BUILD_PROPERTY, "true"));
-    myBuildType.persist();
+    myBuildType.schedulePersisting("Jenkins Bridge test: create build configuration")
+        .awaitUninterruptibly();
     TeamCityRunningBuildLocator locator = new TeamCityRunningBuildLocator(
         myFixture.getBuildsManager(), myFixture.getBuildPromotionManager(), myProjectManager);
     TeamCityBuildQueuer queuer = new TeamCityBuildQueuer(

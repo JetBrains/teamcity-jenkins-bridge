@@ -6,6 +6,7 @@ import com.jetbrains.teamcity.jenkinsbridge.http.BridgeHttpException;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsJobParameters;
 import jetbrains.buildServer.parameters.ParametersProvider;
 import jetbrains.buildServer.serverSide.Parameter;
+import jetbrains.buildServer.serverSide.PersistTask;
 import jetbrains.buildServer.serverSide.ProjectManager;
 import jetbrains.buildServer.serverSide.SBuildFeatureDescriptor;
 import jetbrains.buildServer.serverSide.SBuildType;
@@ -36,6 +37,7 @@ public class JenkinsJobImporterTest {
   private final JenkinsClientFactory jenkinsClientFactory = mock(JenkinsClientFactory.class);
   private final SProject targetProject = mock(SProject.class);
   private final SBuildType buildType = mock(SBuildType.class);
+  private final PersistTask persistTask = mock(PersistTask.class);
 
   private final JenkinsJobImporter importer =
       new JenkinsJobImporter(projectManager, parameterFactory, jenkinsClientFactory);
@@ -47,6 +49,7 @@ public class JenkinsJobImporterTest {
     when(targetProject.getExternalId()).thenReturn("TeamA");
     when(targetProject.getBuildTypes()).thenReturn(Collections.emptyList());
     when(targetProject.createBuildType(anyString(), anyString())).thenReturn(buildType);
+    when(buildType.schedulePersisting(anyString())).thenReturn(persistTask);
     when(jenkinsClient.jobUrl(anyString())).thenReturn("http://jenkins/job/x/");
     when(jenkinsClient.getJobParameters(anyString())).thenReturn(JenkinsJobParameters.empty());
     when(parameterFactory.createSimpleParameter(anyString(), anyString()))
@@ -86,7 +89,7 @@ public class JenkinsJobImporterTest {
     assertEquals("pipeline", result.getSkipped().getFirst().jenkinsJob);
     assertEquals("already imported", result.getSkipped().getFirst().detail);
     verify(jenkinsClient, never()).getJobParameters("pipeline");
-    verify(existing, never()).persist();
+    verify(existing, never()).schedulePersisting(anyString());
   }
 
   @Test
