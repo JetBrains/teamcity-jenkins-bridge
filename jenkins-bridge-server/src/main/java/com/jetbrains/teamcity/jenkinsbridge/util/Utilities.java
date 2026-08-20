@@ -83,7 +83,7 @@ public final class Utilities {
   }
 
   @NotNull
-  public static String describeException(@NotNull Exception e) {
+  public static String describeException(@NotNull Throwable e) {
     return e.getClass().getSimpleName() + (e.getMessage() == null ? "" : ": " + e.getMessage());
   }
 

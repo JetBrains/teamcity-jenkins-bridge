@@ -64,6 +64,21 @@ Run from the repository root:
 mvn package
 ```
 
+### Pre-commit gate
+
+Enable the repository-local hook once per checkout:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+The hook checks staged whitespace and conflict markers, then runs
+`mvn -pl jenkins-bridge-server test-compile` with compiler warnings enabled. It deliberately
+targets the Java server module: the root `build` module only assembles the plugin archive and
+requires the separate Maven `replacer` plugin setup. Archive packaging remains a separate
+`mvn package` check. The hook also runs an optional `gitleaks` staged secret scan when `gitleaks`
+is installed. Set `JENKINS_BRIDGE_MAVEN_REPO` when Maven should use an isolated local repository.
+
 The default TeamCity API version is `2026.3-SNAPSHOT`, and Maven looks for its
 artifacts under `${user.home}/.m2/repository/TeamCity`. Both values are
 configurable, so plugin developers can build against a published TeamCity
