@@ -26,14 +26,13 @@ import com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityRunningBuildLocator
 import com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityBuildFinishException;
 import com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityBuildQueueException;
 import com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityRunningBuildNotFoundException;
+import com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityTriggeredBuildFailureHandler;
 import com.jetbrains.teamcity.jenkinsbridge.util.Utilities;
 
 import jetbrains.buildServer.serverSide.ProjectManager;
 import jetbrains.buildServer.serverSide.SBuildType;
 
 import com.intellij.openapi.diagnostic.Logger;
-import jetbrains.buildServer.serverSide.BuildPromotion;
-import jetbrains.buildServer.serverSide.SQueuedBuild;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -64,6 +63,7 @@ public class JenkinsBridgePollingService {
   private final BuildMirrorStore mirrorStore;
   private final MirroredJobProvider mirroredJobProvider;
   private final TeamCityRunningBuildLocator buildLocator;
+  private final TeamCityTriggeredBuildFailureHandler failureHandler;
   private final JenkinsBridgeSystemProblemReporter systemProblemReporter;
   private final Object systemProblemLifecycleLock = new Object();
   private final AtomicBoolean started = new AtomicBoolean(false);
@@ -77,6 +77,7 @@ public class JenkinsBridgePollingService {
       BuildMirrorStore mirrorStore,
       MirroredJobProvider mirroredJobProvider,
       TeamCityRunningBuildLocator buildLocator,
+      TeamCityTriggeredBuildFailureHandler failureHandler,
       JenkinsBridgeSystemProblemReporter systemProblemReporter
   ) {
     this.settingsProvider = settingsProvider;
@@ -86,6 +87,7 @@ public class JenkinsBridgePollingService {
     this.mirrorStore = mirrorStore;
     this.mirroredJobProvider = mirroredJobProvider;
     this.buildLocator = buildLocator;
+    this.failureHandler = failureHandler;
     this.systemProblemReporter = systemProblemReporter;
   }
 
@@ -184,9 +186,10 @@ public class JenkinsBridgePollingService {
     for (PendingTrigger pendingTrigger : pendingTriggers) {
       try {
         if (isPendingTriggerExpired(pendingTrigger, settings.getPendingTriggerTimeoutMinutes(), Instant.now())) {
-          if (cancelQueuedPromotion(pendingTrigger,
-              "Jenkins Bridge pending trigger expired after "
-                  + settings.getPendingTriggerTimeoutMinutes() + " minute(s)")) {
+          if (failTriggeredPromotion(pendingTrigger,
+              "Jenkins Bridge called Jenkins, but the trigger could not be confirmed within "
+                  + settings.getPendingTriggerTimeoutMinutes() + " minute(s). "
+                  + "The result is uncertain; check Jenkins for an accepted build.")) {
             mirrorStore.removePendingTrigger(pendingTrigger.getTeamCityPromotionId());
             LOG.warn("Jenkins Bridge expired pending TeamCity promotion "
                 + pendingTrigger.getTeamCityPromotionId());
@@ -219,7 +222,8 @@ public class JenkinsBridgePollingService {
         }
 
         if (resolution.isCancelled()) {
-          cancelQueuedPromotion(pendingTrigger, "Jenkins queue item was cancelled");
+          failTriggeredPromotion(pendingTrigger,
+              "Jenkins accepted the trigger, but its queue item was cancelled before a build was created.");
           mirrorStore.removePendingTrigger(pendingTrigger.getTeamCityPromotionId());
           continue;
         }
@@ -297,7 +301,9 @@ public class JenkinsBridgePollingService {
         LOG.warn("Jenkins Bridge refused queue-item binding for TeamCity promotion "
             + pendingTrigger.getTeamCityPromotionId() + ": queue id changed from "
             + pendingTrigger.getJenkinsQueueId() + " to " + buildInfo.getQueueId());
-        cancelQueuedPromotion(pendingTrigger, "Jenkins queue id did not match the triggered run");
+        failTriggeredPromotion(pendingTrigger,
+            "Jenkins was called, but the returned build did not match the trigger queue item. "
+                + "The result is uncertain; check Jenkins.");
         mirrorStore.removePendingTrigger(pendingTrigger.getTeamCityPromotionId());
         return;
       }
@@ -309,7 +315,9 @@ public class JenkinsBridgePollingService {
         buildInfo);
     if (mirror.getTeamCityBuildId() != null
         && mirror.getTeamCityBuildId() != pendingTrigger.getTeamCityPromotionId()) {
-        cancelQueuedPromotion(pendingTrigger, "Jenkins build is already owned by another TeamCity promotion");
+        failTriggeredPromotion(pendingTrigger,
+            "Jenkins was called, but the resulting build is already associated with another TeamCity build. "
+                + "Check Jenkins and the other TeamCity build.");
         mirrorStore.removePendingTrigger(pendingTrigger.getTeamCityPromotionId());
         return;
       }
@@ -322,26 +330,17 @@ public class JenkinsBridgePollingService {
         + " to Jenkins build " + mirror.getJenkinsBuildKey());
   }
 
-  private boolean cancelQueuedPromotion(PendingTrigger pendingTrigger, String comment) {
+  private boolean failTriggeredPromotion(PendingTrigger pendingTrigger, String reason) {
     try {
-      if (buildLocator == null) {
-        LOG.warn("Jenkins Bridge cannot cancel TeamCity promotion "
-            + pendingTrigger.getTeamCityPromotionId()
-            + " because TeamCityRunningBuildLocator is not available");
+      if (failureHandler == null) {
+        LOG.warn("Jenkins Bridge cannot fail TeamCity promotion "
+            + pendingTrigger.getTeamCityPromotionId() + " because the failure handler is unavailable");
         return false;
       }
-      BuildPromotion promotion = buildLocator.findPromotion(pendingTrigger.getTeamCityPromotionId());
-      if (promotion == null) {
-        return false;
-      }
-      SQueuedBuild queuedBuild = promotion.getQueuedBuild();
-      if (queuedBuild != null) {
-        queuedBuild.removeFromQueue(null, comment);
-        return true;
-      }
-      return false;
+      failureHandler.fail(pendingTrigger.getTeamCityPromotionId(), reason);
+      return true;
     } catch (RuntimeException e) {
-      LOG.warn("Jenkins Bridge failed to cancel TeamCity promotion "
+      LOG.warn("Jenkins Bridge failed to mark TeamCity promotion "
           + pendingTrigger.getTeamCityPromotionId(), e);
       return false;
     }
@@ -589,7 +588,9 @@ public class JenkinsBridgePollingService {
       if (pending != null) {
         if (mirror.getTeamCityBuildId() != null
             && mirror.getTeamCityBuildId() != pending.getTeamCityPromotionId()) {
-          cancelQueuedPromotion(pending, "Jenkins build is already owned by another TeamCity promotion");
+          failTriggeredPromotion(pending,
+              "Jenkins was called, but the resulting build is already associated with another TeamCity build. "
+                  + "Check Jenkins and the other TeamCity build.");
           mirrorStore.removePendingTrigger(pending.getTeamCityPromotionId());
           LOG.warn("Jenkins Bridge retained existing owner for " + mirror.getJenkinsBuildKey()
               + " instead of replacing TeamCity promotion " + pending.getTeamCityPromotionId());

@@ -41,7 +41,7 @@ public class TeamCitySettingsIT extends BaseServerTestCase {
     assertEquals(31, settings.getPendingTriggerTimeoutMinutes());
 
     JenkinsBridgePollingService pollingService = new JenkinsBridgePollingService(
-        new JenkinsBridgeSettingsProvider(), null, null, null, null, null, null, null);
+        new JenkinsBridgeSettingsProvider(), null, null, null, null, null, null, null, null);
     pollingService.start();
 
     assertFalse(readStarted(pollingService));

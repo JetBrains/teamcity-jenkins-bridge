@@ -461,6 +461,7 @@ public class JenkinsBridgePollingServiceTest {
         store,
         new MirroredJobProvider(null),
         null,
+        null,
         reporter);
   }
 
