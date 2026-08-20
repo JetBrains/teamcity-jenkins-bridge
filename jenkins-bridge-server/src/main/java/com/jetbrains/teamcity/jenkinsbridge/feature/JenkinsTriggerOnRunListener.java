@@ -10,6 +10,7 @@ import com.jetbrains.teamcity.jenkinsbridge.persistence.BuildMirrorStore;
 import com.jetbrains.teamcity.jenkinsbridge.persistence.PendingTrigger;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsTriggerResponse;
 import com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityBuildParameters;
+import com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityQueuedBuildFailureService;
 import jetbrains.buildServer.serverSide.BuildPromotion;
 import jetbrains.buildServer.serverSide.BuildServerAdapter;
 import jetbrains.buildServer.serverSide.BuildServerListener;
@@ -36,6 +37,7 @@ public class JenkinsTriggerOnRunListener {
   private final EventDispatcher<BuildServerListener> eventDispatcher;
   private final JenkinsClientFactory jenkinsClientFactory;
   private final BuildMirrorStore mirrorStore;
+  private final TeamCityQueuedBuildFailureService failureService;
   private final BuildServerListener listener = new BuildServerAdapter() {
     @Override
     public void buildTypeAddedToQueue(SQueuedBuild queued) {
@@ -46,11 +48,13 @@ public class JenkinsTriggerOnRunListener {
   public JenkinsTriggerOnRunListener(
       @NotNull EventDispatcher<BuildServerListener> eventDispatcher,
       @NotNull JenkinsClientFactory jenkinsClientFactory,
-      @NotNull BuildMirrorStore mirrorStore
+      @NotNull BuildMirrorStore mirrorStore,
+      @NotNull TeamCityQueuedBuildFailureService failureService
   ) {
     this.eventDispatcher = eventDispatcher;
     this.jenkinsClientFactory = jenkinsClientFactory;
     this.mirrorStore = mirrorStore;
+    this.failureService = failureService;
     this.eventDispatcher.addListener(listener);
   }
 
@@ -63,11 +67,33 @@ public class JenkinsTriggerOnRunListener {
     try {
       triggerJenkins(queued, attempt);
     } catch (IOException e) {
-      cleanupBeforeJenkinsRequestIfNeeded(queued, attempt, e);
+      if (attempt.isJenkinsRequestStarted()) {
+        failAfterJenkinsRequestIfNeeded(attempt, e);
+      } else {
+        cleanupBeforeJenkinsRequestIfNeeded(queued, attempt, e);
+      }
       LOG.error("Jenkins Bridge could not read or persist trigger state for a TeamCity queued build", e);
     } catch (RuntimeException e) {
-      cleanupBeforeJenkinsRequestIfNeeded(queued, attempt, e);
+      if (attempt.isJenkinsRequestStarted()) {
+        failAfterJenkinsRequestIfNeeded(attempt, e);
+      } else {
+        cleanupBeforeJenkinsRequestIfNeeded(queued, attempt, e);
+      }
       LOG.error("Jenkins Bridge failed to process a TeamCity queued build", e);
+    }
+  }
+
+  private void failAfterJenkinsRequestIfNeeded(TriggerAttemptContext attempt, Throwable originalFailure) {
+    long promotionId = attempt.getPromotionId();
+    try {
+      failureService.failQueuedPromotion(promotionId,
+          "Jenkins Bridge called Jenkins, but did not receive a confirmed trigger response. "
+              + "The result is uncertain; check Jenkins for an accepted build.");
+      mirrorStore.removePendingTrigger(promotionId);
+    } catch (IOException | RuntimeException failureHandlingFailure) {
+      originalFailure.addSuppressed(failureHandlingFailure);
+      LOG.error("Jenkins Bridge could not record the uncertain Jenkins trigger for TeamCity promotion "
+          + promotionId, failureHandlingFailure);
     }
   }
 
@@ -94,16 +120,16 @@ public class JenkinsTriggerOnRunListener {
     }
 
     // The Jenkins server is whichever connection this build configuration mirrors from.
-    JenkinsClient jenkinsClient = jenkinsClientFactory.forBuildType(buildType);
     attempt.markCleanupEligible();
+    JenkinsClient jenkinsClient = jenkinsClientFactory.forBuildType(buildType);
 
     if (hasPendingTrigger(promotion.getId())) {
       return;
     }
     String controller = jenkinsClient.getControllerIdentity();
-    // Persist an unresolved intent before POST. If TeamCity dies after Jenkins accepts the
-    // request but before the queue id can be saved, startup will find this record and cancel the
-    // original TeamCity promotion; Jenkins discovery will then import the accepted run normally.
+    // Persist an unresolved intent before POST. If TeamCity dies around the request boundary,
+    // startup can find this record and either bind the accepted Jenkins run or fail the TeamCity
+    // promotion with an explicit uncertain-trigger reason.
     PendingTrigger provisional = new PendingTrigger(
         promotion.getId(), job, buildType.getExternalId(), "", -1L, controller, now());
     mirrorStore.savePendingTrigger(provisional);
@@ -112,10 +138,11 @@ public class JenkinsTriggerOnRunListener {
     try {
       parameterDefinitions = jenkinsClient.getJobParameters(job);
     } catch (BridgeHttpException | JenkinsDataException e) {
-      abandonTeamCityFirstAttempt(
+      failTeamCityFirstAttempt(
           queued,
           promotion.getId(),
-          "Jenkins Bridge could not load Jenkins parameters; abandoning the TeamCity-first trigger",
+          "Jenkins Bridge did not call Jenkins because Jenkins parameters could not be loaded. "
+              + "See this failed TeamCity build for details.",
           e);
       return;
     }
@@ -126,19 +153,21 @@ public class JenkinsTriggerOnRunListener {
       attempt.markJenkinsRequestStarted();
       trigger = jenkinsClient.triggerBuildWithQueueId(job, parameters);
     } catch (BridgeHttpException | JenkinsDataException e) {
-      abandonTeamCityFirstAttempt(
+      failTeamCityFirstAttempt(
           queued,
           promotion.getId(),
-          "Jenkins Bridge could not confirm the Jenkins trigger; regular polling will discover any accepted build",
+          "Jenkins Bridge called Jenkins but did not receive a confirmed trigger response. "
+              + "This build is failed because the result is uncertain; check Jenkins for an accepted build.",
           e);
       return;
     }
 
     if (trigger.getQueueId() < 0 || trigger.getQueueItemUrl().trim().isEmpty()) {
-      abandonTeamCityFirstAttempt(
+      failTeamCityFirstAttempt(
           queued,
           promotion.getId(),
-          "Jenkins Bridge could not correlate the Jenkins trigger; regular polling will discover any accepted build",
+          "Jenkins Bridge called Jenkins but could not correlate the trigger response. "
+              + "This build is failed because the result is uncertain; check Jenkins for an accepted build.",
           null);
       return;
     }
@@ -166,24 +195,27 @@ public class JenkinsTriggerOnRunListener {
     }
 
     long promotionId = attempt.getPromotionId();
+    boolean teamCityBuildFailed = false;
     try {
-      queued.removeFromQueue(
-          null,
-          "Jenkins Bridge could not prepare the Jenkins trigger"
-      );
+      failureService.failQueuedPromotion(promotionId,
+          "Jenkins Bridge did not call Jenkins because it could not prepare or persist the trigger. "
+              + "See the TeamCity build problem for details.");
+      teamCityBuildFailed = true;
     } catch (RuntimeException cleanupFailure) {
       originalFailure.addSuppressed(cleanupFailure);
-      LOG.error("Jenkins Bridge could not remove the TeamCity promotion " + promotionId, cleanupFailure);
+      LOG.error("Jenkins Bridge could not fail the TeamCity promotion " + promotionId, cleanupFailure);
     }
 
-    try {
-      mirrorStore.removePendingTrigger(promotionId);
-    } catch (IOException | RuntimeException cleanupFailure) {
-      originalFailure.addSuppressed(cleanupFailure);
-      LOG.error(
-          "Jenkins Bridge could not remove the provisional pending trigger for TeamCity promotion "
-              + promotionId,
-          cleanupFailure);
+    if (teamCityBuildFailed) {
+      try {
+        mirrorStore.removePendingTrigger(promotionId);
+      } catch (IOException | RuntimeException cleanupFailure) {
+        originalFailure.addSuppressed(cleanupFailure);
+        LOG.error(
+            "Jenkins Bridge could not remove the provisional pending trigger for TeamCity promotion "
+                + promotionId,
+            cleanupFailure);
+      }
     }
   }
 
@@ -237,17 +269,17 @@ public class JenkinsTriggerOnRunListener {
   }
 
   /**
-   * Stops the TeamCity-first attempt after it cannot be correlated to a Jenkins queue item. Any
-   * Jenkins build that may have been accepted is intentionally left for the normal Jenkins poller
-   * to discover and mirror.
+   * Fails the TeamCity build after a trigger attempt cannot be completed. The promotion is kept as
+   * a real build so the UI clearly records whether Jenkins was called and whether the response was
+   * confirmed.
    */
-  private void abandonTeamCityFirstAttempt(
+  private void failTeamCityFirstAttempt(
       SQueuedBuild queued,
       long promotionId,
       String reason,
       @Nullable Exception cause
   ) throws IOException {
-    queued.removeFromQueue(null, reason);
+    failureService.failQueuedPromotion(promotionId, reason);
     mirrorStore.removePendingTrigger(promotionId);
     if (cause == null) {
       LOG.warn(reason);

@@ -5,6 +5,7 @@ import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClientFactory;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsJobParameters;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsTriggerResponse;
 import com.jetbrains.teamcity.jenkinsbridge.persistence.BuildMirrorStore;
+import com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityQueuedBuildFailureService;
 import jetbrains.buildServer.serverSide.BuildPromotion;
 import jetbrains.buildServer.serverSide.BuildServerListener;
 import jetbrains.buildServer.serverSide.SBuildFeatureDescriptor;
@@ -25,6 +26,7 @@ import java.util.concurrent.Future;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.contains;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
@@ -45,13 +47,12 @@ public class JenkinsTriggerOnRunListenerTest {
 
     fixture.listener().buildTypeAddedToQueue(fixture.queued);
 
-    InOrder order = inOrder(fixture.queued, fixture.store);
-    order.verify(fixture.queued).removeFromQueue(isNull(), contains("could not correlate"));
-    order.verify(fixture.store).removePendingTrigger(42L);
+    verify(fixture.failureService).failQueuedPromotion(eq(42L), contains("could not correlate"));
+    verify(fixture.store).removePendingTrigger(42L);
   }
 
   @Test
-  public void runtimeFailureDoesNotRunTriggerFailureCleanup() throws Exception {
+  public void runtimeFailureAfterJenkinsRequestFailsTeamCityBuildAsUncertain() throws Exception {
     Fixture fixture = new Fixture();
     when(fixture.client.getJobParameters("job")).thenReturn(JenkinsJobParameters.empty());
     when(fixture.client.triggerBuildWithQueueId(any(), any()))
@@ -60,7 +61,8 @@ public class JenkinsTriggerOnRunListenerTest {
     fixture.listener().buildTypeAddedToQueue(fixture.queued);
 
     verify(fixture.store).savePendingTrigger(any());
-    verify(fixture.store, never()).removePendingTrigger(anyLong());
+    verify(fixture.failureService).failQueuedPromotion(eq(42L), contains("called Jenkins"));
+    verify(fixture.store).removePendingTrigger(42L);
     verify(fixture.queued, never()).removeFromQueue(any(), any());
   }
 
@@ -72,7 +74,7 @@ public class JenkinsTriggerOnRunListenerTest {
 
     fixture.listener().buildTypeAddedToQueue(fixture.queued);
 
-    verify(fixture.queued).removeFromQueue(isNull(), contains("could not prepare"));
+    verify(fixture.failureService).failQueuedPromotion(eq(42L), contains("did not call Jenkins"));
     verify(fixture.store).removePendingTrigger(42L);
   }
 
@@ -84,7 +86,7 @@ public class JenkinsTriggerOnRunListenerTest {
 
     fixture.listener().buildTypeAddedToQueue(fixture.queued);
 
-    verify(fixture.queued).removeFromQueue(isNull(), contains("could not prepare"));
+    verify(fixture.failureService).failQueuedPromotion(eq(42L), contains("did not call Jenkins"));
     verify(fixture.store).removePendingTrigger(42L);
   }
 
@@ -140,6 +142,7 @@ public class JenkinsTriggerOnRunListenerTest {
     final BuildMirrorStore store = mock(BuildMirrorStore.class);
     final JenkinsClient client = mock(JenkinsClient.class);
     final SQueuedBuild queued = mock(SQueuedBuild.class);
+    final TeamCityQueuedBuildFailureService failureService = mock(TeamCityQueuedBuildFailureService.class);
 
     Fixture() throws Exception {
       this(42L, "job");
@@ -163,8 +166,8 @@ public class JenkinsTriggerOnRunListenerTest {
       when(clientFactory.forBuildType(buildType)).thenReturn(client);
       when(client.getControllerIdentity()).thenReturn("http://jenkins");
       when(store.getPendingTriggers()).thenReturn(Collections.emptyList());
-
-      new JenkinsTriggerOnRunListener(dispatcher, clientFactory, store);
+      new JenkinsTriggerOnRunListener(
+          dispatcher, clientFactory, store, failureService);
     }
 
     BuildServerListener listener() {

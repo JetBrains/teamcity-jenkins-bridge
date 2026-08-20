@@ -191,7 +191,7 @@ public class TeamCityMirrorOrchestrationIT extends TeamCityIntegrationTestBase {
   private static void invokeSyncBuild(TeamCityBuildMirrorService service, BuildMirrorStore mirrorStore,
       JenkinsScenarioClient jenkins, BuildMirror mirror, JenkinsBuildInfo info) throws Exception {
     JenkinsBridgePollingService polling = new JenkinsBridgePollingService(
-        null, null, null, service, mirrorStore, null, null, null);
+        null, null, null, service, mirrorStore, null, null, null, null);
     Method method = JenkinsBridgePollingService.class.getDeclaredMethod(
         "syncBuild", com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClient.class,
         String.class, BuildMirror.class, JenkinsBuildInfo.class);
