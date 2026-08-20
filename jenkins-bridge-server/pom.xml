@@ -10,10 +10,22 @@
   <packaging>jar</packaging>
   <properties>
     <mockito.version>5.23.0</mockito.version>
-    <!-- BaseServerTestCase still installs a Security Manager during fixture cleanup. Java 21
-         permits that legacy operation only when this forked-test-JVM flag is present. -->
-    <teamcity.test.argLine>-Djava.security.manager=allow</teamcity.test.argLine>
+    <!-- The Java 21 profile below enables the legacy TeamCity fixture Security Manager flag. -->
+    <teamcity.test.argLine></teamcity.test.argLine>
   </properties>
+
+  <profiles>
+    <profile>
+      <id>teamcity-fixture-java21</id>
+      <activation>
+        <jdk>[21,22)</jdk>
+      </activation>
+      <properties>
+        <!-- BaseServerTestCase still installs a Security Manager during fixture cleanup. -->
+        <teamcity.test.argLine>-Djava.security.manager=allow</teamcity.test.argLine>
+      </properties>
+    </profile>
+  </profiles>
 
   <dependencies>
 
