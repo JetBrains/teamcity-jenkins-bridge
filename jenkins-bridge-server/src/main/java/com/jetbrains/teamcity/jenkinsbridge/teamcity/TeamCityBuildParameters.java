@@ -3,11 +3,9 @@ package com.jetbrains.teamcity.jenkinsbridge.teamcity;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsPullRequestInfo;
 import org.jetbrains.annotations.NotNull;
 
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -53,14 +51,7 @@ public class TeamCityBuildParameters {
         ? Collections.<String, String>emptyMap()
         : jenkinsParameters;
     Map<String, String> visibleJenkinsParameters = withoutBridgeInternalParameters(safeJenkinsParameters);
-    List<String> collisions = collisions(result.keySet(), visibleJenkinsParameters.keySet());
-    if (!collisions.isEmpty()) {
-      throw new IllegalStateException(
-          "Jenkins build parameter name(s) collide with Jenkins Bridge parameters: "
-              + join(collisions));
-    }
-
-    result.putAll(visibleJenkinsParameters);
+    result.putAll(withoutReservedParameters(visibleJenkinsParameters, reservedParameterNames(bridgeParameters)));
     return result;
   }
 
@@ -68,6 +59,19 @@ public class TeamCityBuildParameters {
     Map<String, String> result = new LinkedHashMap<String, String>();
     for (Map.Entry<String, String> entry : parameters.entrySet()) {
       if (!entry.getKey().startsWith(BRIDGE_PARAMETER_PREFIX)) {
+        result.put(entry.getKey(), entry.getValue());
+      }
+    }
+    return result;
+  }
+
+  private static Map<String, String> withoutReservedParameters(
+      Map<String, String> parameters,
+      Set<String> reservedNames
+  ) {
+    Map<String, String> result = new LinkedHashMap<String, String>();
+    for (Map.Entry<String, String> entry : parameters.entrySet()) {
+      if (!reservedNames.contains(entry.getKey())) {
         result.put(entry.getKey(), entry.getValue());
       }
     }
@@ -83,30 +87,4 @@ public class TeamCityBuildParameters {
     return names;
   }
 
-  private static List<String> collisions(Set<String> bridgeNames, Set<String> jenkinsNames) {
-    Set<String> reserved = new LinkedHashSet<String>();
-    reserved.add(AGENTLESS_BUILD_PROPERTY);
-    if (bridgeNames != null) {
-      reserved.addAll(bridgeNames);
-    }
-    List<String> collisions = new ArrayList<String>();
-    for (String name : jenkinsNames) {
-      if (reserved.contains(name)) {
-        collisions.add(name);
-      }
-    }
-    Collections.sort(collisions);
-    return collisions;
-  }
-
-  private static String join(List<String> values) {
-    StringBuilder builder = new StringBuilder();
-    for (String value : values) {
-      if (builder.length() > 0) {
-        builder.append(", ");
-      }
-      builder.append(value);
-    }
-    return builder.toString();
-  }
 }

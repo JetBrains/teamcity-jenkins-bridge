@@ -8,8 +8,6 @@ import java.util.Map;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
 
 public class TeamCityBuildParametersTest {
   @Test
@@ -32,19 +30,16 @@ public class TeamCityBuildParametersTest {
   }
 
   @Test
-  public void failsWhenJenkinsParameterCollidesWithBridgeParameter() {
+  public void ignoresJenkinsParameterThatCollidesWithBridgeParameter() {
     Map<String, String> bridge = new LinkedHashMap<String, String>();
     bridge.put("jenkins.build.key", "job#1");
 
     Map<String, String> jenkins = new LinkedHashMap<String, String>();
     jenkins.put("jenkins.build.key", "evil");
 
-    try {
-      TeamCityBuildParameters.mergeWithJenkinsParameters(bridge, jenkins);
-      fail("Expected collision to fail");
-    } catch (IllegalStateException e) {
-      assertTrue(e.getMessage().contains("jenkins.build.key"));
-    }
+    Map<String, String> merged = TeamCityBuildParameters.mergeWithJenkinsParameters(bridge, jenkins);
+
+    assertEquals("job#1", merged.get("jenkins.build.key"));
   }
 
   @Test
@@ -59,18 +54,14 @@ public class TeamCityBuildParametersTest {
   }
 
   @Test
-  public void failsWhenJenkinsParameterCollidesWithAgentlessParameter() {
+  public void ignoresJenkinsParameterThatCollidesWithAgentlessParameter() {
     Map<String, String> jenkins = new LinkedHashMap<String, String>();
     jenkins.put(TeamCityBuildParameters.AGENTLESS_BUILD_PROPERTY, "false");
 
-    try {
-      TeamCityBuildParameters.mergeWithJenkinsParameters(
-          Collections.<String, String>emptyMap(),
-          jenkins);
-      fail("Expected collision to fail");
-    } catch (IllegalStateException e) {
-      assertTrue(e.getMessage().contains(TeamCityBuildParameters.AGENTLESS_BUILD_PROPERTY));
-    }
+    Map<String, String> merged = TeamCityBuildParameters.mergeWithJenkinsParameters(
+        Collections.<String, String>emptyMap(), jenkins);
+
+    assertFalse(merged.containsKey(TeamCityBuildParameters.AGENTLESS_BUILD_PROPERTY));
   }
 
   @Test
