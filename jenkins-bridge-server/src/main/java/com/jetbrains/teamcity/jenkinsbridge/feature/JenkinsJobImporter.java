@@ -5,6 +5,8 @@ import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClient;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClientFactory;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsDataException;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsJob;
+import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsJobParameters;
+import com.jetbrains.teamcity.jenkinsbridge.persistence.BuildMirrorStore;
 import com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityBuildConfigCreator;
 import com.jetbrains.teamcity.jenkinsbridge.util.TeamCityUiSettings;
 import jetbrains.buildServer.serverSide.MultiNodeLocks;
@@ -44,24 +46,24 @@ import static com.jetbrains.teamcity.jenkinsbridge.util.Utilities.describeExcept
 public class JenkinsJobImporter {
   private static final Logger LOG = Logger.getInstance(JenkinsJobImporter.class.getName());
   private final ProjectManager projectManager;
+  private final ParameterFactory parameterFactory;
   private final JenkinsClientFactory jenkinsClientFactory;
   private final TeamCityBuildConfigCreator buildConfigCreator;
   private final MultiNodeLocks multiNodeLocks;
+  private final BuildMirrorStore mirrorStore;
 
   private static final String IMPORT_LOCK_TYPE = "jenkinsBridgeImport";
   private static final long IMPORT_LOCK_TIMEOUT_MILLIS = 1_000L;
 
   public JenkinsJobImporter(ProjectManager projectManager, ParameterFactory parameterFactory,
-                            JenkinsClientFactory jenkinsClientFactory) {
-    this(projectManager, parameterFactory, jenkinsClientFactory, null);
-  }
-
-  public JenkinsJobImporter(ProjectManager projectManager, ParameterFactory parameterFactory,
-                            JenkinsClientFactory jenkinsClientFactory, MultiNodeLocks multiNodeLocks) {
+                            JenkinsClientFactory jenkinsClientFactory, MultiNodeLocks multiNodeLocks,
+                            BuildMirrorStore mirrorStore) {
     this.projectManager = projectManager;
+    this.parameterFactory = parameterFactory;
     this.jenkinsClientFactory = jenkinsClientFactory;
     this.buildConfigCreator = new TeamCityBuildConfigCreator(parameterFactory);
     this.multiNodeLocks = multiNodeLocks;
+    this.mirrorStore = mirrorStore;
   }
 
   /**
@@ -184,6 +186,7 @@ public class JenkinsJobImporter {
     SBuildType buildType = buildConfigCreator.createMirrorBuildType(
         project, externalId, fullName, connectionId, jenkinsClient.jobUrl(fullName),
         jenkinsType, isMultibranch);
+    synchronizeJenkinsParameters(jenkinsClient, buildType, fullName);
     buildType.schedulePersisting("Jenkins Bridge: persist imported Jenkins job build configuration").awaitUninterruptibly();
 
     return externalId;
@@ -270,6 +273,25 @@ public class JenkinsJobImporter {
       features.addAll(buildType.getBuildFeaturesOfType(BridgeBuildFeatureConstants.TYPE));
     }
     return features;
+  }
+
+  /** Synchronizes Jenkins parameters and persists which definitions are bridge-owned. */
+  private int synchronizeJenkinsParameters(JenkinsClient jenkinsClient, SBuildType buildType, String fullName)
+      throws BridgeHttpException, JenkinsDataException {
+    JenkinsJobParameters parameters = jenkinsClient.getJobParameters(fullName);
+    try {
+      Set<String> previouslyImported = mirrorStore.getImportedJenkinsParameterNames(
+          buildType.getExternalId());
+      JenkinsTeamCityRunParameterFactory.SynchronizationResult result =
+          JenkinsTeamCityRunParameterFactory.synchronize(
+              parameterFactory, buildType, parameters, previouslyImported);
+      mirrorStore.saveImportedJenkinsParameterNames(
+          buildType.getExternalId(), result.getImportedNames());
+      return result.getSynchronizedCount();
+    } catch (java.io.IOException e) {
+      throw new IllegalStateException("Could not persist Jenkins parameter ownership for "
+          + buildType.getExternalId(), e);
+    }
   }
 
 }

@@ -20,6 +20,7 @@ import jetbrains.buildServer.serverSide.SBuildType;
 import jetbrains.buildServer.serverSide.SQueuedBuild;
 import jetbrains.buildServer.serverSide.TeamCityNode;
 import jetbrains.buildServer.serverSide.TeamCityNodes;
+import jetbrains.buildServer.serverSide.parameters.ParameterFactory;
 import jetbrains.buildServer.util.EventDispatcher;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -42,6 +43,7 @@ public class JenkinsTriggerOnRunListener {
   private final BuildMirrorStore mirrorStore;
   private final TeamCityQueuedBuildFailureService failureService;
   private final TeamCityNodes teamCityNodes;
+  private final ParameterFactory parameterFactory;
   private final BuildServerListener listener = new BuildServerAdapter() {
     @Override
     public void buildTypeAddedToQueue(SQueuedBuild queued) {
@@ -62,13 +64,15 @@ public class JenkinsTriggerOnRunListener {
       @NotNull JenkinsClientFactory jenkinsClientFactory,
       @NotNull BuildMirrorStore mirrorStore,
       @NotNull TeamCityQueuedBuildFailureService failureService,
-      @NotNull TeamCityNodes teamCityNodes
+      @NotNull TeamCityNodes teamCityNodes,
+      @NotNull ParameterFactory parameterFactory
   ) {
     this.eventDispatcher = eventDispatcher;
     this.jenkinsClientFactory = jenkinsClientFactory;
     this.mirrorStore = mirrorStore;
     this.failureService = failureService;
     this.teamCityNodes = teamCityNodes;
+    this.parameterFactory = parameterFactory;
     this.eventDispatcher.addListener(listener);
   }
 
@@ -175,6 +179,13 @@ public class JenkinsTriggerOnRunListener {
           e);
       return;
     }
+    JenkinsTeamCityRunParameterFactory.SynchronizationResult synchronization =
+        synchronizeJenkinsParameters(buildType, parameterDefinitions);
+    if (synchronization.isChanged()) {
+      buildType.schedulePersisting(
+          "Jenkins Bridge: update Jenkins Run Custom Build parameters")
+          .awaitUninterruptibly();
+    }
 
     JenkinsTriggerResponse trigger;
     try {
@@ -216,6 +227,17 @@ public class JenkinsTriggerOnRunListener {
     LOG.info(TeamCityNodeLog.currentNode(teamCityNodes) + " Jenkins Bridge triggered " + job
         + " from TeamCity promotion " + promotion.getId()
         + " via Jenkins queue item " + trigger.getQueueItemUrl());
+  }
+
+  private JenkinsTeamCityRunParameterFactory.SynchronizationResult synchronizeJenkinsParameters(
+      SBuildType buildType, JenkinsJobParameters parameterDefinitions) throws IOException {
+    JenkinsTeamCityRunParameterFactory.SynchronizationResult synchronization =
+        JenkinsTeamCityRunParameterFactory.synchronize(
+            parameterFactory, buildType, parameterDefinitions,
+            mirrorStore.getImportedJenkinsParameterNames(buildType.getExternalId()));
+    mirrorStore.saveImportedJenkinsParameterNames(
+        buildType.getExternalId(), synchronization.getImportedNames());
+    return synchronization;
   }
 
   private void cleanupBeforeJenkinsRequestIfNeeded(

@@ -3,6 +3,7 @@ package com.jetbrains.teamcity.jenkinsbridge.persistence;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonParseException;
+import com.google.gson.reflect.TypeToken;
 import jetbrains.buildServer.serverSide.CustomDataStorage;
 import org.jetbrains.annotations.NotNull;
 
@@ -21,6 +22,7 @@ public class BridgeState {
   private static final String LAST_SEEN_BUILD_NUMBER_KEY_PREFIX = "last-seen-build-number-";
   private static final String LAST_POLL_TIME_KEY = "last-poll-time";
   private static final String LAST_ERROR_KEY = "last-error";
+  private static final String JENKINS_PARAMETER_KEY_PREFIX = "jenkins-parameter-names-";
 
   @NotNull
   private final CustomDataStorage myStorage;
@@ -148,6 +150,32 @@ public class BridgeState {
 
   public void setLastError(String lastError) {
     myStorage.putValue(LAST_ERROR_KEY, lastError);
+  }
+
+  @NotNull
+  public Set<String> getImportedJenkinsParameterNames(@NotNull String buildTypeExternalId)
+      throws BridgeStateCorruptionException {
+    String serialized = myStorage.getValue(jenkinsParameterKey(buildTypeExternalId));
+    if (serialized == null) {
+      return Collections.emptySet();
+    }
+    try {
+      java.lang.reflect.Type type = new TypeToken<Set<String>>() { }.getType();
+      Set<String> names = OUR_GSON.fromJson(serialized, type);
+      return names == null ? Collections.<String>emptySet() : names;
+    } catch (JsonParseException e) {
+      throw new BridgeStateCorruptionException("Persisted Jenkins parameter ownership for build type "
+          + buildTypeExternalId + " is invalid", e);
+    }
+  }
+
+  public void putImportedJenkinsParameterNames(@NotNull String buildTypeExternalId,
+                                                @NotNull Set<String> names) {
+    myStorage.putValue(jenkinsParameterKey(buildTypeExternalId), OUR_GSON.toJson(names));
+  }
+
+  private static String jenkinsParameterKey(String buildTypeExternalId) {
+    return JENKINS_PARAMETER_KEY_PREFIX + buildTypeExternalId;
   }
 
   private <T> T parseEntry(String key, String value, Class<T> type)

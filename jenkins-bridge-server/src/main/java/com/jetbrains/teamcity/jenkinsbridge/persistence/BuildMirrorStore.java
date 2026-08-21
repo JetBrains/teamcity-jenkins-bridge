@@ -24,6 +24,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static com.jetbrains.teamcity.jenkinsbridge.util.Utilities.nullToEmpty;
 
@@ -259,6 +260,18 @@ public class BuildMirrorStore {
     ensureStateIsLoaded();
     state.setLastPollTime(now());
     state.setLastError(error.getMessage());
+  }
+
+  public synchronized Set<String> getImportedJenkinsParameterNames(String buildTypeExternalId)
+      throws IOException {
+    ensureStateIsLoaded();
+    return state.getImportedJenkinsParameterNames(buildTypeExternalId);
+  }
+
+  public synchronized void saveImportedJenkinsParameterNames(String buildTypeExternalId,
+                                                              Set<String> names) throws IOException {
+    ensureStateIsLoaded();
+    state.putImportedJenkinsParameterNames(buildTypeExternalId, names);
   }
 
   /**

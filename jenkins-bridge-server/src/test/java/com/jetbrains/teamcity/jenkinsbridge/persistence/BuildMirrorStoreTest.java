@@ -19,6 +19,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
@@ -61,6 +62,19 @@ public class BuildMirrorStoreTest {
     // Lower values are ignored (watermark only moves forward).
     reloaded.setLastSeenBuildNumber("job", 10);
     assertEquals(42, reloaded.getLastSeenBuildNumber("job"));
+  }
+
+  @Test
+  public void importedJenkinsParameterNamesPersistWithoutDelimiterAmbiguity() throws Exception {
+    JenkinsBridgeSettingsProvider provider = providerWithTempStateFile();
+    ProjectManager projectManager = buildMockProjectManager();
+    BuildMirrorStore store = new BuildMirrorStore(null, provider, projectManager);
+
+    store.saveImportedJenkinsParameterNames("buildType", Set.of("RELEASE", "release,with,commas"));
+
+    BuildMirrorStore reloaded = new BuildMirrorStore(null, provider, projectManager);
+    assertEquals(Set.of("RELEASE", "release,with,commas"),
+        reloaded.getImportedJenkinsParameterNames("buildType"));
   }
 
   @Test
