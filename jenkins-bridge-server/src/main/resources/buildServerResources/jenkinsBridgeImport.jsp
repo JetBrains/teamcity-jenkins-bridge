@@ -1,5 +1,7 @@
 <%@ taglib prefix="c" uri="http://java.sun.com/jsp/jstl/core" %>
 <%@ taglib prefix="bs" tagdir="/WEB-INF/tags" %>
+<%@ page import="com.jetbrains.teamcity.jenkinsbridge.util.TeamCityUiSettings" %>
+<jsp:useBean id="project" type="jetbrains.buildServer.serverSide.SProject" scope="request"/>
 <jsp:useBean id="jenkinsConnections" scope="request" type="com.jetbrains.teamcity.jenkinsbridge.connection.JenkinsConnectionResolver"/>
 <%--
   "Jenkins Jobs Sync" project-settings tab. Lists top-level Jenkins jobs from the
@@ -17,6 +19,12 @@
   </p>
 
   <c:set var="connections" value="${jenkinsConnections.availableConnections(project)}"/>
+  <% boolean readOnly = TeamCityUiSettings.isReadOnly(project); %>
+  <c:set var="readOnly" value="<%=readOnly%>"/>
+
+  <c:if test="${readOnly}">
+    <p class="warningMessage">Project settings are read-only. Jenkins jobs can be listed, but cannot be enabled.</p>
+  </c:if>
 
   <div id="jbConfigured"><p class="grayNote">Loading synced jobs...</p></div>
 
@@ -61,7 +69,9 @@
 
   <div style="margin: 0.5em 0;">
     <input type="button" class="btn" id="jbListBtn" value="List jobs" disabled="disabled"/>
-    <input type="button" class="btn btn_primary" id="jbImportBtn" value="Enable selected" disabled="disabled"/>
+    <c:if test="${not readOnly}">
+      <input type="button" class="btn btn_primary" id="jbImportBtn" value="Enable selected" disabled="disabled"/>
+    </c:if>
     <span id="jbStatus" class="grayNote" style="margin-left: 1em;"></span>
   </div>
 
@@ -77,6 +87,7 @@
   (function () {
     var url = '${controllerUrl}';
     var projectExternalId = '${projectExternalId}';
+    var readOnly = ${readOnly};
 
     var connectionInput = document.getElementById('jbConnection');
     var folderInput = document.getElementById('jbFolderPath');
@@ -119,7 +130,7 @@
       selectedJobs = {};
       pageHasMore = false;
       nextOffset = 0;
-      importBtn.disabled = true;
+      if (importBtn) importBtn.disabled = true;
     }
 
     function updateConnectionControls() {
@@ -129,7 +140,7 @@
     }
 
     function updateImportButton() {
-      importBtn.disabled = Object.keys(selectedJobs).length === 0;
+      if (importBtn) importBtn.disabled = Object.keys(selectedJobs).length === 0;
     }
 
     function rememberSelections() {
@@ -144,9 +155,10 @@
       var selectable = j.importable || j.isMultibranch;
       var note = j.isMultibranch ? ' <span class="grayNote">(multibranch pipeline)</span>'
         : (!j.importable ? ' <span class="grayNote">(folder)</span>' : '');
+      var selectionCell = readOnly ? '' : '<td><input type="checkbox" class="jbJob" value="' + escAttr(j.fullName) + '"'
+        + (selectable ? '' : ' disabled="disabled"') + '/></td>';
       return '<tr>'
-        + '<td><input type="checkbox" class="jbJob" value="' + escAttr(j.fullName) + '"'
-        + (selectable ? '' : ' disabled="disabled"') + '/></td>'
+        + selectionCell
         + '<td>' + esc(j.fullName) + note + '</td>'
         + '<td>' + jenkinsLink(j.url) + '</td>'
         + '<td class="grayNote" title="' + escAttr(j.type) + '">' + esc(j.displayType) + '</td>'
@@ -172,7 +184,7 @@
     function availableJobTable(jobs, emptyMessage) {
       if (!jobs.length) return '<p class="grayNote">' + esc(emptyMessage) + '</p>';
       var html = '<table class="parametersTable" style="width:auto;"><tr>'
-        + '<th><input type="checkbox" id="jbSelectAll" aria-label="Select all visible jobs"/></th>'
+        + (readOnly ? '' : '<th><input type="checkbox" id="jbSelectAll" aria-label="Select all visible jobs"/></th>')
         + '<th>Job</th><th>Jenkins</th><th>Type</th></tr>';
       for (var i = 0; i < jobs.length; i++) html += availableJobRow(jobs[i]);
       return html + '</table>';
@@ -342,7 +354,7 @@
         listedJobs = [];
         pageHasMore = false;
         nextOffset = 0;
-        importBtn.disabled = true;
+        if (importBtn) importBtn.disabled = true;
       }
       setStatus(offset ? 'Loading more jobs...' : 'Listing jobs...');
       BS.ajaxRequest(url, {
@@ -393,7 +405,7 @@
       }, 350);
     };
 
-    importBtn.onclick = function () {
+    if (importBtn) importBtn.onclick = function () {
       if (!selectedConnection()) { setStatus('Select a Jenkins connection first'); return; }
       rememberSelections();
       var jobs = Object.keys(selectedJobs);
