@@ -3,7 +3,6 @@ package com.jetbrains.teamcity.jenkinsbridge.feature;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClient;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClientFactory;
 import com.jetbrains.teamcity.jenkinsbridge.http.BridgeHttpException;
-import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsJobParameters;
 import jetbrains.buildServer.parameters.ParametersProvider;
 import jetbrains.buildServer.serverSide.Parameter;
 import jetbrains.buildServer.serverSide.PersistTask;
@@ -54,7 +53,6 @@ public class JenkinsJobImporterTest {
     when(targetProject.createBuildType(anyString(), anyString())).thenReturn(buildType);
     when(buildType.schedulePersisting(anyString())).thenReturn(persistTask);
     when(jenkinsClient.jobUrl(anyString())).thenReturn("http://jenkins/job/x/");
-    when(jenkinsClient.getJobParameters(anyString())).thenReturn(JenkinsJobParameters.empty());
     when(parameterFactory.createSimpleParameter(anyString(), anyString()))
         .thenReturn(mock(Parameter.class));
   }
@@ -94,6 +92,8 @@ public class JenkinsJobImporterTest {
     assertEquals("pipeline", params.getValue().get(BridgeBuildFeatureConstants.PARAM_JENKINS_JOB));
     assertEquals("conn1", params.getValue().get(BridgeBuildFeatureConstants.PARAM_CONNECTION_ID));
     verify(parameterFactory).createSimpleParameter(BridgeBuildFeatureConstants.INTERNAL_MULTIBRANCH_PARAM, "true");
+    verify(parameterFactory).createTypedParameter(
+        "teamcity.ui.settings.readOnly", "true", "text display='hidden'");
     assertEquals(1, result.getCreated().size());
   }
 
@@ -115,7 +115,6 @@ public class JenkinsJobImporterTest {
     assertEquals(1, result.getSkipped().size());
     assertEquals("pipeline", result.getSkipped().getFirst().jenkinsJob);
     assertEquals("already imported", result.getSkipped().getFirst().detail);
-    verify(jenkinsClient, never()).getJobParameters("pipeline");
     verify(existing, never()).schedulePersisting(anyString());
   }
 
