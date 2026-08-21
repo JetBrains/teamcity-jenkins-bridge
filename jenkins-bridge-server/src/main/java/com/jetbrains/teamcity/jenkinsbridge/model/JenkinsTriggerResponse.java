@@ -17,4 +17,8 @@ public class JenkinsTriggerResponse {
   public long getQueueId() {
     return queueId;
   }
+
+  public boolean hasQueueId() {
+    return queueId >= 0;
+  }
 }

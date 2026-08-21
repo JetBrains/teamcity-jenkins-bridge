@@ -166,9 +166,9 @@ public class JenkinsTriggerOnRunListener {
         + " [Jenkins Bridge DEBUG] Saved provisional Jenkins trigger for TeamCity promotion "
         + promotion.getId());
 
-    JenkinsParameterSynchronizer.SynchronizationResult paramSynchronisation;
+    JenkinsParameterSynchronizer.SynchronizationResult paramSynchronisationResult;
     try {
-      paramSynchronisation = parameterSynchronizer.synchronize(jenkinsClient, buildType, job);
+      paramSynchronisationResult = parameterSynchronizer.synchronize(jenkinsClient, buildType, job);
     } catch (BridgeHttpException | JenkinsDataException e) {
       failTeamCityFirstAttempt(
           queued,
@@ -178,18 +178,19 @@ public class JenkinsTriggerOnRunListener {
           e);
       return;
     }
-    if (paramSynchronisation.isTeamCityChanged()) {
+    // Jenkins REST was read above, but the Jenkins build-trigger POST has not started yet.
+    if (paramSynchronisationResult.isTeamCityChanged()) {
       buildType.schedulePersisting(
           "Jenkins Bridge: update Jenkins Run Custom Build parameters")
           .awaitUninterruptibly();
     }
 
-    JenkinsJobParameters parameterDefinitions = paramSynchronisation.getDefinitions();
-    if (paramSynchronisation.isDefinitionChanged()) {
+    JenkinsJobParameters parameterDefinitions = paramSynchronisationResult.getDefinitions();
+    if (paramSynchronisationResult.isDefinitionChanged()) {
       failTeamCityFirstAttempt(
           queued,
           promotion.getId(),
-          parameterDefinitionsChangedReason(paramSynchronisation.getPreviousSnapshot(), parameterDefinitions),
+          parameterDefinitionsChangedReason(paramSynchronisationResult.getPreviousSnapshot(), parameterDefinitions),
           null);
       return;
     }
@@ -223,7 +224,7 @@ public class JenkinsTriggerOnRunListener {
       return;
     }
 
-    if (trigger.getQueueId() < 0 || trigger.getQueueItemUrl().trim().isEmpty()) {
+    if (!trigger.hasQueueId() || trigger.getQueueItemUrl().trim().isEmpty()) {
       failTeamCityFirstAttempt(
           queued,
           promotion.getId(),
