@@ -3,6 +3,8 @@ package com.jetbrains.teamcity.jenkinsbridge.integration;
 import com.jetbrains.teamcity.jenkinsbridge.polling.JenkinsBridgePollingService;
 import com.jetbrains.teamcity.jenkinsbridge.settings.JenkinsBridgeSettings;
 import com.jetbrains.teamcity.jenkinsbridge.settings.JenkinsBridgeSettingsProvider;
+import com.jetbrains.teamcity.jenkinsbridge.util.TeamCityUiSettings;
+import jetbrains.buildServer.serverSide.parameters.ParameterFactory;
 import jetbrains.buildServer.serverSide.impl.BaseServerTestCase;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.Test;
@@ -46,6 +48,17 @@ public class TeamCitySettingsIT extends BaseServerTestCase {
 
     assertFalse(readStarted(pollingService));
     assertNull(readExecutor(pollingService));
+  }
+
+  @Test
+  public void projectReadOnlyParameterIsRecognizedByTeamCityAndTheBridge() throws Exception {
+    ParameterFactory parameterFactory = myFixture.getSingletonService(ParameterFactory.class);
+    myProject.addParameter(parameterFactory.createSimpleParameter(
+        "teamcity.ui.settings.readOnly", "true"));
+    myProject.persist();
+
+    assertTrue(myProject.isReadOnly());
+    assertTrue(TeamCityUiSettings.isReadOnly(myProject));
   }
 
   private static boolean readStarted(JenkinsBridgePollingService service) throws Exception {
