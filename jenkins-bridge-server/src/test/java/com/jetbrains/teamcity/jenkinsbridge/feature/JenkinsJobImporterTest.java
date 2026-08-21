@@ -7,6 +7,7 @@ import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsJobParameters;
 import jetbrains.buildServer.parameters.ParametersProvider;
 import jetbrains.buildServer.serverSide.Parameter;
 import jetbrains.buildServer.serverSide.PersistTask;
+import jetbrains.buildServer.serverSide.MultiNodeLocks;
 import jetbrains.buildServer.serverSide.ProjectManager;
 import jetbrains.buildServer.serverSide.SBuildFeatureDescriptor;
 import jetbrains.buildServer.serverSide.SBuildType;
@@ -38,6 +39,8 @@ public class JenkinsJobImporterTest {
   private final SProject targetProject = mock(SProject.class);
   private final SBuildType buildType = mock(SBuildType.class);
   private final PersistTask persistTask = mock(PersistTask.class);
+  private final MultiNodeLocks multiNodeLocks = mock(MultiNodeLocks.class);
+  private final MultiNodeLocks.Lock importLock = mock(MultiNodeLocks.Lock.class);
 
   private final JenkinsJobImporter importer =
       new JenkinsJobImporter(projectManager, parameterFactory, jenkinsClientFactory);
@@ -54,6 +57,30 @@ public class JenkinsJobImporterTest {
     when(jenkinsClient.getJobParameters(anyString())).thenReturn(JenkinsJobParameters.empty());
     when(parameterFactory.createSimpleParameter(anyString(), anyString()))
         .thenReturn(mock(Parameter.class));
+  }
+
+  @Test
+  public void importJobsRechecksAfterDistributedLockAndSkipsJobImportedByAnotherNode() throws Exception {
+    when(jenkinsClient.getJobClass("pipeline")).thenReturn(MULTIBRANCH_CLASS);
+    when(multiNodeLocks.tryLock(anyString(), org.mockito.ArgumentMatchers.anyLong(),
+        org.mockito.ArgumentMatchers.anyLong())).thenReturn(importLock);
+    SBuildFeatureDescriptor existingFeature = mock(SBuildFeatureDescriptor.class);
+    when(existingFeature.getParameters()).thenReturn(
+        Collections.singletonMap(BridgeBuildFeatureConstants.PARAM_JENKINS_JOB, "pipeline"));
+    SBuildType existing = mock(SBuildType.class);
+    when(existing.getBuildFeaturesOfType(BridgeBuildFeatureConstants.TYPE))
+        .thenReturn(Collections.singletonList(existingFeature));
+    when(targetProject.getBuildTypes()).thenReturn(Collections.<SBuildType>emptyList(),
+        Collections.singletonList(existing));
+
+    JenkinsJobImporter lockedImporter =
+        new JenkinsJobImporter(projectManager, parameterFactory, jenkinsClientFactory, multiNodeLocks);
+    ImportResult result = lockedImporter.importJobs("TeamA", "conn1", Collections.singletonList("pipeline"));
+
+    assertEquals(0, result.getCreated().size());
+    assertEquals(1, result.getSkipped().size());
+    verify(importLock).close();
+    verify(targetProject, never()).createBuildType(anyString(), anyString());
   }
 
   @Test

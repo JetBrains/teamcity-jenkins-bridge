@@ -11,6 +11,8 @@ import jetbrains.buildServer.serverSide.BuildServerListener;
 import jetbrains.buildServer.serverSide.SBuildFeatureDescriptor;
 import jetbrains.buildServer.serverSide.SBuildType;
 import jetbrains.buildServer.serverSide.SQueuedBuild;
+import jetbrains.buildServer.serverSide.TeamCityNode;
+import jetbrains.buildServer.serverSide.TeamCityNodes;
 import jetbrains.buildServer.util.EventDispatcher;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
@@ -127,6 +129,17 @@ public class JenkinsTriggerOnRunListenerTest {
     verify(second.queued, never()).removeFromQueue(any(), any());
   }
 
+  @Test
+  public void secondaryNodeDoesNotTriggerJenkins() throws Exception {
+    Fixture fixture = new Fixture();
+    when(fixture.teamCityNodes.getCurrentNode().isMainNode()).thenReturn(false);
+
+    fixture.listener().buildTypeAddedToQueue(fixture.queued);
+
+    verify(fixture.client, never()).triggerBuildWithQueueId(any(), any());
+    verify(fixture.store, never()).savePendingTrigger(any());
+  }
+
   private static void await(CountDownLatch latch) {
     try {
       latch.await();
@@ -143,6 +156,7 @@ public class JenkinsTriggerOnRunListenerTest {
     final JenkinsClient client = mock(JenkinsClient.class);
     final SQueuedBuild queued = mock(SQueuedBuild.class);
     final TeamCityQueuedBuildFailureService failureService = mock(TeamCityQueuedBuildFailureService.class);
+    final TeamCityNodes teamCityNodes = mock(TeamCityNodes.class);
 
     Fixture() throws Exception {
       this(42L, "job");
@@ -166,8 +180,12 @@ public class JenkinsTriggerOnRunListenerTest {
       when(clientFactory.forBuildType(buildType)).thenReturn(client);
       when(client.getControllerIdentity()).thenReturn("http://jenkins");
       when(store.getPendingTriggers()).thenReturn(Collections.emptyList());
+      TeamCityNode node = mock(TeamCityNode.class);
+      when(teamCityNodes.getCurrentNode()).thenReturn(node);
+      when(node.isMainNode()).thenReturn(true);
+
       new JenkinsTriggerOnRunListener(
-          dispatcher, clientFactory, store, failureService);
+          dispatcher, clientFactory, store, failureService, teamCityNodes);
     }
 
     BuildServerListener listener() {

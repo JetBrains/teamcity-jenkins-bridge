@@ -11,12 +11,15 @@ import com.jetbrains.teamcity.jenkinsbridge.persistence.PendingTrigger;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsTriggerResponse;
 import com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityBuildParameters;
 import com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityQueuedBuildFailureService;
+import com.jetbrains.teamcity.jenkinsbridge.util.TeamCityNodeLog;
 import jetbrains.buildServer.serverSide.BuildPromotion;
 import jetbrains.buildServer.serverSide.BuildServerAdapter;
 import jetbrains.buildServer.serverSide.BuildServerListener;
 import jetbrains.buildServer.serverSide.SBuildFeatureDescriptor;
 import jetbrains.buildServer.serverSide.SBuildType;
 import jetbrains.buildServer.serverSide.SQueuedBuild;
+import jetbrains.buildServer.serverSide.TeamCityNode;
+import jetbrains.buildServer.serverSide.TeamCityNodes;
 import jetbrains.buildServer.util.EventDispatcher;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -38,9 +41,18 @@ public class JenkinsTriggerOnRunListener {
   private final JenkinsClientFactory jenkinsClientFactory;
   private final BuildMirrorStore mirrorStore;
   private final TeamCityQueuedBuildFailureService failureService;
+  private final TeamCityNodes teamCityNodes;
   private final BuildServerListener listener = new BuildServerAdapter() {
     @Override
     public void buildTypeAddedToQueue(SQueuedBuild queued) {
+      LOG.debug(TeamCityNodeLog.currentNode(teamCityNodes)
+          + " [Jenkins Bridge DEBUG] Queue callback received for TeamCity promotion "
+          + queued.getBuildPromotion().getId());
+      if (!mayTriggerOnCurrentNode()) {
+        LOG.info(TeamCityNodeLog.currentNode(teamCityNodes)
+            + " Jenkins Bridge trigger skipped because this node is not main");
+        return;
+      }
       triggerJenkinsSafely(queued);
     }
   };
@@ -49,13 +61,20 @@ public class JenkinsTriggerOnRunListener {
       @NotNull EventDispatcher<BuildServerListener> eventDispatcher,
       @NotNull JenkinsClientFactory jenkinsClientFactory,
       @NotNull BuildMirrorStore mirrorStore,
-      @NotNull TeamCityQueuedBuildFailureService failureService
+      @NotNull TeamCityQueuedBuildFailureService failureService,
+      @NotNull TeamCityNodes teamCityNodes
   ) {
     this.eventDispatcher = eventDispatcher;
     this.jenkinsClientFactory = jenkinsClientFactory;
     this.mirrorStore = mirrorStore;
     this.failureService = failureService;
+    this.teamCityNodes = teamCityNodes;
     this.eventDispatcher.addListener(listener);
+  }
+
+  private boolean mayTriggerOnCurrentNode() {
+    TeamCityNode currentNode = teamCityNodes.getCurrentNode();
+    return currentNode != null && currentNode.isMainNode();
   }
 
   public void dispose() {
@@ -64,6 +83,9 @@ public class JenkinsTriggerOnRunListener {
 
   private void triggerJenkinsSafely(SQueuedBuild queued) {
     TriggerAttemptContext attempt = new TriggerAttemptContext();
+    LOG.debug(TeamCityNodeLog.currentNode(teamCityNodes)
+        + " [Jenkins Bridge DEBUG] Evaluating TeamCity promotion "
+        + queued.getBuildPromotion().getId() + " for Jenkins trigger");
     try {
       triggerJenkins(queued, attempt);
     } catch (IOException e) {
@@ -101,6 +123,10 @@ public class JenkinsTriggerOnRunListener {
     BuildPromotion promotion = queued.getBuildPromotion();
     attempt.setPromotionId(promotion.getId());
     if (shouldSkip(queued) || hasPendingTrigger(queued.getBuildPromotion().getId())) {
+      LOG.debug(TeamCityNodeLog.currentNode(teamCityNodes)
+          + " [Jenkins Bridge DEBUG] Skipping TeamCity promotion "
+          + queued.getBuildPromotion().getId()
+          + " because it is not bridge-triggerable or already pending");
       return;
     }
 
@@ -133,6 +159,9 @@ public class JenkinsTriggerOnRunListener {
     PendingTrigger provisional = new PendingTrigger(
         promotion.getId(), job, buildType.getExternalId(), "", -1L, controller, now());
     mirrorStore.savePendingTrigger(provisional);
+    LOG.debug(TeamCityNodeLog.currentNode(teamCityNodes)
+        + " [Jenkins Bridge DEBUG] Saved provisional Jenkins trigger for TeamCity promotion "
+        + promotion.getId());
 
     JenkinsJobParameters parameterDefinitions;
     try {
@@ -151,6 +180,9 @@ public class JenkinsTriggerOnRunListener {
     try {
       Map<String, String> parameters = jenkinsParameters(parameterDefinitions, promotion);
       attempt.markJenkinsRequestStarted();
+      LOG.debug(TeamCityNodeLog.currentNode(teamCityNodes)
+          + " [Jenkins Bridge DEBUG] Sending Jenkins trigger request for TeamCity promotion "
+          + promotion.getId());
       trigger = jenkinsClient.triggerBuildWithQueueId(job, parameters);
     } catch (BridgeHttpException | JenkinsDataException e) {
       failTeamCityFirstAttempt(
@@ -181,7 +213,8 @@ public class JenkinsTriggerOnRunListener {
         controller,
         now());
     mirrorStore.savePendingTrigger(pendingTrigger);
-    LOG.info("Jenkins Bridge triggered " + job + " from TeamCity promotion " + promotion.getId()
+    LOG.info(TeamCityNodeLog.currentNode(teamCityNodes) + " Jenkins Bridge triggered " + job
+        + " from TeamCity promotion " + promotion.getId()
         + " via Jenkins queue item " + trigger.getQueueItemUrl());
   }
 
