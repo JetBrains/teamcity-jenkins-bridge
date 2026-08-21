@@ -1,17 +1,18 @@
 package com.jetbrains.teamcity.jenkinsbridge.teamcity;
 
+import com.intellij.openapi.diagnostic.Logger;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsPullRequestInfo;
 import org.jetbrains.annotations.NotNull;
 
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
 public class TeamCityBuildParameters {
+  private static final Logger LOG = Logger.getInstance(TeamCityBuildParameters.class.getName());
+
   public static final String AGENTLESS_BUILD_PROPERTY = "teamcity.build.agentLess";
   /** Prefix reserved for bridge-internal parameters; never expose Jenkins values under it. */
   public static final String BRIDGE_PARAMETER_PREFIX = "jenkins.bridge.";
@@ -44,8 +45,7 @@ public class TeamCityBuildParameters {
 
   public static Map<String, String> mergeWithJenkinsParameters(
       Map<String, String> bridgeParameters,
-      Map<String, String> jenkinsParameters,
-      Set<String> existingTeamCityParameterNames
+      Map<String, String> jenkinsParameters
   ) {
     Map<String, String> result = new LinkedHashMap<String, String>();
     result.putAll(bridgeParameters);
@@ -53,23 +53,21 @@ public class TeamCityBuildParameters {
     Map<String, String> safeJenkinsParameters = jenkinsParameters == null
         ? Collections.<String, String>emptyMap()
         : jenkinsParameters;
-    Map<String, String> visibleJenkinsParameters = withoutBridgeInternalParameters(safeJenkinsParameters);
-    List<String> collisions = collisions(result.keySet(), visibleJenkinsParameters.keySet(), existingTeamCityParameterNames);
-    if (!collisions.isEmpty()) {
-      throw new IllegalStateException(
-          "Jenkins build parameter name(s) collide with TeamCity build parameters: "
-              + join(collisions));
-    }
-
-    result.putAll(visibleJenkinsParameters);
+    result.putAll(withoutProtectedParameters(safeJenkinsParameters, reservedParameterNames(bridgeParameters)));
     return result;
   }
 
-  private static Map<String, String> withoutBridgeInternalParameters(Map<String, String> parameters) {
+  private static Map<String, String> withoutProtectedParameters(
+      Map<String, String> parameters,
+      Set<String> reservedNames
+  ) {
     Map<String, String> result = new LinkedHashMap<String, String>();
     for (Map.Entry<String, String> entry : parameters.entrySet()) {
-      if (!entry.getKey().startsWith(BRIDGE_PARAMETER_PREFIX)) {
+      String name = entry.getKey();
+      if (!reservedNames.contains(name) && !name.startsWith(BRIDGE_PARAMETER_PREFIX)) {
         result.put(entry.getKey(), entry.getValue());
+      } else {
+        LOG.warn("Jenkins parameter rejected because it is reserved by Jenkins Bridge: " + name);
       }
     }
     return result;
@@ -84,38 +82,4 @@ public class TeamCityBuildParameters {
     return names;
   }
 
-  private static List<String> collisions(
-      Set<String> bridgeNames,
-      Set<String> jenkinsNames,
-      Set<String> existingTeamCityParameterNames
-  ) {
-    Set<String> reserved = new LinkedHashSet<String>();
-    reserved.add(AGENTLESS_BUILD_PROPERTY);
-    if (bridgeNames != null) {
-      reserved.addAll(bridgeNames);
-    }
-    if (existingTeamCityParameterNames != null) {
-      reserved.addAll(existingTeamCityParameterNames);
-    }
-
-    List<String> collisions = new ArrayList<String>();
-    for (String name : jenkinsNames) {
-      if (reserved.contains(name)) {
-        collisions.add(name);
-      }
-    }
-    Collections.sort(collisions);
-    return collisions;
-  }
-
-  private static String join(List<String> values) {
-    StringBuilder builder = new StringBuilder();
-    for (String value : values) {
-      if (builder.length() > 0) {
-        builder.append(", ");
-      }
-      builder.append(value);
-    }
-    return builder.toString();
-  }
 }

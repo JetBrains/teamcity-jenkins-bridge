@@ -57,8 +57,7 @@ public class TeamCityBuildQueuer {
     parameters.put(TeamCityBuildParameters.AGENTLESS_BUILD_PROPERTY, "true");
     parameters.putAll(TeamCityBuildParameters.mergeWithJenkinsParameters(
         bridgeParameters,
-        jenkinsBuildParameters,
-        buildType.getParametersProvider().getAll().keySet()));
+        jenkinsBuildParameters));
 
     BuildCustomizer customizer = buildCustomizerFactory.createBuildCustomizer(buildType, null);
     customizer.setParameters(parameters);

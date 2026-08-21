@@ -135,8 +135,7 @@ public class TeamCityPipelineChainService {
       BuildCustomizer customizer = buildCustomizerFactory.createBuildCustomizer(nodeBuildType, null);
       customizer.setParameters(TeamCityBuildParameters.mergeWithJenkinsParameters(
           nodeBuildParameters(mirror, node),
-          mirror.getJenkinsBuildParameters(),
-          nodeBuildType.getParametersProvider().getAll().keySet()));
+          mirror.getJenkinsBuildParameters()));
       BuildPromotion promotion = customizer.createPromotion();
       if (!(promotion instanceof BuildPromotionEx)) {
         throw new TeamCityPipelineChainException("Generated Pipeline promotion does not support dependencies");
@@ -333,8 +332,7 @@ public class TeamCityPipelineChainService {
     }
     customizer.setParameters(TeamCityBuildParameters.mergeWithJenkinsParameters(
         topBuildParameters(mirror),
-        mirror.getJenkinsBuildParameters(),
-        sourceBuildType.getParametersProvider().getAll().keySet()));
+        mirror.getJenkinsBuildParameters()));
     customizer.setRebuildDependencies(true);
     ((BuildCustomizerEx) customizer).setDependenciesSupplier(
         dependenciesSupplier(plan, buildTypesByNodeId, sourceBuildType));
