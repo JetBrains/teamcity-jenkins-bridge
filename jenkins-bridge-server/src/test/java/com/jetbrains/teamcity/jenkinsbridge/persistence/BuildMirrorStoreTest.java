@@ -78,6 +78,19 @@ public class BuildMirrorStoreTest {
   }
 
   @Test
+  public void importedJenkinsParameterSnapshotPersistsAcrossReload() throws Exception {
+    JenkinsBridgeSettingsProvider provider = providerWithTempStateFile();
+    ProjectManager projectManager = buildMockProjectManager();
+    BuildMirrorStore store = new BuildMirrorStore(null, provider, projectManager);
+
+    store.saveImportedJenkinsParameterSnapshot("buildType", "[{\"name\":\"RELEASE\"}]");
+
+    BuildMirrorStore reloaded = new BuildMirrorStore(null, provider, projectManager);
+    assertEquals("[{\"name\":\"RELEASE\"}]",
+        reloaded.getImportedJenkinsParameterSnapshot("buildType"));
+  }
+
+  @Test
   public void getActiveMirrorsExcludesFinishedBuilds() throws Exception {
     BuildMirrorStore store = new BuildMirrorStore(null, providerWithTempStateFile(), buildMockProjectManager());
 

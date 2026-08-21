@@ -1,5 +1,6 @@
 package com.jetbrains.teamcity.jenkinsbridge.feature;
 
+import com.google.gson.Gson;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsParameterDefinition;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsJobParameters;
 import jetbrains.buildServer.serverSide.SBuildType;
@@ -18,6 +19,7 @@ import java.util.Set;
  * prompted in the normal TeamCity Run dialog.
  */
 public final class JenkinsTeamCityRunParameterFactory {
+  private static final Gson SNAPSHOT_GSON = new Gson();
   private static final String PROMPT_TEXT_SPEC = "text display='prompt'";
   private static final String BOOLEAN_SPEC =
       "checkbox checkedValue='true' uncheckedValue='false' display='prompt'";
@@ -48,6 +50,35 @@ public final class JenkinsTeamCityRunParameterFactory {
     String value = defaultValue(definition);
     String spec = spec(definition);
     return parameterFactory.createTypedParameter(name, value, spec);
+  }
+
+  /** Returns a stable JSON representation of the Jenkins definitions used to render TeamCity. */
+  public static String snapshot(JenkinsJobParameters definitions) {
+    return SNAPSHOT_GSON.toJson(definitions.getParameters());
+  }
+
+  /** Returns an exact, readable representation suitable for trigger diagnostics. */
+  public static String describe(JenkinsJobParameters definitions) {
+    return snapshot(definitions);
+  }
+
+  /** Returns a diagnostic for submitted values that are invalid for current Jenkins choices. */
+  public static String invalidChoiceValues(JenkinsJobParameters definitions, Map<String, String> values) {
+    StringBuilder invalid = new StringBuilder();
+    for (JenkinsParameterDefinition definition : definitions.getParameters()) {
+      if (definition.getChoices().isEmpty()) {
+        continue;
+      }
+      String value = values.get(definition.getName());
+      if (value != null && !definition.getChoices().contains(value)) {
+        if (invalid.length() > 0) {
+          invalid.append(", ");
+        }
+        invalid.append(definition.getName()).append("=").append(value)
+            .append(" (allowed: ").append(definition.getChoices()).append(")");
+      }
+    }
+    return invalid.toString();
   }
 
   /**

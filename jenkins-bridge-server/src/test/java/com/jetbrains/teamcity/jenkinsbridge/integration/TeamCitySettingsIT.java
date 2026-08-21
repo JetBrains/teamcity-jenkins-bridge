@@ -21,6 +21,8 @@ import static org.testng.Assert.assertNull;
 public class TeamCitySettingsIT extends BaseServerTestCase {
   private static final String ENABLED = "jenkins.bridge.enabled";
   private static final String POLL_SECONDS = "jenkins.bridge.pollSeconds";
+  private static final String PARAMETER_REFRESH_POLL_CYCLES =
+      "jenkins.bridge.parameterRefreshPollCycles";
   private static final String PENDING_TRIGGER_TIMEOUT_MINUTES =
       "jenkins.bridge.pendingTriggerTimeoutMinutes";
 
@@ -28,6 +30,7 @@ public class TeamCitySettingsIT extends BaseServerTestCase {
   public void clearProperties() {
     System.clearProperty(ENABLED);
     System.clearProperty(POLL_SECONDS);
+    System.clearProperty(PARAMETER_REFRESH_POLL_CYCLES);
     System.clearProperty(PENDING_TRIGGER_TIMEOUT_MINUTES);
   }
 
@@ -35,15 +38,17 @@ public class TeamCitySettingsIT extends BaseServerTestCase {
   public void readsTeamCityPropertiesAndPollingServiceHonorsDisabledSetting() throws Exception {
     System.setProperty(ENABLED, "false");
     System.setProperty(POLL_SECONDS, "23");
+    System.setProperty(PARAMETER_REFRESH_POLL_CYCLES, "37");
     System.setProperty(PENDING_TRIGGER_TIMEOUT_MINUTES, "31");
 
     JenkinsBridgeSettings settings = new JenkinsBridgeSettingsProvider().load();
     assertFalse(settings.isEnabled());
     assertEquals(23, settings.getPollSeconds());
+    assertEquals(37, settings.getParameterRefreshPollCycles());
     assertEquals(31, settings.getPendingTriggerTimeoutMinutes());
 
     JenkinsBridgePollingService pollingService = new JenkinsBridgePollingService(
-        new JenkinsBridgeSettingsProvider(), null, null, null, null, null, null, null, null, null);
+        new JenkinsBridgeSettingsProvider(), null, null, null, null, null, null, null, null, null, null);
     pollingService.start();
 
     assertFalse(readStarted(pollingService));

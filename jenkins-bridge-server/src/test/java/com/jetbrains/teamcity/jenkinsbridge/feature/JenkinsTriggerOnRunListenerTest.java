@@ -62,10 +62,13 @@ public class JenkinsTriggerOnRunListenerTest {
   @Test
   public void manualRunRefreshesJenkinsParameterDefinitionsBeforeTriggering() throws Exception {
     Fixture fixture = new Fixture();
-    when(fixture.client.getJobParameters("job")).thenReturn(JenkinsJobParameters.fromJson(
+    JenkinsJobParameters definitions = JenkinsJobParameters.fromJson(
         JsonParser.parseString("{\"property\":[{\"parameterDefinitions\":[{"
             + "\"name\":\"RELEASE\",\"type\":\"StringParameterDefinition\","
-            + "\"defaultParameterValue\":{\"value\":\"2026.08\"}}]}]}").getAsJsonObject()));
+            + "\"defaultParameterValue\":{\"value\":\"2026.08\"}}]}]}").getAsJsonObject());
+    when(fixture.client.getJobParameters("job")).thenReturn(definitions);
+    when(fixture.store.getImportedJenkinsParameterSnapshot("buildType"))
+        .thenReturn(JenkinsTeamCityRunParameterFactory.snapshot(definitions));
     when(fixture.client.triggerBuildWithQueueId(any(), any()))
         .thenReturn(new JenkinsTriggerResponse("/queue/item/1/", 1L));
 
@@ -80,6 +83,42 @@ public class JenkinsTriggerOnRunListenerTest {
     verify(fixture.buildType).addParameter(any(Parameter.class));
     verify(fixture.buildType).schedulePersisting(
         "Jenkins Bridge: update Jenkins Run Custom Build parameters");
+  }
+
+  @Test
+  public void changedJenkinsParametersRefreshAndFailCurrentPromotionWithoutTriggering() throws Exception {
+    Fixture fixture = new Fixture();
+    JenkinsJobParameters current = JenkinsJobParameters.fromJson(
+        JsonParser.parseString("{\"property\":[{\"parameterDefinitions\":[{"
+            + "\"name\":\"RELEASE\",\"type\":\"ChoiceParameterDefinition\","
+            + "\"defaultParameterValue\":{\"value\":\"prod\"},"
+            + "\"choices\":[\"dev\",\"prod\"]}]}]}").getAsJsonObject());
+    when(fixture.client.getJobParameters("job")).thenReturn(current);
+
+    fixture.listener().buildTypeAddedToQueue(fixture.queued);
+
+    verify(fixture.failureService).failQueuedPromotion(
+        eq(42L), contains("Jenkins parameter definitions changed"));
+    verify(fixture.failureService).failQueuedPromotion(
+        eq(42L), contains("Before: []"));
+    verify(fixture.failureService).failQueuedPromotion(
+        eq(42L), contains("After: "));
+    verify(fixture.client, never()).triggerBuildWithQueueId(any(), any());
+    verify(fixture.store).removePendingTrigger(42L);
+  }
+
+  @Test
+  public void missingParameterSnapshotIsMigratedWithoutBlockingTheBuild() throws Exception {
+    Fixture fixture = new Fixture();
+    when(fixture.store.getImportedJenkinsParameterSnapshot("buildType")).thenReturn(null);
+    when(fixture.client.getJobParameters("job")).thenReturn(JenkinsJobParameters.empty());
+    when(fixture.client.triggerBuildWithQueueId(any(), any()))
+        .thenReturn(new JenkinsTriggerResponse("/queue/item/1/", 1L));
+
+    fixture.listener().buildTypeAddedToQueue(fixture.queued);
+
+    verify(fixture.client).triggerBuildWithQueueId(any(), any());
+    verify(fixture.store).saveImportedJenkinsParameterSnapshot("buildType", "[]");
   }
 
   @Test
@@ -206,6 +245,7 @@ public class JenkinsTriggerOnRunListenerTest {
       when(parametersProvider.get(any())).thenReturn("old");
       when(store.getImportedJenkinsParameterNames("buildType"))
           .thenReturn(java.util.Set.of("OLD_RELEASE", "release,with,commas"));
+      when(store.getImportedJenkinsParameterSnapshot("buildType")).thenReturn("[]");
       when(parametersProvider.getAll()).thenReturn(java.util.Map.of(
           "OLD_RELEASE", "2025.01",
           "teamcity.custom", "preserve",
@@ -228,7 +268,8 @@ public class JenkinsTriggerOnRunListenerTest {
       when(node.isMainNode()).thenReturn(true);
 
       new JenkinsTriggerOnRunListener(
-          dispatcher, clientFactory, store, failureService, teamCityNodes, parameterFactory);
+          dispatcher, clientFactory, store, failureService, teamCityNodes,
+          new JenkinsParameterSynchronizer(clientFactory, parameterFactory, store));
     }
 
     BuildServerListener listener() {

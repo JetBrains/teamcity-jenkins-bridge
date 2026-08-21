@@ -274,6 +274,18 @@ public class BuildMirrorStore {
     state.putImportedJenkinsParameterNames(buildTypeExternalId, names);
   }
 
+  public synchronized String getImportedJenkinsParameterSnapshot(String buildTypeExternalId)
+      throws IOException {
+    ensureStateIsLoaded();
+    return state.getImportedJenkinsParameterSnapshot(buildTypeExternalId);
+  }
+
+  public synchronized void saveImportedJenkinsParameterSnapshot(String buildTypeExternalId,
+                                                                 String snapshot) throws IOException {
+    ensureStateIsLoaded();
+    state.putImportedJenkinsParameterSnapshot(buildTypeExternalId, snapshot);
+  }
+
   /**
    * Uses files in the plugin folder instead of {@link CustomDataStorage}.
    */

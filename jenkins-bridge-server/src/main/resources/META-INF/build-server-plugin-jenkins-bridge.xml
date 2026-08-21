@@ -75,6 +75,9 @@
   <bean id="bridgeBuildFeatureController"
         class="com.jetbrains.teamcity.jenkinsbridge.feature.BridgeBuildFeatureController"/>
 
+  <bean id="jenkinsParameterSynchronizer"
+        class="com.jetbrains.teamcity.jenkinsbridge.feature.JenkinsParameterSynchronizer"/>
+
   <bean id="mirroredJobProvider"
         class="com.jetbrains.teamcity.jenkinsbridge.feature.MirroredJobProvider"/>
 

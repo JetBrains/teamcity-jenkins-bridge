@@ -23,6 +23,7 @@ public class BridgeState {
   private static final String LAST_POLL_TIME_KEY = "last-poll-time";
   private static final String LAST_ERROR_KEY = "last-error";
   private static final String JENKINS_PARAMETER_KEY_PREFIX = "jenkins-parameter-names-";
+  private static final String JENKINS_PARAMETER_SNAPSHOT_KEY_PREFIX = "jenkins-parameter-snapshot-";
 
   @NotNull
   private final CustomDataStorage myStorage;
@@ -174,8 +175,21 @@ public class BridgeState {
     myStorage.putValue(jenkinsParameterKey(buildTypeExternalId), OUR_GSON.toJson(names));
   }
 
+  public String getImportedJenkinsParameterSnapshot(@NotNull String buildTypeExternalId) {
+    return myStorage.getValue(jenkinsParameterSnapshotKey(buildTypeExternalId));
+  }
+
+  public void putImportedJenkinsParameterSnapshot(@NotNull String buildTypeExternalId,
+                                                  @NotNull String snapshot) {
+    myStorage.putValue(jenkinsParameterSnapshotKey(buildTypeExternalId), snapshot);
+  }
+
   private static String jenkinsParameterKey(String buildTypeExternalId) {
     return JENKINS_PARAMETER_KEY_PREFIX + buildTypeExternalId;
+  }
+
+  private static String jenkinsParameterSnapshotKey(String buildTypeExternalId) {
+    return JENKINS_PARAMETER_SNAPSHOT_KEY_PREFIX + buildTypeExternalId;
   }
 
   private <T> T parseEntry(String key, String value, Class<T> type)

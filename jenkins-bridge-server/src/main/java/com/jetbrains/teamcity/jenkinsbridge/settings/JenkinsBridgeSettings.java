@@ -11,6 +11,7 @@ import static com.jetbrains.teamcity.jenkinsbridge.util.Utilities.nullToEmpty;
 public class JenkinsBridgeSettings {
   private final boolean enabled;
   private final int pollSeconds;
+  private final int parameterRefreshPollCycles;
   private final int pendingTriggerTimeoutMinutes;
   private final String teamCityUrl;
   private final String teamCityUser;
@@ -19,6 +20,7 @@ public class JenkinsBridgeSettings {
   JenkinsBridgeSettings(
       boolean enabled,
       int pollSeconds,
+      int parameterRefreshPollCycles,
       int pendingTriggerTimeoutMinutes,
       String teamCityUrl,
       String teamCityUser,
@@ -26,6 +28,7 @@ public class JenkinsBridgeSettings {
   ) {
     this.enabled = enabled;
     this.pollSeconds = Math.max(1, pollSeconds);
+    this.parameterRefreshPollCycles = Math.max(1, parameterRefreshPollCycles);
     this.pendingTriggerTimeoutMinutes = Math.max(1, pendingTriggerTimeoutMinutes);
     this.teamCityUrl = trimTrailingSlash(teamCityUrl);
     this.teamCityUser = nullToEmpty(teamCityUser);
@@ -38,6 +41,10 @@ public class JenkinsBridgeSettings {
 
   public int getPollSeconds() {
     return pollSeconds;
+  }
+
+  public int getParameterRefreshPollCycles() {
+    return parameterRefreshPollCycles;
   }
 
   /** Only read by the deprecated {@code TeamCityClient}. */
@@ -65,6 +72,7 @@ public class JenkinsBridgeSettings {
   public String describeForLog() {
     return "enabled=" + enabled
         + ", pollSeconds=" + pollSeconds
+        + ", parameterRefreshPollCycles=" + parameterRefreshPollCycles
         + ", pendingTriggerTimeoutMinutes=" + pendingTriggerTimeoutMinutes;
   }
 

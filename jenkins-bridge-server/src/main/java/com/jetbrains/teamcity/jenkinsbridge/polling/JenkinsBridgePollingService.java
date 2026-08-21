@@ -1,6 +1,7 @@
 package com.jetbrains.teamcity.jenkinsbridge.polling;
 
 import com.jetbrains.teamcity.jenkinsbridge.feature.MirroredJobProvider;
+import com.jetbrains.teamcity.jenkinsbridge.feature.JenkinsParameterSynchronizer;
 import com.jetbrains.teamcity.jenkinsbridge.http.BridgeHttpException;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClient;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClientFactory;
@@ -69,8 +70,10 @@ public class JenkinsBridgePollingService {
   private final TeamCityQueuedBuildFailureService failureService;
   private final TeamCityNodes teamCityNodes;
   private final JenkinsBridgeSystemProblemReporter systemProblemReporter;
+  private final JenkinsParameterSynchronizer parameterSynchronizer;
   private final Object systemProblemLifecycleLock = new Object();
   private final AtomicBoolean started = new AtomicBoolean(false);
+  private long pollCycle;
   private ScheduledExecutorService executorService;
 
   public JenkinsBridgePollingService(
@@ -83,7 +86,8 @@ public class JenkinsBridgePollingService {
       TeamCityRunningBuildLocator buildLocator,
       TeamCityQueuedBuildFailureService failureService,
       TeamCityNodes teamCityNodes,
-      JenkinsBridgeSystemProblemReporter systemProblemReporter
+      JenkinsBridgeSystemProblemReporter systemProblemReporter,
+      JenkinsParameterSynchronizer parameterSynchronizer
   ) {
     this.settingsProvider = settingsProvider;
     this.jenkinsClientFactory = jenkinsClientFactory;
@@ -95,6 +99,7 @@ public class JenkinsBridgePollingService {
     this.failureService = failureService;
     this.teamCityNodes = teamCityNodes;
     this.systemProblemReporter = systemProblemReporter;
+    this.parameterSynchronizer = parameterSynchronizer;
   }
 
   public void start() {
@@ -178,6 +183,8 @@ public class JenkinsBridgePollingService {
 
   private void pollOnce() throws BridgeHttpException, JenkinsDataException, IOException {
     JenkinsBridgeSettings settings = settingsProvider.load();
+    boolean refreshParametersRequired = shouldRefreshParameters(
+        settings.getParameterRefreshPollCycles());
     List<MirroredJob> mirroredJobs = mirroredJobProvider.discoverMirroredJobs();
     if (systemProblemReporter != null) {
       systemProblemReporter.reconcile(mirroredJobs);
@@ -192,6 +199,9 @@ public class JenkinsBridgePollingService {
 
     for (MirroredJob mirroredJob : mirroredJobs) {
       try {
+        if (refreshParametersRequired) {
+          refreshParameters(mirroredJob);
+        }
         pollPipeline(mirroredJob);
       } catch (BridgeHttpException e) {
         reportAuthoritativePollingFailure(mirroredJob, e);
@@ -203,6 +213,37 @@ public class JenkinsBridgePollingService {
         // Isolate per-job failures so one broken job does not abort the rest of the cycle.
         LOG.error("Jenkins Bridge: failed to poll " + mirroredJob.describeForLog(), e);
       }
+    }
+  }
+
+  private boolean shouldRefreshParameters(int refreshIntervalCycles) {
+    pollCycle++;
+    return pollCycle % refreshIntervalCycles == 0;
+  }
+
+  private void refreshParameters(MirroredJob mirroredJob) {
+    if (parameterSynchronizer == null) {
+      return;
+    }
+    SBuildType buildType = projectManager.findBuildTypeByExternalId(
+        mirroredJob.teamCityBuildTypeExternalId());
+    if (buildType == null) {
+      LOG.warn("Jenkins Bridge could not refresh parameters because TeamCity build configuration "
+          + mirroredJob.teamCityBuildTypeExternalId() + " was not found");
+      return;
+    }
+    try {
+      int refreshed = parameterSynchronizer.synchronize(buildType).getSynchronizedCount();
+      buildType.schedulePersisting("Jenkins Bridge: refresh Jenkins build parameters")
+          .awaitUninterruptibly();
+      LOG.debug("Jenkins Bridge refreshed " + refreshed + " Jenkins parameter(s) for "
+          + mirroredJob.describeForLog());
+    } catch (BridgeHttpException | JenkinsDataException e) {
+      LOG.warn("Jenkins Bridge could not refresh Jenkins parameters for "
+          + mirroredJob.describeForLog(), e);
+    } catch (RuntimeException e) {
+      LOG.error("Jenkins Bridge failed to refresh Jenkins parameters for "
+          + mirroredJob.describeForLog(), e);
     }
   }
 

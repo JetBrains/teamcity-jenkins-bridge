@@ -67,8 +67,9 @@ public class TeamCityBuildConfigCreator {
     }
     buildType.addBuildFeature(BridgeBuildFeatureConstants.TYPE, featureParams);
     buildType.addConfigParameter(parameterFactory.createTypedParameter(AGENTLESS_PARAM, "true", HIDDEN_SPEC));
-    buildType.addConfigParameter(parameterFactory.createSimpleParameter(
-        BridgeBuildFeatureConstants.INTERNAL_MULTIBRANCH_PARAM, String.valueOf(multibranch)));
+    buildType.addConfigParameter(parameterFactory.createTypedParameter(
+        BridgeBuildFeatureConstants.INTERNAL_MULTIBRANCH_PARAM,
+        String.valueOf(multibranch), HIDDEN_SPEC));
     buildType.addConfigParameter(parameterFactory.createTypedParameter(READ_ONLY_PARAM, "true", HIDDEN_SPEC));
     buildType.setOption(BuildTypeOptions.BT_FAIL_IF_TESTS_FAIL, false);
     return buildType;
