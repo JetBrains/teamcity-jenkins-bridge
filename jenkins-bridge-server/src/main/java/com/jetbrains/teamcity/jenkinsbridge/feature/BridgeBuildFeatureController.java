@@ -2,14 +2,22 @@ package com.jetbrains.teamcity.jenkinsbridge.feature;
 
 import com.jetbrains.teamcity.jenkinsbridge.connection.JenkinsConnectionResolver;
 import jetbrains.buildServer.controllers.BaseController;
+import jetbrains.buildServer.serverSide.ProjectManager;
+import jetbrains.buildServer.serverSide.SBuildType;
+import jetbrains.buildServer.serverSide.SProject;
+import jetbrains.buildServer.serverSide.auth.Permission;
+import jetbrains.buildServer.users.SUser;
 import jetbrains.buildServer.web.openapi.PluginDescriptor;
 import jetbrains.buildServer.web.openapi.WebControllerManager;
+import jetbrains.buildServer.web.util.SessionUser;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.springframework.web.servlet.ModelAndView;
 
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
+
+import static com.jetbrains.teamcity.jenkinsbridge.util.Utilities.findBuildType;
 
 /**
  * Renders the edit form of the Jenkins Bridge build feature. A controller is needed instead of a
@@ -22,12 +30,15 @@ public class BridgeBuildFeatureController extends BaseController {
 
   @NotNull private final PluginDescriptor myPluginDescriptor;
   @NotNull private final JenkinsConnectionResolver myConnectionResolver;
+  @NotNull private final ProjectManager myProjectManager;
 
   public BridgeBuildFeatureController(@NotNull PluginDescriptor pluginDescriptor,
                                       @NotNull JenkinsConnectionResolver connectionResolver,
-                                      @NotNull WebControllerManager webControllerManager) {
+                                      @NotNull WebControllerManager webControllerManager,
+                                      @NotNull ProjectManager projectManager) {
     myPluginDescriptor = pluginDescriptor;
     myConnectionResolver = connectionResolver;
+    myProjectManager = projectManager;
     webControllerManager.registerController(
         pluginDescriptor.getPluginResourcesPath(EDIT_PARAMS_RELATIVE_URL), this);
   }
@@ -35,9 +46,30 @@ public class BridgeBuildFeatureController extends BaseController {
   @Nullable
   @Override
   protected ModelAndView doHandle(@NotNull HttpServletRequest request, @NotNull HttpServletResponse response) {
+    SProject project = findProject(request);
+    SUser user = SessionUser.getUser(request);
+    if (project == null) {
+      response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+      return null;
+    }
+    if (user == null || !user.isPermissionGrantedForProject(project.getProjectId(), Permission.EDIT_PROJECT)) {
+      response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+      return null;
+    }
+
     ModelAndView modelAndView =
         new ModelAndView(myPluginDescriptor.getPluginResourcesPath("editJenkinsBridge.jsp"));
     modelAndView.getModel().put("jenkinsConnections", myConnectionResolver);
     return modelAndView;
+  }
+
+  @Nullable
+  private SProject findProject(HttpServletRequest request) {
+    String projectId = request.getParameter("projectId");
+    if (projectId != null && !projectId.trim().isEmpty()) {
+      return myProjectManager.findProjectByExternalId(projectId);
+    }
+    SBuildType buildType = findBuildType(request.getParameter("buildTypeId"), myProjectManager);
+    return buildType == null ? null : buildType.getProject();
   }
 }
