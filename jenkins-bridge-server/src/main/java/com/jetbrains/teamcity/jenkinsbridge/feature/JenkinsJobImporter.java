@@ -13,6 +13,7 @@ import jetbrains.buildServer.serverSide.ProjectManager;
 import jetbrains.buildServer.serverSide.SBuildFeatureDescriptor;
 import jetbrains.buildServer.serverSide.SBuildType;
 import jetbrains.buildServer.serverSide.SProject;
+import jetbrains.buildServer.serverSide.identifiers.IdentifiersUtil;
 import jetbrains.buildServer.serverSide.parameters.ParameterFactory;
 
 import java.util.Collections;
@@ -112,8 +113,10 @@ public class JenkinsJobImporter {
                                     String fullName) throws BridgeHttpException, JenkinsDataException {
     String jenkinsType = jenkinsClient.getJobClass(fullName);
     boolean isMultibranch = JenkinsJob.isMultibranchClass(jenkinsType);
-    String externalId = ExternalIdGenerator.resolveUnique(
-        ExternalIdGenerator.baseExternalId(project.getExternalId(), fullName),
+    String externalId = IdentifiersUtil.generateUniqueExternalIdByUserString(
+        project.getExternalId(),
+        fullName,
+        false,
         candidate -> projectManager.findBuildTypeByExternalId(candidate) != null);
 
     SBuildType buildType = createBuildType(project, externalId, fullName);

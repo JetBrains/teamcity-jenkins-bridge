@@ -32,8 +32,8 @@ public class PipelineChainPlannerTest {
 
     assertEquals("TestTc_JenkinsTcTest", plan.getSourceBuildTypeExternalId());
     assertEquals("TestTc_JenkinsTcTest::tc-test#33", plan.getJenkinsBuildKey());
-    assertTrue(plan.getTopBuildTypeExternalId().startsWith("TestTc_JenkinsTcTest_JenkinsFlow_"));
-    assertTrue(plan.getTopBuildTypeExternalId().endsWith("_Top"));
+    assertTrue(plan.getTopBuildTypeExternalId().startsWith("TestTc_JenkinsTcTest_JenkinsFlow"));
+    assertTrue(plan.getTopBuildTypeExternalId().endsWith("Top"));
     assertEquals(5, plan.getNodes().size());
     assertEquals(Arrays.asList("5"), plan.getTerminalNodeIds());
 
@@ -47,8 +47,8 @@ public class PipelineChainPlannerTest {
     assertEquals(Arrays.asList("2"), linux.getParentNodeIds());
     assertEquals(Arrays.asList("2"), windows.getParentNodeIds());
     assertEquals(Arrays.asList("3", "4"), deploy.getParentNodeIds());
-    assertTrue(linux.getBuildTypeExternalId().startsWith("TestTc_JenkinsTcTest_JenkinsFlow_"));
-    assertTrue(linux.getBuildTypeExternalId().endsWith("_3"));
+    assertTrue(linux.getBuildTypeExternalId().startsWith("TestTc_JenkinsTcTest_JenkinsFlow"));
+    assertTrue(linux.getBuildTypeExternalId().endsWith("3"));
   }
 
   @Test
