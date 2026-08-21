@@ -7,6 +7,7 @@ import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsDataException;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsJobParameters;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsParameterDefinition;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsJob;
+import com.jetbrains.teamcity.jenkinsbridge.util.TeamCityUiSettings;
 import jetbrains.buildServer.serverSide.BuildTypeOptions;
 import jetbrains.buildServer.serverSide.DuplicateBuildTypeNameException;
 import jetbrains.buildServer.serverSide.MultiNodeLocks;
@@ -14,6 +15,7 @@ import jetbrains.buildServer.serverSide.ProjectManager;
 import jetbrains.buildServer.serverSide.SBuildFeatureDescriptor;
 import jetbrains.buildServer.serverSide.SBuildType;
 import jetbrains.buildServer.serverSide.SProject;
+import jetbrains.buildServer.serverSide.ReadOnlyEntityException;
 import jetbrains.buildServer.serverSide.identifiers.IdentifiersUtil;
 import jetbrains.buildServer.serverSide.parameters.ParameterFactory;
 import com.intellij.openapi.diagnostic.Logger;
@@ -86,6 +88,11 @@ public class JenkinsJobImporter {
     SProject project = projectManager.findProjectByExternalId(targetProjectExternalId);
     if (project == null) {
       throw new IllegalArgumentException("Target project not found: " + targetProjectExternalId);
+    }
+    if (TeamCityUiSettings.isReadOnly(project)) {
+      throw new ReadOnlyEntityException(
+          "Cannot import Jenkins jobs because project settings are read-only: "
+              + targetProjectExternalId);
     }
     JenkinsClient jenkinsClient = jenkinsClientFactory.forConnectionId(project, connectionId);
 

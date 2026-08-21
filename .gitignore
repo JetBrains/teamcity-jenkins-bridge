@@ -22,3 +22,4 @@ STATIC_AUDIT_REPORT.md
 !/docs/images/jenkins-jobs-sync-import.png
 /.github
 .claude/
+.mvn/maven.config
