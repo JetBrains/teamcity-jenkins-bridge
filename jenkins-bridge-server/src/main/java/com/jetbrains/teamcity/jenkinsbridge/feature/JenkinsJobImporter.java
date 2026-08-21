@@ -9,11 +9,14 @@ import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsParameterDefinition;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsJob;
 import jetbrains.buildServer.serverSide.BuildTypeOptions;
 import jetbrains.buildServer.serverSide.DuplicateBuildTypeNameException;
+import jetbrains.buildServer.serverSide.MultiNodeLocks;
 import jetbrains.buildServer.serverSide.ProjectManager;
 import jetbrains.buildServer.serverSide.SBuildFeatureDescriptor;
 import jetbrains.buildServer.serverSide.SBuildType;
 import jetbrains.buildServer.serverSide.SProject;
+import jetbrains.buildServer.serverSide.identifiers.IdentifiersUtil;
 import jetbrains.buildServer.serverSide.parameters.ParameterFactory;
+import com.intellij.openapi.diagnostic.Logger;
 
 import java.util.Collections;
 import java.util.HashSet;
@@ -21,6 +24,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.nio.ByteBuffer;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 
 import static com.jetbrains.teamcity.jenkinsbridge.util.Utilities.describeException;
 import static com.jetbrains.teamcity.jenkinsbridge.util.Utilities.lastPathSegment;
@@ -38,6 +44,7 @@ import static com.jetbrains.teamcity.jenkinsbridge.util.Utilities.lastPathSegmen
  * thread of the logged-in user), so TeamCity enforces the user's edit permission on the project.
  */
 public class JenkinsJobImporter {
+  private static final Logger LOG = Logger.getInstance(JenkinsJobImporter.class.getName());
   // Configuration parameter that marks a build as agentless (matches TeamCityBuildQueuer). Imported
   // configs carry it by default, so a manual run is also agentless rather than waiting for an agent.
   private static final String AGENTLESS_PARAM = "teamcity.build.agentLess";
@@ -48,12 +55,22 @@ public class JenkinsJobImporter {
   private final ProjectManager projectManager;
   private final ParameterFactory parameterFactory;
   private final JenkinsClientFactory jenkinsClientFactory;
+  private final MultiNodeLocks multiNodeLocks;
+
+  private static final String IMPORT_LOCK_TYPE = "jenkinsBridgeImport";
+  private static final long IMPORT_LOCK_TIMEOUT_MILLIS = 1_000L;
 
   public JenkinsJobImporter(ProjectManager projectManager, ParameterFactory parameterFactory,
                             JenkinsClientFactory jenkinsClientFactory) {
+    this(projectManager, parameterFactory, jenkinsClientFactory, null);
+  }
+
+  public JenkinsJobImporter(ProjectManager projectManager, ParameterFactory parameterFactory,
+                            JenkinsClientFactory jenkinsClientFactory, MultiNodeLocks multiNodeLocks) {
     this.projectManager = projectManager;
     this.parameterFactory = parameterFactory;
     this.jenkinsClientFactory = jenkinsClientFactory;
+    this.multiNodeLocks = multiNodeLocks;
   }
 
   /**
@@ -86,13 +103,64 @@ public class JenkinsJobImporter {
       }
 
       try {
-        importJob(project, connectionId, jenkinsClient, fullName, alreadyMirroredJobs, result);
+        importJobWithLock(project, connectionId, jenkinsClient, fullName, alreadyMirroredJobs, result);
       } catch (BridgeHttpException | JenkinsDataException e) {
         result.addFailed(fullName, describeException(e));
       }
     }
 
     return result;
+  }
+
+  private void importJobWithLock(SProject project, String connectionId, JenkinsClient jenkinsClient,
+                                 String fullName, Set<String> alreadyMirrored, ImportResult result)
+      throws BridgeHttpException, JenkinsDataException {
+    // The three-argument constructor is retained for isolated legacy unit tests. The Spring bean
+    // receives TeamCity's database-backed lock service, which is required for multi-node safety.
+    if (multiNodeLocks == null) {
+      importJob(project, connectionId, jenkinsClient, fullName, alreadyMirrored, result);
+      return;
+    }
+
+    MultiNodeLocks.Lock lock;
+    try {
+      lock = multiNodeLocks.tryLock(IMPORT_LOCK_TYPE,
+          lockId(project.getExternalId(), connectionId, fullName), IMPORT_LOCK_TIMEOUT_MILLIS);
+    } catch (InterruptedException interrupted) {
+      Thread.currentThread().interrupt();
+      result.addFailed(fullName, "Import interrupted while waiting for another node");
+      return;
+    }
+    if (lock == null) {
+      LOG.info("Jenkins Bridge import lock was not acquired for project " + project.getExternalId()
+          + ", connection " + connectionId + ", Jenkins job " + fullName);
+      result.addFailed(fullName,
+          "Another TeamCity node is currently importing this Jenkins job. Please refresh and try again.");
+      return;
+    }
+    try {
+      LOG.debug("Jenkins Bridge import lock acquired for project " + project.getExternalId()
+          + ", connection " + connectionId + ", Jenkins job " + fullName);
+      // The set collected before locking may be stale: another node can have completed the import
+      // while this request was waiting. Always re-read the shared project state under the lock.
+      Set<String> currentMirroredJobs = collectMirroredJobs(project);
+      importJob(project, connectionId, jenkinsClient, fullName, currentMirroredJobs, result);
+      alreadyMirrored.addAll(currentMirroredJobs);
+    } finally {
+      LOG.debug("Jenkins Bridge import lock released for project " + project.getExternalId()
+          + ", connection " + connectionId + ", Jenkins job " + fullName);
+      lock.close();
+    }
+  }
+
+  private static long lockId(String projectExternalId, String connectionId, String fullName) {
+    String key = projectExternalId + "\u0000" + connectionId + "\u0000" + fullName;
+    try {
+      byte[] digest = MessageDigest.getInstance("SHA-256").digest(key.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+      return ByteBuffer.wrap(digest).getLong();
+    } catch (NoSuchAlgorithmException impossible) {
+      throw new IllegalStateException("SHA-256 is not available", impossible);
+    }
   }
 
   private void importJob(SProject project, String connectionId, JenkinsClient jenkinsClient, String fullName,
@@ -112,8 +180,10 @@ public class JenkinsJobImporter {
                                     String fullName) throws BridgeHttpException, JenkinsDataException {
     String jenkinsType = jenkinsClient.getJobClass(fullName);
     boolean isMultibranch = JenkinsJob.isMultibranchClass(jenkinsType);
-    String externalId = ExternalIdGenerator.resolveUnique(
-        ExternalIdGenerator.baseExternalId(project.getExternalId(), fullName),
+    String externalId = IdentifiersUtil.generateUniqueExternalIdByUserString(
+        project.getExternalId(),
+        fullName,
+        false,
         candidate -> projectManager.findBuildTypeByExternalId(candidate) != null);
 
     SBuildType buildType = createBuildType(project, externalId, fullName);

@@ -1,10 +1,10 @@
 package com.jetbrains.teamcity.jenkinsbridge.teamcity;
 
-import com.jetbrains.teamcity.jenkinsbridge.feature.ExternalIdGenerator;
 import com.jetbrains.teamcity.jenkinsbridge.model.GraphConfidence;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsPipelineGraph;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsPipelineGraphNode;
 import com.jetbrains.teamcity.jenkinsbridge.persistence.BuildMirror;
+import jetbrains.buildServer.serverSide.identifiers.IdentifiersUtil;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -59,33 +59,22 @@ public class PipelineChainPlanner {
   }
 
   private String topBuildTypeExternalId(String sourceBuildTypeExternalId, String runHash) {
-    String source = ExternalIdGenerator.sanitize(sourceBuildTypeExternalId);
-    if (source.length() == 0) {
-      source = "JenkinsBridge";
-    }
-    String externalId = source + "_JenkinsFlow_" + runHash + "_Top";
-    char first = externalId.charAt(0);
-    if (!((first >= 'A' && first <= 'Z') || (first >= 'a' && first <= 'z'))) {
-      externalId = "J" + externalId;
-    }
-    return externalId;
+    return pipelineExternalId(sourceBuildTypeExternalId, "JenkinsFlow_" + runHash + "_Top");
   }
 
   private String buildTypeExternalId(String sourceBuildTypeExternalId, String runHash, String nodeId) {
-    String source = ExternalIdGenerator.sanitize(sourceBuildTypeExternalId);
-    if (source.length() == 0) {
-      source = "JenkinsBridge";
-    }
-    String safeNode = ExternalIdGenerator.sanitize(nodeId);
-    if (safeNode.length() == 0) {
-      safeNode = "Node";
-    }
-    String externalId = source + "_JenkinsFlow_" + runHash + "_" + safeNode;
-    char first = externalId.charAt(0);
-    if (!((first >= 'A' && first <= 'Z') || (first >= 'a' && first <= 'z'))) {
-      externalId = "J" + externalId;
-    }
-    return externalId;
+    return pipelineExternalId(sourceBuildTypeExternalId,
+        "JenkinsFlow_" + runHash + "_" + (nodeId == null ? "Node" : nodeId));
+  }
+
+  private String pipelineExternalId(String sourceBuildTypeExternalId, String userString) {
+    String source = sourceBuildTypeExternalId == null || sourceBuildTypeExternalId.trim().isEmpty()
+        ? "JenkinsBridge" : sourceBuildTypeExternalId;
+    return IdentifiersUtil.generateUniqueExternalIdByUserString(
+        source,
+        userString,
+        false,
+        candidate -> false);
   }
 
   private static String shortHash(String value, int length) {

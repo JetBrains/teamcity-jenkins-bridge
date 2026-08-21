@@ -16,5 +16,9 @@ STATIC_AUDIT_REPORT.md
 /PLAN.md
 /RELIABILITY_AND_PERFORMANCE.md
 /docs
+!/docs/
+/docs/*
+!/docs/images/
+!/docs/images/jenkins-jobs-sync-import.png
 /.github
 .claude/

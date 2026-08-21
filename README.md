@@ -30,6 +30,10 @@ To mirror a Jenkins job, visit the "Jenkins Jobs Sync" tab in the project admin
 view. This screen will let you automatically create build configurations which have the
 "Jenkins Bridge" build feature, letting the plugin know they are mirror targets.
 
+The import page reports created, skipped, and lock-contention failures separately:
+
+![Jenkins Jobs Sync import results](docs/images/jenkins-jobs-sync-import.png)
+
 ## Server settings
 
 The remaining settings are server-wide TeamCity internal properties. Configure
@@ -51,6 +55,32 @@ defaults to 1 (only the newest Jenkins build). After the
 first poll, discovery is incremental, and every new Jenkins build after the
 stored watermark is considered. If Jenkins build numbers are reset or reused, the
 bridge also uses the Jenkins build timestamp to identify the run.
+
+## Multi-node TeamCity support
+
+Jenkins Bridge supports a TeamCity main node and one or more secondary nodes when
+all nodes use the same TeamCity data directory configuration and shared database.
+Use PostgreSQL (or another supported external database) for a multi-node setup;
+the internal HSQL database is intended for single-node development only.
+
+Node responsibilities are split as follows:
+
+- The main node runs Jenkins polling and the Jenkins-triggering orchestration.
+- A mirrored TeamCity build can be triggered through a secondary node. The
+  secondary node queues the TeamCity promotion, while the actual outbound
+  Jenkins request is performed by the main node.
+- Secondary nodes do not need a Jenkins connection for build triggering or
+  mirroring. They only need Jenkins connection access when serving the Jenkins
+  Jobs Sync import page.
+- Jenkins job imports use a TeamCity database-backed distributed lock per project,
+  Jenkins connection, and Jenkins job. If another node currently owns the lock,
+  the import returns a retryable failure; refresh and try again.
+- Build and trigger state is persisted in the shared TeamCity database so the main
+  node can correlate work observed through another node.
+
+Install the same plugin archive on every node and restart or reload the plugin on
+each node after an upgrade. Verify the active node roles and plugin version in the
+respective `teamcity-server.log` files before testing concurrent imports.
 
 ## Build
 
