@@ -23,7 +23,7 @@ public class TeamCityBuildParametersTest {
     jenkins.put("RUN_TESTS", "true");
 
     Map<String, String> merged = TeamCityBuildParameters.mergeWithJenkinsParameters(
-        bridge, jenkins, Collections.<String>emptySet());
+        bridge, jenkins);
 
     assertEquals("job", merged.get("jenkins.job"));
     assertEquals("job#1", merged.get("jenkins.build.key"));
@@ -40,7 +40,7 @@ public class TeamCityBuildParametersTest {
     jenkins.put("jenkins.build.key", "evil");
 
     try {
-      TeamCityBuildParameters.mergeWithJenkinsParameters(bridge, jenkins, Collections.<String>emptySet());
+      TeamCityBuildParameters.mergeWithJenkinsParameters(bridge, jenkins);
       fail("Expected collision to fail");
     } catch (IllegalStateException e) {
       assertTrue(e.getMessage().contains("jenkins.build.key"));
@@ -48,19 +48,14 @@ public class TeamCityBuildParametersTest {
   }
 
   @Test
-  public void failsWhenJenkinsParameterCollidesWithExistingTeamCityParameter() {
+  public void jenkinsParameterOverridesExistingTeamCityParameterDeclaration() {
     Map<String, String> jenkins = new LinkedHashMap<String, String>();
     jenkins.put("DEPLOY_ENV", "prod");
 
-    try {
-      TeamCityBuildParameters.mergeWithJenkinsParameters(
-          Collections.<String, String>emptyMap(),
-          jenkins,
-          Collections.singleton("DEPLOY_ENV"));
-      fail("Expected collision to fail");
-    } catch (IllegalStateException e) {
-      assertTrue(e.getMessage().contains("DEPLOY_ENV"));
-    }
+    Map<String, String> merged = TeamCityBuildParameters.mergeWithJenkinsParameters(
+        Collections.<String, String>emptyMap(), jenkins);
+
+    assertEquals("prod", merged.get("DEPLOY_ENV"));
   }
 
   @Test
@@ -71,8 +66,7 @@ public class TeamCityBuildParametersTest {
     try {
       TeamCityBuildParameters.mergeWithJenkinsParameters(
           Collections.<String, String>emptyMap(),
-          jenkins,
-          Collections.<String>emptySet());
+          jenkins);
       fail("Expected collision to fail");
     } catch (IllegalStateException e) {
       assertTrue(e.getMessage().contains(TeamCityBuildParameters.AGENTLESS_BUILD_PROPERTY));
@@ -87,7 +81,7 @@ public class TeamCityBuildParametersTest {
     jenkins.put("VISIBLE", "shown");
 
     Map<String, String> merged = TeamCityBuildParameters.mergeWithJenkinsParameters(
-        Collections.<String, String>emptyMap(), jenkins, Collections.<String>emptySet());
+        Collections.<String, String>emptyMap(), jenkins);
 
     assertFalse(merged.containsKey("jenkins.bridge.generated.chain"));
     assertFalse(merged.containsKey("jenkins.bridge.internal.value"));

@@ -44,8 +44,7 @@ public class TeamCityBuildParameters {
 
   public static Map<String, String> mergeWithJenkinsParameters(
       Map<String, String> bridgeParameters,
-      Map<String, String> jenkinsParameters,
-      Set<String> existingTeamCityParameterNames
+      Map<String, String> jenkinsParameters
   ) {
     Map<String, String> result = new LinkedHashMap<String, String>();
     result.putAll(bridgeParameters);
@@ -54,10 +53,10 @@ public class TeamCityBuildParameters {
         ? Collections.<String, String>emptyMap()
         : jenkinsParameters;
     Map<String, String> visibleJenkinsParameters = withoutBridgeInternalParameters(safeJenkinsParameters);
-    List<String> collisions = collisions(result.keySet(), visibleJenkinsParameters.keySet(), existingTeamCityParameterNames);
+    List<String> collisions = collisions(result.keySet(), visibleJenkinsParameters.keySet());
     if (!collisions.isEmpty()) {
       throw new IllegalStateException(
-          "Jenkins build parameter name(s) collide with TeamCity build parameters: "
+          "Jenkins build parameter name(s) collide with Jenkins Bridge parameters: "
               + join(collisions));
     }
 
@@ -84,20 +83,12 @@ public class TeamCityBuildParameters {
     return names;
   }
 
-  private static List<String> collisions(
-      Set<String> bridgeNames,
-      Set<String> jenkinsNames,
-      Set<String> existingTeamCityParameterNames
-  ) {
+  private static List<String> collisions(Set<String> bridgeNames, Set<String> jenkinsNames) {
     Set<String> reserved = new LinkedHashSet<String>();
     reserved.add(AGENTLESS_BUILD_PROPERTY);
     if (bridgeNames != null) {
       reserved.addAll(bridgeNames);
     }
-    if (existingTeamCityParameterNames != null) {
-      reserved.addAll(existingTeamCityParameterNames);
-    }
-
     List<String> collisions = new ArrayList<String>();
     for (String name : jenkinsNames) {
       if (reserved.contains(name)) {
