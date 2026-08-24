@@ -4,6 +4,7 @@ import com.google.gson.JsonObject;
 import com.jetbrains.teamcity.jenkinsbridge.feature.BridgeBuildFeatureConstants;
 import jetbrains.buildServer.serverSide.ProjectManager;
 import jetbrains.buildServer.serverSide.SBuildType;
+import jetbrains.buildServer.serverSide.SProject;
 import org.junit.Test;
 
 
@@ -82,6 +83,15 @@ public class UtilitiesTest {
     when(projectManager.findBuildTypeById("bt1")).thenReturn(buildType);
 
     assertSame(buildType, Utilities.findBuildType("bt1", projectManager));
+  }
+
+  @Test
+  public void findProjectFallsBackToInternalId() {
+    ProjectManager projectManager = mock(ProjectManager.class);
+    SProject project = mock(SProject.class);
+    when(projectManager.findProjectById("project1")).thenReturn(project);
+
+    assertSame(project, Utilities.findProject("project1", projectManager));
   }
 
   @Test

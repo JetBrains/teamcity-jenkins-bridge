@@ -1,6 +1,7 @@
 package com.jetbrains.teamcity.jenkinsbridge.feature;
 
 import com.jetbrains.teamcity.jenkinsbridge.connection.JenkinsConnectionResolver;
+import com.jetbrains.teamcity.jenkinsbridge.util.Utilities;
 import jetbrains.buildServer.controllers.BaseController;
 import jetbrains.buildServer.serverSide.ProjectManager;
 import jetbrains.buildServer.serverSide.SBuildType;
@@ -81,7 +82,7 @@ public class BridgeBuildFeatureController extends BaseController {
   private SProject findProject(HttpServletRequest request) {
     String projectId = request.getParameter("projectId");
     if (projectId != null && !projectId.trim().isEmpty()) {
-      return myProjectManager.findProjectByExternalId(projectId);
+      return Utilities.findProject(projectId, myProjectManager);
     }
     SBuildType buildType = findBuildType(request.getParameter("buildTypeId"), myProjectManager);
     return buildType == null ? null : buildType.getProject();
