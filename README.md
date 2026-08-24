@@ -108,6 +108,8 @@ parameters.
    This reduces the likelihood of stale parameters without replacing the
    trigger-time comparison and failed-to-start safeguard.
 
+   Jenkins may briefly return the previous parameter definitions after a job configuration change, so the trigger-time safeguard remains necessary.
+
 6. **The request parameters are constructed.** TeamCity default and custom
    values are combined, with custom values taking precedence. Internal bridge
    parameters are removed from the Jenkins request. The final payload contains
