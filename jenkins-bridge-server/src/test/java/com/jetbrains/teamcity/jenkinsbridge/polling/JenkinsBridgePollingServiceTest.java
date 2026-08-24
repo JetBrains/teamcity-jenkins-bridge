@@ -17,7 +17,6 @@ import com.jetbrains.teamcity.jenkinsbridge.persistence.BuildMirror;
 import com.jetbrains.teamcity.jenkinsbridge.persistence.BuildMirrorStore;
 import com.jetbrains.teamcity.jenkinsbridge.persistence.PendingTrigger;
 import com.jetbrains.teamcity.jenkinsbridge.persistence.SyncState;
-import com.jetbrains.teamcity.jenkinsbridge.settings.JenkinsBridgeSettings;
 import com.jetbrains.teamcity.jenkinsbridge.settings.JenkinsBridgeSettingsProvider;
 import com.jetbrains.teamcity.jenkinsbridge.settings.MirroredJob;
 import com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityBuildMirrorService;
@@ -29,8 +28,6 @@ import org.junit.Test;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.io.File;
-import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.Map;
@@ -74,8 +71,8 @@ public class JenkinsBridgePollingServiceTest {
 
   @Test
   public void pollPipelineProcessesBuildNumberResetByTimestampedIdentity() throws Exception {
-    JenkinsBridgeSettingsProvider provider = providerWithTempStateFile();
-    BuildMirrorStore store = new BuildMirrorStore(null, provider, buildMockProjectManager());
+    JenkinsBridgeSettingsProvider provider = provider();
+    BuildMirrorStore store = new BuildMirrorStore(buildMockProjectManager());
     store.setLastSeenBuildNumber("buildType::job", 500);
 
     FakeJenkinsClient jenkinsClient = new FakeJenkinsClient();
@@ -92,8 +89,8 @@ public class JenkinsBridgePollingServiceTest {
 
   @Test
   public void coldStartStillBackfillsOnlyRecentBuildLimit() throws Exception {
-    JenkinsBridgeSettingsProvider provider = providerWithTempStateFile();
-    BuildMirrorStore store = new BuildMirrorStore(null, provider, buildMockProjectManager());
+    JenkinsBridgeSettingsProvider provider = provider();
+    BuildMirrorStore store = new BuildMirrorStore(buildMockProjectManager());
 
     FakeJenkinsClient jenkinsClient = new FakeJenkinsClient();
     jenkinsClient.addBuild(buildInfo(3, 1710000000003L));
@@ -116,8 +113,8 @@ public class JenkinsBridgePollingServiceTest {
    */
   @Test
   public void retriesDiscoveredBuildAfterTransientDetailFetchFailure() throws Exception {
-    JenkinsBridgeSettingsProvider provider = providerWithTempStateFile();
-    BuildMirrorStore store = new BuildMirrorStore(null, provider, buildMockProjectManager());
+    JenkinsBridgeSettingsProvider provider = provider();
+    BuildMirrorStore store = new BuildMirrorStore(buildMockProjectManager());
     store.setLastSeenBuildNumber("buildType::job", 1);
 
     FakeJenkinsClient jenkinsClient = new FakeJenkinsClient();
@@ -142,8 +139,8 @@ public class JenkinsBridgePollingServiceTest {
   // Temporarily disabled while finished-mirror pruning is deferred.
   // @Test
   // public void pollJobKeepsFinishedMirrorsOfOtherJobs() throws Exception {
-  //   JenkinsBridgeSettingsProvider provider = providerWithTempStateFile();
-  //   BuildMirrorStore store = new BuildMirrorStore(null, provider, buildMockProjectManager());
+  //   JenkinsBridgeSettingsProvider provider = provider();
+  //   BuildMirrorStore store = new BuildMirrorStore(buildMockProjectManager());
   //
   //   BuildMirror finished = store.getOrCreateMirror(
   //       "buildType::otherJob#1@1710000000001", "otherJob", "buildType", buildInfo(1, 1710000000001L));
@@ -162,8 +159,8 @@ public class JenkinsBridgePollingServiceTest {
 
   @Test
   public void fetchesJenkinsBuildParametersOnceBeforeTeamCityBuildCreation() throws Exception {
-    JenkinsBridgeSettingsProvider provider = providerWithTempStateFile();
-    BuildMirrorStore store = new BuildMirrorStore(null, provider, buildMockProjectManager());
+    JenkinsBridgeSettingsProvider provider = provider();
+    BuildMirrorStore store = new BuildMirrorStore(buildMockProjectManager());
     JenkinsBuildInfo finishedBuild = finishedBuildInfo();
     BuildMirror mirror = store.getOrCreateMirror("job#1", "job", "buildType", finishedBuild);
 
@@ -185,8 +182,8 @@ public class JenkinsBridgePollingServiceTest {
 
   @Test
   public void aZeroBackfillMirrorsNoHistoricalBuildButStillMirrorsTheNextOne() throws Exception {
-    JenkinsBridgeSettingsProvider provider = providerWithTempStateFile();
-    BuildMirrorStore store = new BuildMirrorStore(null, provider, buildMockProjectManager());
+    JenkinsBridgeSettingsProvider provider = provider();
+    BuildMirrorStore store = new BuildMirrorStore(buildMockProjectManager());
 
     FakeJenkinsClient jenkinsClient = new FakeJenkinsClient();
     jenkinsClient.addBuild(buildInfo(3, 1710000000003L));
@@ -213,8 +210,8 @@ public class JenkinsBridgePollingServiceTest {
 
   @Test
   public void aBackfillLargerThanTheHistoryMirrorsEveryBuildThatExists() throws Exception {
-    JenkinsBridgeSettingsProvider provider = providerWithTempStateFile();
-    BuildMirrorStore store = new BuildMirrorStore(null, provider, buildMockProjectManager());
+    JenkinsBridgeSettingsProvider provider = provider();
+    BuildMirrorStore store = new BuildMirrorStore(buildMockProjectManager());
 
     FakeJenkinsClient jenkinsClient = new FakeJenkinsClient();
     jenkinsClient.addBuild(buildInfo(3, 1710000000003L));
@@ -233,8 +230,8 @@ public class JenkinsBridgePollingServiceTest {
 
   @Test
   public void runningBoundTeamCityFirstBuildIsUpdatedLiveWithoutFinalSync() throws Exception {
-    JenkinsBridgeSettingsProvider provider = providerWithTempStateFile();
-    BuildMirrorStore store = new BuildMirrorStore(null, provider, buildMockProjectManager());
+    JenkinsBridgeSettingsProvider provider = provider();
+    BuildMirrorStore store = new BuildMirrorStore(buildMockProjectManager());
     JenkinsBuildInfo runningBuild = buildInfo(1, 1710000000001L, true);
     BuildMirror mirror = store.getOrCreateMirror("job#1", "job", "buildType", runningBuild);
     mirror.setTeamCityBuildId(77L);
@@ -274,8 +271,8 @@ public class JenkinsBridgePollingServiceTest {
 
   @Test
   public void requiredBuildRequestFailurePreventsRecoveryAndCapturesConnectivity() throws Exception {
-    JenkinsBridgeSettingsProvider provider = providerWithTempStateFile();
-    BuildMirrorStore store = new BuildMirrorStore(null, provider, buildMockProjectManager());
+    JenkinsBridgeSettingsProvider provider = provider();
+    BuildMirrorStore store = new BuildMirrorStore(buildMockProjectManager());
     FakeJenkinsClient jenkinsClient = new FakeJenkinsClient();
     jenkinsClient.addBuild(buildInfo());
     jenkinsClient.buildInfoFailure =
@@ -291,8 +288,8 @@ public class JenkinsBridgePollingServiceTest {
 
   @Test
   public void innerBuild404DoesNotBecomeMissingJobOrConnectivity() throws Exception {
-    JenkinsBridgeSettingsProvider provider = providerWithTempStateFile();
-    BuildMirrorStore store = new BuildMirrorStore(null, provider, buildMockProjectManager());
+    JenkinsBridgeSettingsProvider provider = provider();
+    BuildMirrorStore store = new BuildMirrorStore(buildMockProjectManager());
     FakeJenkinsClient jenkinsClient = new FakeJenkinsClient();
     jenkinsClient.addBuild(buildInfo());
     jenkinsClient.buildInfoFailure =
@@ -308,8 +305,8 @@ public class JenkinsBridgePollingServiceTest {
 
   @Test
   public void dispatchesAuthoritativeAndNestedHealthOutcomesToTheReporter() throws Exception {
-    JenkinsBridgeSettingsProvider provider = providerWithTempStateFile();
-    BuildMirrorStore store = new BuildMirrorStore(null, provider, buildMockProjectManager());
+    JenkinsBridgeSettingsProvider provider = provider();
+    BuildMirrorStore store = new BuildMirrorStore(buildMockProjectManager());
     CapturingProblemReporter reporter = new CapturingProblemReporter();
     JenkinsBridgePollingService service = newService(
         provider, new FakeJenkinsClient(), new CapturingMirrorService(), store, reporter);
@@ -338,8 +335,8 @@ public class JenkinsBridgePollingServiceTest {
 
   @Test
   public void shutdownWaitsForInFlightReportingBeforeClearingTickets() throws Exception {
-    JenkinsBridgeSettingsProvider provider = providerWithTempStateFile();
-    BuildMirrorStore store = new BuildMirrorStore(null, provider, buildMockProjectManager());
+    JenkinsBridgeSettingsProvider provider = provider();
+    BuildMirrorStore store = new BuildMirrorStore(buildMockProjectManager());
     BlockingProblemReporter reporter = new BlockingProblemReporter();
     JenkinsBridgePollingService service = newService(
         provider, new FakeJenkinsClient(), new CapturingMirrorService(), store, reporter);
@@ -372,8 +369,8 @@ public class JenkinsBridgePollingServiceTest {
 
   @Test
   public void localMirrorFailureDoesNotBecomeJenkinsConnectivityFailure() throws Exception {
-    JenkinsBridgeSettingsProvider provider = providerWithTempStateFile();
-    BuildMirrorStore store = new BuildMirrorStore(null, provider, buildMockProjectManager());
+    JenkinsBridgeSettingsProvider provider = provider();
+    BuildMirrorStore store = new BuildMirrorStore(buildMockProjectManager());
     FakeJenkinsClient jenkinsClient = new FakeJenkinsClient();
     jenkinsClient.addBuild(buildInfo());
     CapturingMirrorService mirrorService = new CapturingMirrorService() {
@@ -394,8 +391,8 @@ public class JenkinsBridgePollingServiceTest {
 
   @Test
   public void artifactFailureRemainsBestEffortForHealth() throws Exception {
-    JenkinsBridgeSettingsProvider provider = providerWithTempStateFile();
-    BuildMirrorStore store = new BuildMirrorStore(null, provider, buildMockProjectManager());
+    JenkinsBridgeSettingsProvider provider = provider();
+    BuildMirrorStore store = new BuildMirrorStore(buildMockProjectManager());
     FakeJenkinsClient jenkinsClient = new FakeJenkinsClient();
     jenkinsClient.addBuild(finishedBuildInfo());
     jenkinsClient.artifactFailure =
@@ -411,8 +408,8 @@ public class JenkinsBridgePollingServiceTest {
 
   @Test
   public void vcsFetchFailureIsRecordedAndDoesNotBlockFinishing() throws Exception {
-    JenkinsBridgeSettingsProvider provider = providerWithTempStateFile();
-    BuildMirrorStore store = new BuildMirrorStore(null, provider, buildMockProjectManager());
+    JenkinsBridgeSettingsProvider provider = provider();
+    BuildMirrorStore store = new BuildMirrorStore(buildMockProjectManager());
     FakeJenkinsClient jenkinsClient = new FakeJenkinsClient();
     jenkinsClient.addBuild(finishedBuildInfo());
     jenkinsClient.vcsFailure =
@@ -526,24 +523,8 @@ public class JenkinsBridgePollingServiceTest {
     syncBuild.invoke(service, jenkinsClient, "conn1", mirror, buildInfo);
   }
 
-  private static JenkinsBridgeSettingsProvider providerWithTempStateFile() throws Exception {
-    File stateFile = File.createTempFile("jenkins-bridge-polling-test", ".json");
-    stateFile.delete();
-    stateFile.deleteOnExit();
-    final String path = stateFile.getAbsolutePath();
-    return new JenkinsBridgeSettingsProvider() {
-      @Override
-      public JenkinsBridgeSettings load() {
-        try {
-          Constructor<JenkinsBridgeSettings> constructor = JenkinsBridgeSettings.class.getDeclaredConstructor(
-              boolean.class, int.class, int.class, String.class, String.class, String.class);
-          constructor.setAccessible(true);
-          return constructor.newInstance(true, 10, 1440, "", "", "");
-        } catch (Exception e) {
-          throw new AssertionError(e);
-        }
-      }
-    };
+  private static JenkinsBridgeSettingsProvider provider() {
+    return new JenkinsBridgeSettingsProvider();
   }
 
   private static class FakeJenkinsClient extends JenkinsClient {

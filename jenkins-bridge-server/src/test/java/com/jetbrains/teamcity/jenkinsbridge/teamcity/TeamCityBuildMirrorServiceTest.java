@@ -545,24 +545,12 @@ public class TeamCityBuildMirrorServiceTest {
 
   private static class NoopStore extends BuildMirrorStore {
     NoopStore() {
-      super(null, null, mockProjectManager());
+      super(mockProjectManager());
     }
 
     @Override
     public void saveMirror(BuildMirror mirror) {
       // no-op: tests assert on the in-memory mirror, not on disk
-    }
-  }
-
-  @Deprecated
-  private static class NoExistingBuildClient extends TeamCityClient {
-    NoExistingBuildClient() {
-      super(null, null);
-    }
-
-    @Override
-    public Long findBuildIdByJenkinsBuildKey(String jenkinsBuildKey) {
-      return null;
     }
   }
 

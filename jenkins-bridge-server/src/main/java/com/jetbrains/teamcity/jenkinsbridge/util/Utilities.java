@@ -130,28 +130,6 @@ public final class Utilities {
   }
 
   /**
-   * Maps the branch name assigned to Jenkins pull request builds in multibranch pipelines to the
-   * format used in TeamCity (MR-N and PR-N, potentially with the head/merge suffix, to pull/N).
-   *
-   * @param branchName The original branch name assigned internally by Jenkins.
-   * @return The branch name mapped to the TeamCity format.
-   */
-  @Deprecated
-  public static @NotNull String mapPullRequestBranchName(@NotNull String branchName) {
-    branchName = branchName.trim();
-    if (PULL_OR_MERGE_REQUEST_BRANCH_NAME.matcher(branchName).matches()) {
-      final int firstDashIndex = 2;
-      int secondDashIndex = branchName.indexOf('-', firstDashIndex + 1);
-      String substring = secondDashIndex == -1
-          ? branchName.substring(firstDashIndex + 1)
-          : branchName.substring(firstDashIndex + 1, secondDashIndex);
-      int number = Integer.parseInt(substring.trim());
-      return "pull/" + number;
-    }
-    return branchName;
-  }
-
-  /**
    * Whether a Jenkins multibranch branch job name matches an internal Jenkins pull or merge request pattern.
    */
   public static boolean looksLikePullOrMergeRequestBranch(@NotNull String branchName) {
