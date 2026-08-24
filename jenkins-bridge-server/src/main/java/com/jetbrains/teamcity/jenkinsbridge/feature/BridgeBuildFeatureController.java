@@ -6,7 +6,6 @@ import jetbrains.buildServer.serverSide.ProjectManager;
 import jetbrains.buildServer.serverSide.SBuildType;
 import jetbrains.buildServer.serverSide.SProject;
 import jetbrains.buildServer.serverSide.auth.Permission;
-import jetbrains.buildServer.users.SUser;
 import jetbrains.buildServer.web.openapi.PluginDescriptor;
 import jetbrains.buildServer.web.openapi.WebControllerManager;
 import jetbrains.buildServer.web.util.SessionUser;
@@ -18,6 +17,7 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
 import static com.jetbrains.teamcity.jenkinsbridge.util.Utilities.findBuildType;
+import static com.jetbrains.teamcity.jenkinsbridge.util.ProjectPermissionHelper.hasProjectPermission;
 
 /**
  * Renders the edit form of the Jenkins Bridge build feature. A controller is needed instead of a
@@ -46,14 +46,7 @@ public class BridgeBuildFeatureController extends BaseController {
   @Nullable
   @Override
   protected ModelAndView doHandle(@NotNull HttpServletRequest request, @NotNull HttpServletResponse response) {
-    SProject project = findProject(request);
-    SUser user = SessionUser.getUser(request);
-    if (project == null) {
-      response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
-      return null;
-    }
-    if (user == null || !user.isPermissionGrantedForProject(project.getProjectId(), Permission.EDIT_PROJECT)) {
-      response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+    if (!checkProjectAccess(request, response)) {
       return null;
     }
 
@@ -61,6 +54,21 @@ public class BridgeBuildFeatureController extends BaseController {
         new ModelAndView(myPluginDescriptor.getPluginResourcesPath("editJenkinsBridge.jsp"));
     modelAndView.getModel().put("jenkinsConnections", myConnectionResolver);
     return modelAndView;
+  }
+
+  private boolean checkProjectAccess(@NotNull HttpServletRequest request,
+                                     @NotNull HttpServletResponse response) {
+    SProject project = findProject(request);
+    if (project == null) {
+      response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+      return false;
+    }
+
+    if (!hasProjectPermission(SessionUser.getUser(request), project, Permission.EDIT_PROJECT)) {
+      response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+      return false;
+    }
+    return true;
   }
 
   @Nullable

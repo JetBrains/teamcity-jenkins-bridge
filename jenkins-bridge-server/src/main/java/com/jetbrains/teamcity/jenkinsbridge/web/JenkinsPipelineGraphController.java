@@ -16,7 +16,6 @@ import jetbrains.buildServer.serverSide.BuildsManager;
 import jetbrains.buildServer.serverSide.SBuild;
 import jetbrains.buildServer.serverSide.SBuildType;
 import jetbrains.buildServer.serverSide.auth.Permission;
-import jetbrains.buildServer.users.SUser;
 import jetbrains.buildServer.web.openapi.WebControllerManager;
 import jetbrains.buildServer.web.util.SessionUser;
 import org.springframework.web.servlet.ModelAndView;
@@ -27,6 +26,8 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+
+import static com.jetbrains.teamcity.jenkinsbridge.util.ProjectPermissionHelper.hasProjectPermission;
 
 /**
  * AJAX endpoint backing the "Pipeline Graph" build-results tab. Given a TeamCity build id, resolves the
@@ -69,8 +70,7 @@ public class JenkinsPipelineGraphController extends BaseController {
       return error(response, 400, "Unknown or missing build");
     }
 
-    SUser user = SessionUser.getUser(request);
-    if (user == null || !user.isPermissionGrantedForProject(build.getProjectId(), Permission.VIEW_PROJECT)) {
+    if (!hasProjectPermission(SessionUser.getUser(request), build.getProjectId(), Permission.VIEW_PROJECT)) {
       return error(response, 403, "You do not have permission to view this build");
     }
 

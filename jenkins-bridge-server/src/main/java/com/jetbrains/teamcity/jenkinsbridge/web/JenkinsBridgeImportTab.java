@@ -4,13 +4,14 @@ import com.jetbrains.teamcity.jenkinsbridge.connection.JenkinsConnectionResolver
 import jetbrains.buildServer.controllers.admin.projects.EditProjectTab;
 import jetbrains.buildServer.serverSide.SProject;
 import jetbrains.buildServer.serverSide.auth.Permission;
-import jetbrains.buildServer.users.SUser;
 import jetbrains.buildServer.web.openapi.PagePlaces;
 import jetbrains.buildServer.web.openapi.PluginDescriptor;
 import jetbrains.buildServer.web.util.SessionUser;
 
 import javax.servlet.http.HttpServletRequest;
 import java.util.Map;
+
+import static com.jetbrains.teamcity.jenkinsbridge.util.ProjectPermissionHelper.hasProjectPermission;
 
 /**
  * "Jenkins Jobs Sync" tab under a project's settings. The tab's project is the
@@ -34,10 +35,7 @@ public class JenkinsBridgeImportTab extends EditProjectTab {
   @Override
   public boolean isAvailable(HttpServletRequest request) {
     SProject project = getProject(request);
-    SUser user = SessionUser.getUser(request);
-    return project != null
-        && user != null
-        && user.isPermissionGrantedForProject(project.getProjectId(), Permission.EDIT_PROJECT);
+    return project != null && hasProjectPermission(SessionUser.getUser(request), project, Permission.EDIT_PROJECT);
   }
 
   @Override
