@@ -18,6 +18,16 @@ Pipeline support is also available for stage/log mirroring. Native TeamCity
 build-chain mirroring is experimental and should be runtime-validated before it
 is presented as a stable demo feature.
 
+## Contents
+
+- [Connecting to Jenkins](#connecting-to-jenkins)
+- [Triggering Jenkins builds](#triggering-jenkins-builds)
+- [Server settings](#server-settings)
+- [State and recovery](#state-and-recovery)
+- [Multi-node TeamCity support](#multi-node-teamcity-support)
+- [Build and verification](#build-and-verification)
+- [Install](#install)
+
 ## Connecting to Jenkins
 
 A Jenkins server is configured as a project connection, under Project Settings >
@@ -30,6 +40,147 @@ To mirror a Jenkins job, visit the "Jenkins Jobs Sync" tab in the project admin
 view. This screen will let you automatically create build configurations which have the
 "Jenkins Bridge" build feature, letting the plugin know they are mirror targets.
 
+The import page reports created, skipped, and lock-contention failures separately:
+
+![Jenkins Jobs Sync import results](docs/images/jenkins-jobs-sync-import.png)
+
+## Triggering Jenkins builds
+
+An imported TeamCity build configuration is a TeamCity representation of one
+Jenkins job. The TeamCity promotion is used as the user-facing build record,
+but Jenkins remains the execution source of truth. When the Jenkins run is
+created, the bridge binds it to the original TeamCity promotion and mirrors the
+Jenkins data into that build.
+
+### Before triggering
+
+The following must already be true:
+
+- A Jenkins connection is configured and accessible to the project.
+- The Jenkins job has been imported through **Jenkins Jobs Sync**.
+- The generated build configuration contains the **Jenkins Bridge** build
+  feature and its Jenkins job, connection, and URL settings.
+- The user queues the generated configuration through TeamCity's normal **Run
+  Custom Build** flow.
+
+The generated configuration is read-only by default through
+`teamcity.ui.settings.readOnly=true`. This protects the generated configuration
+from accidental edits, while still allowing users to queue it and provide run
+parameters.
+
+### End-to-end flow
+
+1. **TeamCity creates a promotion.** The user queues the generated build
+   configuration. TeamCity creates a normal queued promotion. The bridge's
+   queue preprocessor marks this bridge-controlled build agentless before it is
+   inserted into the queue. It does not call Jenkins or write trigger state.
+
+2. **The main node claims the trigger callback.** Every TeamCity node may
+   observe the queue callback, but only the current TeamCity main node proceeds.
+   A secondary node returns without calling Jenkins. This node gate is what
+   prevents one TeamCity promotion from producing multiple Jenkins builds.
+
+3. **The bridge checks whether the promotion should be skipped.** The callback
+   is ignored when the build is already a bridge-generated mirror, when it has
+   an internal `jenkins.build.key`, when it was triggered by the bridge itself,
+   when it has no Jenkins Bridge feature, or when a pending trigger already
+   belongs to the promotion.
+
+4. **A provisional trigger record is persisted.** Before making the external
+   Jenkins request, the listener stores a `PendingTrigger` containing the
+   TeamCity promotion ID, TeamCity build type, Jenkins job, and Jenkins
+   controller. At this point the queue URL is empty and the queue ID is `-1`.
+   This record marks the request boundary and protects the operation across a
+   TeamCity restart or an ambiguous failure.
+
+5. **Jenkins parameter definitions are refreshed.** The bridge reads the
+   current Jenkins parameter definitions before every TeamCity-first trigger.
+   Supported definitions are synchronized into the generated TeamCity
+   configuration so changed defaults, types, choices, and deleted parameters
+   are reflected in **Run Custom Build**. Only parameter names previously
+   recorded as imported by this build configuration may be removed; TeamCity
+   and bridge-owned parameters are preserved. The imported-name ownership set
+   is stored in the bridge's shared state, not as a visible TeamCity parameter.
+
+   As a mitigation for changes made between imports and user-triggered builds,
+   the main-node poller also refreshes these definitions every
+   `jenkins.bridge.parameterRefreshPollCycles` poll cycles (100 by default).
+   This reduces the likelihood of stale parameters without replacing the
+   trigger-time comparison and failed-to-start safeguard.
+
+   Jenkins may briefly return the previous parameter definitions after a job configuration change, so the trigger-time safeguard remains necessary.
+
+6. **The request parameters are constructed.** TeamCity default and custom
+   values are combined, with custom values taking precedence. Internal bridge
+   parameters are removed from the Jenkins request. The final payload contains
+   only names currently declared by Jenkins; values not supplied by the user
+   fall back to Jenkins defaults. Parameter names and values are URL-encoded
+   before the Jenkins form request is sent.
+
+7. **Jenkins is triggered once.** The bridge sends a POST to Jenkins
+   `buildWithParameters` when the payload is non-empty, or to `build` when the
+   job has no parameters. Jenkins authentication and CSRF crumb handling are
+   performed by the configured Jenkins client. Jenkins must return both a queue
+   item URL and a numeric queue ID for safe correlation.
+
+8. **The pending record is resolved.** After a valid response, the provisional
+   record is replaced with the returned Jenkins queue URL and queue ID. The
+   main-node poller subsequently checks that queue item. While it remains
+   queued, the record is retained. If Jenkins cancels the item, the TeamCity
+   promotion is failed with the Jenkins cancellation reason and the
+   pending record is removed.
+
+9. **The Jenkins build is bound to the original promotion.** When the queue
+   item exposes an executable build number, the bridge loads the Jenkins build
+   and validates the controller, job, and queue ID. It then assigns the
+   original TeamCity promotion to the `BuildMirror`, persists the relationship,
+   and removes the `PendingTrigger`. The bridge never chooses an owner merely
+   because a build is recent or has the expected build number.
+
+10. **Live mirroring continues.** The normal main-node poll cycle synchronizes
+   the bound Jenkins build. Freestyle jobs receive progressive console output;
+   Pipeline jobs receive the stage-level data Jenkins exposes. Run-level
+   parameters, tests, artifacts, VCS changes, summary data, and the final
+   Jenkins result are mirrored according to Jenkins visibility. The TeamCity
+   build is finished from the Jenkins terminal result.
+
+Normal Jenkins build discovery runs independently of pending triggers. A build
+that becomes visible immediately after triggering is matched by its Jenkins
+queue ID before the per-job build-number watermark is applied, so it can still
+be attached to the correct TeamCity promotion.
+
+### Failure and recovery behavior
+
+- If the bridge cannot prepare or persist the provisional record, it does not
+  call Jenkins. The TeamCity promotion is recorded as a bridge failure.
+- If Jenkins is called but the request fails, or Jenkins returns no usable queue
+  URL/ID, the TeamCity promotion is recorded as an uncertain trigger failure.
+  The user should check Jenkins before retrying because Jenkins may have
+  accepted the request.
+- A failed or ambiguous trigger is not blindly submitted again by the bridge.
+  This prevents one TeamCity promotion from creating duplicate Jenkins runs.
+- If queue resolution temporarily fails, the correlated pending record remains
+  for the next poll. If it expires according to
+  `jenkins.bridge.pendingTriggerTimeoutMinutes`, the promotion is failed with
+  an explicit uncertain-trigger message.
+- If the discovered Jenkins build is already owned by another TeamCity build,
+  the existing owner is retained and the conflicting trigger is failed. The
+  bridge does not replace the existing ownership.
+
+When Jenkins parameter definitions differ from the stored snapshot, the bridge
+refreshes TeamCity and marks the current promotion as **Failed to start** rather
+than sending potentially outdated values to Jenkins. The build log contains the
+exact definitions from before and after the refresh, and the user can retry with
+the updated parameters:
+
+![Jenkins parameter refresh failed-to-start safeguard](docs/images/jenkins-parameter-refresh-failed-to-start.png)
+
+The current implementation has one Jenkins-triggering writer: the main-node
+queue listener. The main-node poller owns queue resolution, build discovery,
+binding, and live synchronization. The separate technical design document
+describes a future move of the Jenkins POST into the poller; that change is not
+yet the behavior documented here.
+
 ## Server settings
 
 The remaining settings are server-wide TeamCity internal properties. Configure
@@ -40,9 +191,10 @@ server restart to take effect.
 |-----------------------------------------------|-----------------------|
 | `jenkins.bridge.enabled`                      | `true`                |
 | `jenkins.bridge.pollSeconds`                  | `10`                  |
+| `jenkins.bridge.parameterRefreshPollCycles`   | `100`                 |
 | `jenkins.bridge.pendingTriggerTimeoutMinutes` | `1440`                |
 
-## State
+## State and recovery
 
 By default, the mirror state is stored in TeamCity's internal database.
 
@@ -52,7 +204,33 @@ first poll, discovery is incremental, and every new Jenkins build after the
 stored watermark is considered. If Jenkins build numbers are reset or reused, the
 bridge also uses the Jenkins build timestamp to identify the run.
 
-## Build
+## Multi-node TeamCity support
+
+Jenkins Bridge supports a TeamCity main node and one or more secondary nodes when
+all nodes use the same TeamCity data directory configuration and shared database.
+Use PostgreSQL (or another supported external database) for a multi-node setup;
+the internal HSQL database is intended for single-node development only.
+
+Node responsibilities are split as follows:
+
+- The main node runs Jenkins polling and the Jenkins-triggering orchestration.
+- A mirrored TeamCity build can be triggered through a secondary node. The
+  secondary node queues the TeamCity promotion, while the actual outbound
+  Jenkins request is performed by the main node.
+- Secondary nodes do not need a Jenkins connection for build triggering or
+  mirroring. They only need Jenkins connection access when serving the Jenkins
+  Jobs Sync import page.
+- Jenkins job imports use a TeamCity database-backed distributed lock per project,
+  Jenkins connection, and Jenkins job. If another node currently owns the lock,
+  the import returns a retryable failure; refresh and try again.
+- Build and trigger state is persisted in the shared TeamCity database so the main
+  node can correlate work observed through another node.
+
+Install the same plugin archive on every node and restart or reload the plugin on
+each node after an upgrade. Verify the active node roles and plugin version in the
+respective `teamcity-server.log` files before testing concurrent imports.
+
+## Build and verification
 
 Run unit tests from the repository root:
 

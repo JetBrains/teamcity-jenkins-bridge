@@ -6,11 +6,18 @@ import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsJobParameters;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsTriggerResponse;
 import com.jetbrains.teamcity.jenkinsbridge.persistence.BuildMirrorStore;
 import com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityQueuedBuildFailureService;
+import com.google.gson.JsonParser;
+import jetbrains.buildServer.parameters.ParametersProvider;
+import jetbrains.buildServer.serverSide.Parameter;
+import jetbrains.buildServer.serverSide.PersistTask;
 import jetbrains.buildServer.serverSide.BuildPromotion;
 import jetbrains.buildServer.serverSide.BuildServerListener;
 import jetbrains.buildServer.serverSide.SBuildFeatureDescriptor;
 import jetbrains.buildServer.serverSide.SBuildType;
 import jetbrains.buildServer.serverSide.SQueuedBuild;
+import jetbrains.buildServer.serverSide.TeamCityNode;
+import jetbrains.buildServer.serverSide.TeamCityNodes;
+import jetbrains.buildServer.serverSide.parameters.ParameterFactory;
 import jetbrains.buildServer.util.EventDispatcher;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
@@ -28,6 +35,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -49,6 +57,68 @@ public class JenkinsTriggerOnRunListenerTest {
 
     verify(fixture.failureService).failQueuedPromotion(eq(42L), contains("could not correlate"));
     verify(fixture.store).removePendingTrigger(42L);
+  }
+
+  @Test
+  public void manualRunRefreshesJenkinsParameterDefinitionsBeforeTriggering() throws Exception {
+    Fixture fixture = new Fixture();
+    JenkinsJobParameters definitions = JenkinsJobParameters.fromJson(
+        JsonParser.parseString("{\"property\":[{\"parameterDefinitions\":[{"
+            + "\"name\":\"RELEASE\",\"type\":\"StringParameterDefinition\","
+            + "\"defaultParameterValue\":{\"value\":\"2026.08\"}}]}]}").getAsJsonObject());
+    when(fixture.client.getJobParameters("job")).thenReturn(definitions);
+    when(fixture.store.getImportedJenkinsParameterSnapshot("buildType"))
+        .thenReturn(JenkinsTeamCityRunParameterFactory.snapshot(definitions));
+    when(fixture.client.triggerBuildWithQueueId(any(), any()))
+        .thenReturn(new JenkinsTriggerResponse("/queue/item/1/", 1L));
+
+    fixture.listener().buildTypeAddedToQueue(fixture.queued);
+
+    verify(fixture.buildType).removeParameter("RELEASE");
+    verify(fixture.buildType).removeParameter("OLD_RELEASE");
+    verify(fixture.buildType).removeParameter("release,with,commas");
+    verify(fixture.buildType, never()).removeParameter("teamcity.custom");
+    verify(fixture.buildType, never()).removeParameter("jenkins.bridge.custom");
+    verify(fixture.buildType, never()).removeParameter("jenkins.build.custom");
+    verify(fixture.buildType).addParameter(any(Parameter.class));
+    verify(fixture.buildType).schedulePersisting(
+        "Jenkins Bridge: update Jenkins Run Custom Build parameters");
+  }
+
+  @Test
+  public void changedJenkinsParametersRefreshAndFailCurrentPromotionWithoutTriggering() throws Exception {
+    Fixture fixture = new Fixture();
+    JenkinsJobParameters current = JenkinsJobParameters.fromJson(
+        JsonParser.parseString("{\"property\":[{\"parameterDefinitions\":[{"
+            + "\"name\":\"RELEASE\",\"type\":\"ChoiceParameterDefinition\","
+            + "\"defaultParameterValue\":{\"value\":\"prod\"},"
+            + "\"choices\":[\"dev\",\"prod\"]}]}]}").getAsJsonObject());
+    when(fixture.client.getJobParameters("job")).thenReturn(current);
+
+    fixture.listener().buildTypeAddedToQueue(fixture.queued);
+
+    verify(fixture.failureService).failQueuedPromotion(
+        eq(42L), contains("Jenkins parameter definitions changed"));
+    verify(fixture.failureService).failQueuedPromotion(
+        eq(42L), contains("Before: []"));
+    verify(fixture.failureService).failQueuedPromotion(
+        eq(42L), contains("After: "));
+    verify(fixture.client, never()).triggerBuildWithQueueId(any(), any());
+    verify(fixture.store).removePendingTrigger(42L);
+  }
+
+  @Test
+  public void missingParameterSnapshotIsMigratedWithoutBlockingTheBuild() throws Exception {
+    Fixture fixture = new Fixture();
+    when(fixture.store.getImportedJenkinsParameterSnapshot("buildType")).thenReturn(null);
+    when(fixture.client.getJobParameters("job")).thenReturn(JenkinsJobParameters.empty());
+    when(fixture.client.triggerBuildWithQueueId(any(), any()))
+        .thenReturn(new JenkinsTriggerResponse("/queue/item/1/", 1L));
+
+    fixture.listener().buildTypeAddedToQueue(fixture.queued);
+
+    verify(fixture.client).triggerBuildWithQueueId(any(), any());
+    verify(fixture.store).saveImportedJenkinsParameterSnapshot("buildType", "[]");
   }
 
   @Test
@@ -127,6 +197,17 @@ public class JenkinsTriggerOnRunListenerTest {
     verify(second.queued, never()).removeFromQueue(any(), any());
   }
 
+  @Test
+  public void secondaryNodeDoesNotTriggerJenkins() throws Exception {
+    Fixture fixture = new Fixture();
+    when(fixture.teamCityNodes.getCurrentNode().isMainNode()).thenReturn(false);
+
+    fixture.listener().buildTypeAddedToQueue(fixture.queued);
+
+    verify(fixture.client, never()).triggerBuildWithQueueId(any(), any());
+    verify(fixture.store, never()).savePendingTrigger(any());
+  }
+
   private static void await(CountDownLatch latch) {
     try {
       latch.await();
@@ -143,6 +224,11 @@ public class JenkinsTriggerOnRunListenerTest {
     final JenkinsClient client = mock(JenkinsClient.class);
     final SQueuedBuild queued = mock(SQueuedBuild.class);
     final TeamCityQueuedBuildFailureService failureService = mock(TeamCityQueuedBuildFailureService.class);
+    final TeamCityNodes teamCityNodes = mock(TeamCityNodes.class);
+    final SBuildType buildType = mock(SBuildType.class);
+    final ParametersProvider parametersProvider = mock(ParametersProvider.class);
+    final ParameterFactory parameterFactory = mock(ParameterFactory.class);
+    final PersistTask persistTask = mock(PersistTask.class);
 
     Fixture() throws Exception {
       this(42L, "job");
@@ -150,12 +236,23 @@ public class JenkinsTriggerOnRunListenerTest {
 
     Fixture(long promotionId, String job) throws Exception {
       BuildPromotion promotion = mock(BuildPromotion.class);
-      SBuildType buildType = mock(SBuildType.class);
       SBuildFeatureDescriptor feature = mock(SBuildFeatureDescriptor.class);
 
       when(queued.getBuildPromotion()).thenReturn(promotion);
       when(promotion.getId()).thenReturn(promotionId);
       when(promotion.getBuildType()).thenReturn(buildType);
+      when(buildType.getParametersProvider()).thenReturn(parametersProvider);
+      when(parametersProvider.get(any())).thenReturn("old");
+      when(store.getImportedJenkinsParameterNames("buildType"))
+          .thenReturn(java.util.Set.of("OLD_RELEASE", "release,with,commas"));
+      when(store.getImportedJenkinsParameterSnapshot("buildType")).thenReturn("[]");
+      when(parametersProvider.getAll()).thenReturn(java.util.Map.of(
+          "OLD_RELEASE", "2025.01",
+          "teamcity.custom", "preserve",
+          "jenkins.bridge.custom", "preserve",
+          "jenkins.build.custom", "preserve"));
+      when(parameterFactory.createTypedParameter(any(), any(), any())).thenReturn(mock(Parameter.class));
+      when(buildType.schedulePersisting(anyString())).thenReturn(persistTask);
       when(promotion.getCustomParameters()).thenReturn(Collections.<String, String>emptyMap());
       when(promotion.getDefaultParameters()).thenReturn(Collections.<String, String>emptyMap());
       when(buildType.getExternalId()).thenReturn("buildType");
@@ -166,8 +263,13 @@ public class JenkinsTriggerOnRunListenerTest {
       when(clientFactory.forBuildType(buildType)).thenReturn(client);
       when(client.getControllerIdentity()).thenReturn("http://jenkins");
       when(store.getPendingTriggers()).thenReturn(Collections.emptyList());
+      TeamCityNode node = mock(TeamCityNode.class);
+      when(teamCityNodes.getCurrentNode()).thenReturn(node);
+      when(node.isMainNode()).thenReturn(true);
+
       new JenkinsTriggerOnRunListener(
-          dispatcher, clientFactory, store, failureService);
+          dispatcher, clientFactory, store, failureService, teamCityNodes,
+          new JenkinsParameterSynchronizer(clientFactory, parameterFactory, store));
     }
 
     BuildServerListener listener() {

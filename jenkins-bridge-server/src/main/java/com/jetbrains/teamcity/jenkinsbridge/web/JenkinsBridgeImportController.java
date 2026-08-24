@@ -9,8 +9,10 @@ import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClient;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClientFactory;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsDataException;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsJob;
+import com.jetbrains.teamcity.jenkinsbridge.util.TeamCityUiSettings;
 import jetbrains.buildServer.controllers.BaseController;
 import jetbrains.buildServer.serverSide.ProjectManager;
+import jetbrains.buildServer.serverSide.ReadOnlyEntityException;
 import jetbrains.buildServer.serverSide.SProject;
 import jetbrains.buildServer.serverSide.auth.Permission;
 import jetbrains.buildServer.users.SUser;
@@ -89,9 +91,16 @@ public class JenkinsBridgeImportController extends BaseController {
         return error(response, 400, "No Jenkins connection selected");
       }
       if ("import".equals(action)) {
+        if (TeamCityUiSettings.isReadOnly(project)) {
+          return error(response, 403, "Project settings are read-only; Jenkins jobs cannot be enabled");
+        }
         return handleImport(request, response, projectExternalId, connectionId);
       }
       return handleList(request, response, project, projectExternalId, connectionId);
+    } catch (ReadOnlyEntityException e) {
+      return error(response, 403, e.getMessage() == null
+          ? "Project settings are read-only; Jenkins jobs cannot be enabled"
+          : e.getMessage());
     } catch (BridgeHttpException | JenkinsDataException e) {
       return error(response, 502, e.getClass().getSimpleName()
           + (e.getMessage() == null ? "" : ": " + e.getMessage()));

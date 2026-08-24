@@ -1,5 +1,7 @@
 <%@ taglib prefix="c" uri="http://java.sun.com/jsp/jstl/core" %>
 <%@ taglib prefix="bs" tagdir="/WEB-INF/tags" %>
+<%@ page import="com.jetbrains.teamcity.jenkinsbridge.util.TeamCityUiSettings" %>
+<jsp:useBean id="project" type="jetbrains.buildServer.serverSide.SProject" scope="request"/>
 <jsp:useBean id="jenkinsConnections" scope="request" type="com.jetbrains.teamcity.jenkinsbridge.connection.JenkinsConnectionResolver"/>
 <%--
   "Jenkins Jobs Sync" project-settings tab. Lists top-level Jenkins jobs from the
@@ -17,8 +19,14 @@
   </p>
 
   <c:set var="connections" value="${jenkinsConnections.availableConnections(project)}"/>
+  <% boolean readOnly = TeamCityUiSettings.isReadOnly(project); %>
+  <c:set var="readOnly" value="<%=readOnly%>"/>
 
-  <div id="jbConfigured"><p class="grayNote">Loading synced jobs…</p></div>
+  <c:if test="${readOnly}">
+    <p class="warningMessage">Project settings are read-only. Jenkins jobs can be listed, but cannot be enabled.</p>
+  </c:if>
+
+  <div id="jbConfigured"><p class="grayNote">Loading synced jobs...</p></div>
 
   <h3>Available to sync</h3>
   <p class="grayNote">Jobs are searched from the selected Jenkins connection and optional folder path.</p>
@@ -61,21 +69,25 @@
 
   <div style="margin: 0.5em 0;">
     <input type="button" class="btn" id="jbListBtn" value="List jobs" disabled="disabled"/>
-    <input type="button" class="btn btn_primary" id="jbImportBtn" value="Enable selected" disabled="disabled"/>
+    <c:if test="${not readOnly}">
+      <input type="button" class="btn btn_primary" id="jbImportBtn" value="Enable selected" disabled="disabled"/>
+    </c:if>
     <span id="jbStatus" class="grayNote" style="margin-left: 1em;"></span>
   </div>
+
+  <div id="jbResult" style="margin-top: 1em;"></div>
 
   <details id="jbAvailablePanel" open="open">
     <summary><strong>Jobs</strong></summary>
     <div id="jbAvailable"></div>
   </details>
-  <div id="jbResult" style="margin-top: 1em;"></div>
 </div>
 
 <script type="text/javascript">
   (function () {
     var url = '${controllerUrl}';
     var projectExternalId = '${projectExternalId}';
+    var readOnly = ${readOnly};
 
     var connectionInput = document.getElementById('jbConnection');
     var folderInput = document.getElementById('jbFolderPath');
@@ -118,7 +130,7 @@
       selectedJobs = {};
       pageHasMore = false;
       nextOffset = 0;
-      importBtn.disabled = true;
+      if (importBtn) importBtn.disabled = true;
     }
 
     function updateConnectionControls() {
@@ -128,7 +140,7 @@
     }
 
     function updateImportButton() {
-      importBtn.disabled = Object.keys(selectedJobs).length === 0;
+      if (importBtn) importBtn.disabled = Object.keys(selectedJobs).length === 0;
     }
 
     function rememberSelections() {
@@ -143,9 +155,10 @@
       var selectable = j.importable || j.isMultibranch;
       var note = j.isMultibranch ? ' <span class="grayNote">(multibranch pipeline)</span>'
         : (!j.importable ? ' <span class="grayNote">(folder)</span>' : '');
+      var selectionCell = readOnly ? '' : '<td><input type="checkbox" class="jbJob" value="' + escAttr(j.fullName) + '"'
+        + (selectable ? '' : ' disabled="disabled"') + '/></td>';
       return '<tr>'
-        + '<td><input type="checkbox" class="jbJob" value="' + escAttr(j.fullName) + '"'
-        + (selectable ? '' : ' disabled="disabled"') + '/></td>'
+        + selectionCell
         + '<td>' + esc(j.fullName) + note + '</td>'
         + '<td>' + jenkinsLink(j.url) + '</td>'
         + '<td class="grayNote" title="' + escAttr(j.type) + '">' + esc(j.displayType) + '</td>'
@@ -171,7 +184,7 @@
     function availableJobTable(jobs, emptyMessage) {
       if (!jobs.length) return '<p class="grayNote">' + esc(emptyMessage) + '</p>';
       var html = '<table class="parametersTable" style="width:auto;"><tr>'
-        + '<th><input type="checkbox" id="jbSelectAll" aria-label="Select all visible jobs"/></th>'
+        + (readOnly ? '' : '<th><input type="checkbox" id="jbSelectAll" aria-label="Select all visible jobs"/></th>')
         + '<th>Job</th><th>Jenkins</th><th>Type</th></tr>';
       for (var i = 0; i < jobs.length; i++) html += availableJobRow(jobs[i]);
       return html + '</table>';
@@ -341,9 +354,9 @@
         listedJobs = [];
         pageHasMore = false;
         nextOffset = 0;
-        importBtn.disabled = true;
+        if (importBtn) importBtn.disabled = true;
       }
-      setStatus(offset ? 'Loading more jobs…' : 'Listing jobs…');
+      setStatus(offset ? 'Loading more jobs...' : 'Listing jobs...');
       BS.ajaxRequest(url, {
         parameters: 'action=list&projectExternalId=' + encode(projectExternalId)
           + '&connectionId=' + encode(selectedConnection())
@@ -353,7 +366,7 @@
         onComplete: function (transport) {
           loadingPage = false;
           var data = parse(transport);
-          if (!data) { setStatus('HTTP ' + transport.status + ' @ ' + url + ' — ' + (transport.responseText || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').substring(0, 200)); return; }
+          if (!data) { setStatus('HTTP ' + transport.status + ' @ ' + url + ' - ' + (transport.responseText || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').substring(0, 200)); return; }
           if (data.error) { setStatus('Error: ' + data.error); return; }
           if (replace) {
             listedJobs = data.jobs || [];
@@ -392,7 +405,7 @@
       }, 350);
     };
 
-    importBtn.onclick = function () {
+    if (importBtn) importBtn.onclick = function () {
       if (!selectedConnection()) { setStatus('Select a Jenkins connection first'); return; }
       rememberSelections();
       var jobs = Object.keys(selectedJobs);
@@ -400,17 +413,30 @@
       var params = 'action=import&projectExternalId=' + encode(projectExternalId)
         + '&connectionId=' + encode(selectedConnection());
       for (var i = 0; i < jobs.length; i++) { params += '&job=' + encode(jobs[i]); }
-      setStatus('Enabling sync…');
+      setStatus('Enabling sync...');
       importBtn.disabled = true;
       BS.ajaxRequest(url, {
         parameters: params,
         onComplete: function (transport) {
           importBtn.disabled = false;
           var data = parse(transport);
-          if (!data) { setStatus('HTTP ' + transport.status + ' @ ' + url + ' — ' + (transport.responseText || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').substring(0, 200)); return; }
+          if (!data) { setStatus('HTTP ' + transport.status + ' @ ' + url + ' - ' + (transport.responseText || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').substring(0, 200)); return; }
           if (data.error) { setStatus('Error: ' + data.error); return; }
-          setStatus('Done. Re-list to refresh the synced-jobs list.');
           renderResult(data);
+          var created = data.created || [];
+          var skipped = data.skipped || [];
+          var failed = data.failed || [];
+          if (failed.length) {
+            setStatus(created.length
+              ? 'Import completed with some failures. See details below; re-list to refresh.'
+              : 'Import failed. See details below; re-list to refresh.');
+          } else if (created.length) {
+            setStatus('Sync enabled. Re-list to refresh the synced-jobs list.');
+          } else if (skipped.length) {
+            setStatus('No new jobs were enabled; the selected jobs are already synced. Re-list to refresh the synced-jobs list.');
+          } else {
+            setStatus('No jobs were enabled.');
+          }
         }
       });
     };
