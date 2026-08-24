@@ -51,7 +51,7 @@
   <td><label for="<%=BridgeBuildFeatureConstants.PARAM_JENKINS_JOB%>">Jenkins job path: <l:star/></label></td>
   <td>
     <props:textProperty name="<%=BridgeBuildFeatureConstants.PARAM_JENKINS_JOB%>" className="longField" maxlength="256"
-                        readonly="${readOnly}"/>
+                        disabled="${readOnly}"/>
     <span class="smallNote">Folder/job path on the Jenkins server, e.g. <code>team/my-pipeline</code>.</span>
     <span class="error" id="error_<%=BridgeBuildFeatureConstants.PARAM_JENKINS_JOB%>"></span>
   </td>
@@ -61,7 +61,7 @@
   <td><label for="<%=BridgeBuildFeatureConstants.PARAM_JENKINS_URL%>">Jenkins pipeline URL (read-only):</label></td>
   <td>
     <props:textProperty name="<%=BridgeBuildFeatureConstants.PARAM_JENKINS_URL%>" className="longField" maxlength="512"
-                        readonly="true"
+                        disabled="true"
                         style="color: var(--ring-secondary-color);
                                border-color: var(--ring-border-disabled-color);
                                background-color: var(--ring-disabled-background-color);"/>
@@ -72,7 +72,7 @@
   <td><label for="<%=BridgeBuildFeatureConstants.PARAM_RECENT_LIMIT%>">No. of builds to import on first sync:</label></td>
   <td>
     <props:textProperty name="<%=BridgeBuildFeatureConstants.PARAM_RECENT_LIMIT%>" className="longField" maxlength="256"
-                        readonly="${readOnly}"/>
+                        disabled="${readOnly}"/>
     <span class="smallNote">
       Number of Jenkins builds to import when syncing for the first time.
       Limited to builds available in Jenkins.

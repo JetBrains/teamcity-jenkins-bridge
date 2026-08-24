@@ -1,5 +1,6 @@
 package com.jetbrains.teamcity.jenkinsbridge.feature;
 
+import com.intellij.openapi.diagnostic.Logger;
 import com.jetbrains.teamcity.jenkinsbridge.connection.JenkinsConnectionResolver;
 import com.jetbrains.teamcity.jenkinsbridge.util.Utilities;
 import jetbrains.buildServer.controllers.BaseController;
@@ -19,7 +20,6 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
 import static com.jetbrains.teamcity.jenkinsbridge.util.Utilities.findBuildType;
-import static com.jetbrains.teamcity.jenkinsbridge.util.ProjectPermissionHelper.hasAnyProjectPermission;
 import static com.jetbrains.teamcity.jenkinsbridge.util.ProjectPermissionHelper.hasProjectPermission;
 
 /**
@@ -30,6 +30,7 @@ import static com.jetbrains.teamcity.jenkinsbridge.util.ProjectPermissionHelper.
 public class BridgeBuildFeatureController extends BaseController {
   /** Path under the plugin resources, also used as the feature's edit parameters URL. */
   public static final String EDIT_PARAMS_RELATIVE_URL = "editJenkinsBridge.html";
+  private static final Logger LOG = Logger.getInstance(BridgeBuildFeatureController.class.getName());
 
   @NotNull private final PluginDescriptor myPluginDescriptor;
   @NotNull private final JenkinsConnectionResolver myConnectionResolver;
@@ -49,33 +50,48 @@ public class BridgeBuildFeatureController extends BaseController {
   @Nullable
   @Override
   protected ModelAndView doHandle(@NotNull HttpServletRequest request, @NotNull HttpServletResponse response) {
-    SProject project = findProject(request);
-    if (!checkProjectAccess(request, response, project)) {
-      return null;
-    }
+    try {
+      SProject project = findProject(request);
+      ProjectAccess access = checkProjectAccess(request, response, project);
+      if (access.error != null) {
+        return access.error;
+      }
 
-    ModelAndView modelAndView =
-        new ModelAndView(myPluginDescriptor.getPluginResourcesPath("editJenkinsBridge.jsp"));
-    modelAndView.getModel().put("jenkinsConnections", myConnectionResolver);
-    modelAndView.getModel().put("readOnly",
-        !hasProjectPermission(SessionUser.getUser(request), project, Permission.EDIT_PROJECT));
-    return modelAndView;
+      ModelAndView modelAndView = new ModelAndView(
+          myPluginDescriptor.getPluginResourcesPath("editJenkinsBridge.jsp"));
+      modelAndView.getModel().put("jenkinsConnections", myConnectionResolver);
+      modelAndView.getModel().put("readOnly", access.readOnly);
+      return modelAndView;
+    } catch (RuntimeException e) {
+      LOG.error("Jenkins Bridge build-feature request failed: " + requestDescription(request), e);
+      throw e;
+    }
   }
 
-  private boolean checkProjectAccess(@NotNull HttpServletRequest request,
-                                     @NotNull HttpServletResponse response,
-                                     @Nullable SProject project) {
+  @Nullable
+  private ProjectAccess checkProjectAccess(@NotNull HttpServletRequest request,
+                                           @NotNull HttpServletResponse response,
+                                           @Nullable SProject project) {
     if (project == null) {
-      response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
-      return false;
+      return ProjectAccess.error(error(response, HttpServletResponse.SC_BAD_REQUEST,
+          "Jenkins Bridge could not determine the build configuration project from the request"));
     }
 
-    if (!hasAnyProjectPermission(SessionUser.getUser(request), project,
-        Permission.EDIT_PROJECT, Permission.VIEW_BUILD_CONFIGURATION_SETTINGS)) {
-      response.setStatus(HttpServletResponse.SC_FORBIDDEN);
-      return false;
+    SUser user = SessionUser.getUser(request);
+    boolean hasEdit = hasProjectPermission(user, project, Permission.EDIT_PROJECT);
+    boolean hasView = hasProjectPermission(user, project,
+        Permission.VIEW_BUILD_CONFIGURATION_SETTINGS);
+    if (!hasEdit && !hasView) {
+      return ProjectAccess.error(error(response, HttpServletResponse.SC_FORBIDDEN,
+          "You do not have permission to view or edit this project"));
     }
-    return true;
+    return ProjectAccess.allowed(!hasEdit);
+  }
+
+  private ModelAndView error(@NotNull HttpServletResponse response, int status, @NotNull String message) {
+    response.setStatus(status);
+    LOG.warn("Jenkins Bridge build-feature returning HTTP " + status + ": " + message);
+    return simpleView(message);
   }
 
   @Nullable
@@ -84,7 +100,48 @@ public class BridgeBuildFeatureController extends BaseController {
     if (projectId != null && !projectId.trim().isEmpty()) {
       return Utilities.findProject(projectId, myProjectManager);
     }
-    SBuildType buildType = findBuildType(request.getParameter("buildTypeId"), myProjectManager);
+    String buildTypeId = request.getParameter("buildTypeId");
+    if (buildTypeId == null || buildTypeId.trim().isEmpty()) {
+      String formId = request.getParameter("id");
+      if (formId != null && formId.startsWith("buildType:")) {
+        buildTypeId = formId.substring("buildType:".length());
+      }
+    }
+    SBuildType buildType = findBuildType(buildTypeId, myProjectManager);
     return buildType == null ? null : buildType.getProject();
   }
+
+  private static String requestDescription(@NotNull HttpServletRequest request) {
+    return "method=" + request.getMethod()
+        + ", URI=" + request.getRequestURI()
+        + ", contextPath=" + request.getContextPath()
+        + ", query=" + request.getQueryString()
+        + ", parameters=" + request.getParameterMap().keySet()
+        + ", projectId=" + request.getParameter("projectId")
+        + ", buildTypeId=" + request.getParameter("buildTypeId")
+        + ", id=" + request.getParameter("id")
+        + ", featureId=" + request.getParameter("featureId");
+  }
+  // TODO maybe in the future try to move it to the project permission handler util class, currently it would require some refactoring as
+  // so it is reusable in othe controllers
+  private static final class ProjectAccess {
+    @Nullable private final ModelAndView error;
+    private final boolean readOnly;
+
+    private ProjectAccess(@Nullable ModelAndView error, boolean readOnly) {
+      this.error = error;
+      this.readOnly = readOnly;
+    }
+
+    @NotNull
+    private static ProjectAccess allowed(boolean readOnly) {
+      return new ProjectAccess(null, readOnly);
+    }
+
+    @NotNull
+    private static ProjectAccess error(@NotNull ModelAndView error) {
+      return new ProjectAccess(error, false);
+    }
+  }
+
 }
