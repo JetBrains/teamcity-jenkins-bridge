@@ -42,6 +42,7 @@ public class JenkinsTriggerOnRunListener {
   private final BuildMirrorStore mirrorStore;
   private final TeamCityQueuedBuildFailureService failureService;
   private final TeamCityNodes teamCityNodes;
+  private final JenkinsParameterSynchronizer parameterSynchronizer;
   private final BuildServerListener listener = new BuildServerAdapter() {
     @Override
     public void buildTypeAddedToQueue(SQueuedBuild queued) {
@@ -62,13 +63,15 @@ public class JenkinsTriggerOnRunListener {
       @NotNull JenkinsClientFactory jenkinsClientFactory,
       @NotNull BuildMirrorStore mirrorStore,
       @NotNull TeamCityQueuedBuildFailureService failureService,
-      @NotNull TeamCityNodes teamCityNodes
+      @NotNull TeamCityNodes teamCityNodes,
+      @NotNull JenkinsParameterSynchronizer parameterSynchronizer
   ) {
     this.eventDispatcher = eventDispatcher;
     this.jenkinsClientFactory = jenkinsClientFactory;
     this.mirrorStore = mirrorStore;
     this.failureService = failureService;
     this.teamCityNodes = teamCityNodes;
+    this.parameterSynchronizer = parameterSynchronizer;
     this.eventDispatcher.addListener(listener);
   }
 
@@ -163,9 +166,9 @@ public class JenkinsTriggerOnRunListener {
         + " [Jenkins Bridge DEBUG] Saved provisional Jenkins trigger for TeamCity promotion "
         + promotion.getId());
 
-    JenkinsJobParameters parameterDefinitions;
+    JenkinsParameterSynchronizer.SynchronizationResult paramSynchronisationResult;
     try {
-      parameterDefinitions = jenkinsClient.getJobParameters(job);
+      paramSynchronisationResult = parameterSynchronizer.synchronize(jenkinsClient, buildType, job);
     } catch (BridgeHttpException | JenkinsDataException e) {
       failTeamCityFirstAttempt(
           queued,
@@ -175,10 +178,39 @@ public class JenkinsTriggerOnRunListener {
           e);
       return;
     }
+    // Jenkins REST was read above, but the Jenkins build-trigger POST has not started yet.
+    if (paramSynchronisationResult.isTeamCityChanged()) {
+      buildType.schedulePersisting(
+          "Jenkins Bridge: update Jenkins Run Custom Build parameters")
+          .awaitUninterruptibly();
+    }
+
+    JenkinsJobParameters parameterDefinitions = paramSynchronisationResult.getDefinitions();
+    // If Jenkins parameter definitions in the form when it was rendered,
+    // fail this stale submission
+    if (paramSynchronisationResult.isDefinitionChanged()) {
+      failTeamCityFirstAttempt(
+          queued,
+          promotion.getId(),
+          parameterDefinitionsChangedReason(paramSynchronisationResult.getPreviousSnapshot(), parameterDefinitions),
+          null);
+      return;
+    }
 
     JenkinsTriggerResponse trigger;
     try {
       Map<String, String> parameters = jenkinsParameters(parameterDefinitions, promotion);
+      String invalidChoiceValues = JenkinsTeamCityRunParameterFactory.invalidChoiceValues(
+          parameterDefinitions, parameters);
+      if (!invalidChoiceValues.isEmpty()) {
+        failTeamCityFirstAttempt(
+            queued,
+            promotion.getId(),
+            "Jenkins Bridge did not start the build because submitted parameter values are no longer valid: "
+                + invalidChoiceValues,
+            null);
+        return;
+      }
       attempt.markJenkinsRequestStarted();
       LOG.debug(TeamCityNodeLog.currentNode(teamCityNodes)
           + " [Jenkins Bridge DEBUG] Sending Jenkins trigger request for TeamCity promotion "
@@ -194,7 +226,7 @@ public class JenkinsTriggerOnRunListener {
       return;
     }
 
-    if (trigger.getQueueId() < 0 || trigger.getQueueItemUrl().trim().isEmpty()) {
+    if (!trigger.hasQueueId() || trigger.getQueueItemUrl().trim().isEmpty()) {
       failTeamCityFirstAttempt(
           queued,
           promotion.getId(),
@@ -216,6 +248,14 @@ public class JenkinsTriggerOnRunListener {
     LOG.info(TeamCityNodeLog.currentNode(teamCityNodes) + " Jenkins Bridge triggered " + job
         + " from TeamCity promotion " + promotion.getId()
         + " via Jenkins queue item " + trigger.getQueueItemUrl());
+  }
+
+  private String parameterDefinitionsChangedReason(String previousSnapshot,
+                                                   JenkinsJobParameters currentDefinitions) {
+    return "Jenkins Bridge did not start the build because Jenkins parameter definitions changed. "
+        + "The TeamCity parameters were refreshed; run the build again.\n"
+        + "Before: " + (previousSnapshot == null ? "<not recorded>" : previousSnapshot) + "\n"
+        + "After: " + JenkinsTeamCityRunParameterFactory.describe(currentDefinitions);
   }
 
   private void cleanupBeforeJenkinsRequestIfNeeded(

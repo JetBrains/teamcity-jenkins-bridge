@@ -4,6 +4,7 @@ import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClient;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClientFactory;
 import com.jetbrains.teamcity.jenkinsbridge.http.BridgeHttpException;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsJobParameters;
+import com.jetbrains.teamcity.jenkinsbridge.persistence.BuildMirrorStore;
 import jetbrains.buildServer.parameters.ParametersProvider;
 import jetbrains.buildServer.serverSide.Parameter;
 import jetbrains.buildServer.serverSide.PersistTask;
@@ -41,9 +42,13 @@ public class JenkinsJobImporterTest {
   private final PersistTask persistTask = mock(PersistTask.class);
   private final MultiNodeLocks multiNodeLocks = mock(MultiNodeLocks.class);
   private final MultiNodeLocks.Lock importLock = mock(MultiNodeLocks.Lock.class);
+  private final BuildMirrorStore mirrorStore = mock(BuildMirrorStore.class);
+  private final JenkinsParameterSynchronizer parameterSynchronizer =
+      new JenkinsParameterSynchronizer(jenkinsClientFactory, parameterFactory, mirrorStore);
 
   private final JenkinsJobImporter importer =
-      new JenkinsJobImporter(projectManager, parameterFactory, jenkinsClientFactory);
+      new JenkinsJobImporter(projectManager, parameterFactory, jenkinsClientFactory, null, mirrorStore,
+          parameterSynchronizer);
 
   @Before
   public void setUp() throws Exception {
@@ -74,7 +79,8 @@ public class JenkinsJobImporterTest {
         Collections.singletonList(existing));
 
     JenkinsJobImporter lockedImporter =
-        new JenkinsJobImporter(projectManager, parameterFactory, jenkinsClientFactory, multiNodeLocks);
+        new JenkinsJobImporter(projectManager, parameterFactory, jenkinsClientFactory, multiNodeLocks,
+            mirrorStore, parameterSynchronizer);
     ImportResult result = lockedImporter.importJobs("TeamA", "conn1", Collections.singletonList("pipeline"));
 
     assertEquals(0, result.getCreated().size());
@@ -93,7 +99,11 @@ public class JenkinsJobImporterTest {
     verify(buildType).addBuildFeature(eq(BridgeBuildFeatureConstants.TYPE), params.capture());
     assertEquals("pipeline", params.getValue().get(BridgeBuildFeatureConstants.PARAM_JENKINS_JOB));
     assertEquals("conn1", params.getValue().get(BridgeBuildFeatureConstants.PARAM_CONNECTION_ID));
-    verify(parameterFactory).createSimpleParameter(BridgeBuildFeatureConstants.INTERNAL_MULTIBRANCH_PARAM, "true");
+    verify(parameterFactory).createTypedParameter(
+        BridgeBuildFeatureConstants.INTERNAL_MULTIBRANCH_PARAM, "true", "text display='hidden'");
+    verify(parameterFactory).createTypedParameter(
+        "teamcity.ui.settings.readOnly", "true", "text display='hidden'");
+    verify(jenkinsClient).getJobParameters("pipeline");
     assertEquals(1, result.getCreated().size());
   }
 
@@ -115,7 +125,6 @@ public class JenkinsJobImporterTest {
     assertEquals(1, result.getSkipped().size());
     assertEquals("pipeline", result.getSkipped().getFirst().jenkinsJob);
     assertEquals("already imported", result.getSkipped().getFirst().detail);
-    verify(jenkinsClient, never()).getJobParameters("pipeline");
     verify(existing, never()).schedulePersisting(anyString());
   }
 
