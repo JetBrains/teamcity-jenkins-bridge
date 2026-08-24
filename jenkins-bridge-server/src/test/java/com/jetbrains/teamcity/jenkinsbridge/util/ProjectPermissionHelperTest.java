@@ -23,4 +23,16 @@ public class ProjectPermissionHelperTest {
 
     assertTrue(ProjectPermissionHelper.hasProjectPermission(user, "project", Permission.VIEW_PROJECT));
   }
+
+  @Test
+  public void acceptsAnyMatchingPermission() {
+    SUser user = mock(SUser.class);
+    SProject project = mock(SProject.class);
+    when(project.getProjectId()).thenReturn("project");
+    when(user.isPermissionGrantedForProject("project", Permission.VIEW_BUILD_CONFIGURATION_SETTINGS))
+        .thenReturn(true);
+
+    assertTrue(ProjectPermissionHelper.hasAnyProjectPermission(user, project,
+        Permission.EDIT_PROJECT, Permission.VIEW_BUILD_CONFIGURATION_SETTINGS));
+  }
 }

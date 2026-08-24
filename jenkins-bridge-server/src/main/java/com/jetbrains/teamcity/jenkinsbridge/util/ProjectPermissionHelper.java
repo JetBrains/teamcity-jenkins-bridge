@@ -22,4 +22,18 @@ public final class ProjectPermissionHelper {
                                              @NotNull Permission permission) {
     return user != null && user.isPermissionGrantedForProject(projectId, permission);
   }
+
+  public static boolean hasAnyProjectPermission(@Nullable SUser user,
+                                                @NotNull SProject project,
+                                                @NotNull Permission... permissions) {
+    if (permissions == null) {
+      return false;
+    }
+    for (Permission permission : permissions) {
+      if (permission != null && hasProjectPermission(user, project, permission)) {
+        return true;
+      }
+    }
+    return false;
+  }
 }
