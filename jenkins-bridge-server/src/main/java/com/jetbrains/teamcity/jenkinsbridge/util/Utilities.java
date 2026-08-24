@@ -4,6 +4,7 @@ import com.google.gson.JsonObject;
 import com.jetbrains.teamcity.jenkinsbridge.feature.BridgeBuildFeatureConstants;
 import jetbrains.buildServer.serverSide.ProjectManager;
 import jetbrains.buildServer.serverSide.SBuildType;
+import jetbrains.buildServer.serverSide.SProject;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -41,6 +42,15 @@ public final class Utilities {
       return buildType;
     }
     return projectManager.findBuildTypeById(buildTypeId);
+  }
+
+  @Nullable
+  public static SProject findProject(@Nullable String projectId, @NotNull ProjectManager projectManager) {
+    if (projectId == null || projectId.trim().isEmpty()) {
+      return null;
+    }
+    SProject project = projectManager.findProjectByExternalId(projectId);
+    return project != null ? project : projectManager.findProjectById(projectId);
   }
 
   @NotNull

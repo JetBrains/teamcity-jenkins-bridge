@@ -15,7 +15,6 @@ import jetbrains.buildServer.serverSide.ProjectManager;
 import jetbrains.buildServer.serverSide.ReadOnlyEntityException;
 import jetbrains.buildServer.serverSide.SProject;
 import jetbrains.buildServer.serverSide.auth.Permission;
-import jetbrains.buildServer.users.SUser;
 import jetbrains.buildServer.web.openapi.WebControllerManager;
 import jetbrains.buildServer.web.util.SessionUser;
 import org.springframework.web.servlet.ModelAndView;
@@ -30,6 +29,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import jetbrains.buildServer.serverSide.connections.ConnectionDescriptor;
+
+import static com.jetbrains.teamcity.jenkinsbridge.util.ProjectPermissionHelper.hasProjectPermission;
 
 /**
  * AJAX endpoint backing the "Jenkins Jobs Sync" project tab. Three actions:
@@ -75,8 +76,7 @@ public class JenkinsBridgeImportController extends BaseController {
     if (project == null) {
       return error(response, 400, "Unknown or missing project");
     }
-    SUser user = SessionUser.getUser(request);
-    if (user == null || !user.isPermissionGrantedForProject(project.getProjectId(), Permission.EDIT_PROJECT)) {
+    if (!hasProjectPermission(SessionUser.getUser(request), project, Permission.EDIT_PROJECT)) {
       return error(response, 403, "You do not have permission to edit this project");
     }
 

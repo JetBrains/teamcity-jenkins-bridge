@@ -11,12 +11,18 @@
 <c:set var="connectionUrls" value="${jenkinsConnections.connectionUrls(buildForm.project)}"/>
 <c:set var="connectionsPageUrl" value="${jenkinsConnections.connectionsPageUrl(buildForm.project)}"/>
 
+<c:if test="${readOnly}">
+  <tr>
+    <td colspan="2"><span class="smallNote">This project is read-only. Jenkins Bridge settings can be viewed but not changed.</span></td>
+  </tr>
+</c:if>
+
 <tr>
   <td><label for="<%=BridgeBuildFeatureConstants.PARAM_CONNECTION_ID%>">Jenkins connection: <l:star/></label></td>
   <td>
     <props:selectProperty name="<%=BridgeBuildFeatureConstants.PARAM_CONNECTION_ID%>"
                           className="longField"
-                          disabled="${empty connections}">
+                          disabled="${readOnly or empty connections}">
       <props:option value="">-- Select a Jenkins connection --</props:option>
       <c:forEach var="connection" items="${connections}">
         <props:option value="${connection.id}"><c:out
@@ -44,7 +50,8 @@
 <tr>
   <td><label for="<%=BridgeBuildFeatureConstants.PARAM_JENKINS_JOB%>">Jenkins job path: <l:star/></label></td>
   <td>
-    <props:textProperty name="<%=BridgeBuildFeatureConstants.PARAM_JENKINS_JOB%>" className="longField" maxlength="256"/>
+    <props:textProperty name="<%=BridgeBuildFeatureConstants.PARAM_JENKINS_JOB%>" className="longField" maxlength="256"
+                        disabled="${readOnly}"/>
     <span class="smallNote">Folder/job path on the Jenkins server, e.g. <code>team/my-pipeline</code>.</span>
     <span class="error" id="error_<%=BridgeBuildFeatureConstants.PARAM_JENKINS_JOB%>"></span>
   </td>
@@ -54,6 +61,7 @@
   <td><label for="<%=BridgeBuildFeatureConstants.PARAM_JENKINS_URL%>">Jenkins pipeline URL (read-only):</label></td>
   <td>
     <props:textProperty name="<%=BridgeBuildFeatureConstants.PARAM_JENKINS_URL%>" className="longField" maxlength="512"
+                        disabled="true"
                         style="color: var(--ring-secondary-color);
                                border-color: var(--ring-border-disabled-color);
                                background-color: var(--ring-disabled-background-color);"/>
@@ -63,7 +71,8 @@
 <tr>
   <td><label for="<%=BridgeBuildFeatureConstants.PARAM_RECENT_LIMIT%>">No. of builds to import on first sync:</label></td>
   <td>
-    <props:textProperty name="<%=BridgeBuildFeatureConstants.PARAM_RECENT_LIMIT%>" className="longField" maxlength="256"/>
+    <props:textProperty name="<%=BridgeBuildFeatureConstants.PARAM_RECENT_LIMIT%>" className="longField" maxlength="256"
+                        disabled="${readOnly}"/>
     <span class="smallNote">
       Number of Jenkins builds to import when syncing for the first time.
       Limited to builds available in Jenkins.

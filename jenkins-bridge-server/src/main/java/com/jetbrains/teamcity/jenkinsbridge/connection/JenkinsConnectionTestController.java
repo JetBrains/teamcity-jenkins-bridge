@@ -7,7 +7,6 @@ import jetbrains.buildServer.serverSide.ProjectManager;
 import jetbrains.buildServer.serverSide.SProject;
 import jetbrains.buildServer.serverSide.auth.Permission;
 import jetbrains.buildServer.serverSide.validation.TestConnectionResult;
-import jetbrains.buildServer.users.SUser;
 import jetbrains.buildServer.web.openapi.WebControllerManager;
 import jetbrains.buildServer.web.util.SessionUser;
 import org.jdom.Element;
@@ -18,6 +17,8 @@ import org.springframework.web.servlet.ModelAndView;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import java.util.Collections;
+
+import static com.jetbrains.teamcity.jenkinsbridge.util.ProjectPermissionHelper.hasProjectPermission;
 
 /**
  * Controller for the "Test connection" button of the Jenkins connection dialog. The dialog posts the
@@ -55,8 +56,7 @@ public class JenkinsConnectionTestController extends BaseFormXmlController {
       return;
     }
 
-    SUser user = SessionUser.getUser(request);
-    if (user == null || !user.isPermissionGrantedForProject(project.getProjectId(), Permission.EDIT_PROJECT)) {
+    if (!hasProjectPermission(SessionUser.getUser(request), project, Permission.EDIT_PROJECT)) {
       result.addError(JenkinsConnectionProvider.TEST_CONNECTION_FAILED,
           "You are not allowed to edit project " + project.getExternalId());
       result.serialize(xmlResponse);
