@@ -7,6 +7,8 @@ import jetbrains.buildServer.serverSide.SBuildType;
 import com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityBuildParameters;
 import jetbrains.buildServer.serverSide.Parameter;
 import jetbrains.buildServer.serverSide.parameters.ParameterFactory;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.HashSet;
 import java.util.List;
@@ -45,7 +47,9 @@ public final class JenkinsTeamCityRunParameterFactory {
         && !lowerName.startsWith(TeamCityBuildParameters.BRIDGE_PARAMETER_PREFIX);
   }
 
-  public static Parameter create(ParameterFactory parameterFactory, JenkinsParameterDefinition definition) {
+  @NotNull
+  public static Parameter create(@NotNull ParameterFactory parameterFactory,
+                                 @NotNull JenkinsParameterDefinition definition) {
     String name = definition.getName();
     String value = defaultValue(definition);
     String spec = spec(definition);
@@ -53,17 +57,21 @@ public final class JenkinsTeamCityRunParameterFactory {
   }
 
   /** Returns a stable JSON representation of the Jenkins definitions used to render TeamCity. */
-  public static String snapshot(JenkinsJobParameters definitions) {
+  @NotNull
+  public static String snapshot(@NotNull JenkinsJobParameters definitions) {
     return SNAPSHOT_GSON.toJson(definitions.getParameters());
   }
 
   /** Returns an exact, readable representation suitable for trigger diagnostics. */
-  public static String describe(JenkinsJobParameters definitions) {
+  @NotNull
+  public static String describe(@NotNull JenkinsJobParameters definitions) {
     return snapshot(definitions);
   }
 
   /** Returns a diagnostic for submitted values that are invalid for current Jenkins choices. */
-  public static String invalidChoiceValues(JenkinsJobParameters definitions, Map<String, String> values) {
+  @NotNull
+  public static String invalidChoiceValues(@NotNull JenkinsJobParameters definitions,
+                                           @NotNull Map<String, String> values) {
     StringBuilder invalid = new StringBuilder();
     for (JenkinsParameterDefinition definition : definitions.getParameters()) {
       if (definition.getChoices().isEmpty()) {
@@ -86,9 +94,11 @@ public final class JenkinsTeamCityRunParameterFactory {
    * Existing definitions are replaced so changed defaults, types, and choices appear in the next
    * Run Custom Build dialog.
    */
-  public static SynchronizationResult synchronize(ParameterFactory parameterFactory, SBuildType buildType,
-                                                 JenkinsJobParameters definitions,
-                                                 Set<String> previouslyImported) {
+  @NotNull
+  public static SynchronizationResult synchronize(@NotNull ParameterFactory parameterFactory,
+                                                 @NotNull SBuildType buildType,
+                                                 @NotNull JenkinsJobParameters definitions,
+                                                 @Nullable Set<String> previouslyImported) {
     Set<String> currentNames = new HashSet<String>();
     for (JenkinsParameterDefinition definition : definitions.getParameters()) {
       if (canImport(definition)) {
@@ -131,6 +141,7 @@ public final class JenkinsTeamCityRunParameterFactory {
       this.changed = changed;
     }
 
+    @NotNull
     public Set<String> getImportedNames() {
       return new HashSet<String>(importedNames);
     }

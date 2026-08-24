@@ -9,6 +9,8 @@ import com.jetbrains.teamcity.jenkinsbridge.persistence.BuildMirrorStore;
 import jetbrains.buildServer.serverSide.SBuildFeatureDescriptor;
 import jetbrains.buildServer.serverSide.SBuildType;
 import jetbrains.buildServer.serverSide.parameters.ParameterFactory;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 
@@ -22,15 +24,16 @@ public final class JenkinsParameterSynchronizer {
   private final ParameterFactory parameterFactory;
   private final BuildMirrorStore mirrorStore;
 
-  public JenkinsParameterSynchronizer(JenkinsClientFactory jenkinsClientFactory,
-                                      ParameterFactory parameterFactory,
-                                      BuildMirrorStore mirrorStore) {
+  public JenkinsParameterSynchronizer(@NotNull JenkinsClientFactory jenkinsClientFactory,
+                                      @NotNull ParameterFactory parameterFactory,
+                                      @NotNull BuildMirrorStore mirrorStore) {
     this.jenkinsClientFactory = jenkinsClientFactory;
     this.parameterFactory = parameterFactory;
     this.mirrorStore = mirrorStore;
   }
 
-  public SynchronizationResult synchronize(SBuildType buildType)
+  @NotNull
+  public SynchronizationResult synchronize(@NotNull SBuildType buildType)
       throws BridgeHttpException, JenkinsDataException {
     SBuildFeatureDescriptor feature = featureOf(buildType);
     if (feature == null) {
@@ -43,7 +46,10 @@ public final class JenkinsParameterSynchronizer {
     return synchronize(jenkinsClientFactory.forBuildType(buildType), buildType, job.trim());
   }
 
-  public SynchronizationResult synchronize(JenkinsClient client, SBuildType buildType, String job)
+  @NotNull
+  public SynchronizationResult synchronize(@NotNull JenkinsClient client,
+                                           @NotNull SBuildType buildType,
+                                           @NotNull String job)
       throws BridgeHttpException, JenkinsDataException {
     JenkinsJobParameters definitions = client.getJobParameters(job);
     try {
@@ -73,10 +79,8 @@ public final class JenkinsParameterSynchronizer {
     }
   }
 
-  private static SBuildFeatureDescriptor featureOf(SBuildType buildType) {
-    if (buildType == null) {
-      return null;
-    }
+  @Nullable
+  private static SBuildFeatureDescriptor featureOf(@NotNull SBuildType buildType) {
     return buildType.getBuildFeaturesOfType(BridgeBuildFeatureConstants.TYPE)
         .stream().findFirst().orElse(null);
   }
@@ -102,14 +106,17 @@ public final class JenkinsParameterSynchronizer {
       return new SynchronizationResult(JenkinsJobParameters.empty(), null, null, false, 0);
     }
 
+    @NotNull
     public JenkinsJobParameters getDefinitions() {
       return definitions;
     }
 
+    @Nullable
     public String getPreviousSnapshot() {
       return previousSnapshot;
     }
 
+    @Nullable
     public String getCurrentSnapshot() {
       return currentSnapshot;
     }

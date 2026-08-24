@@ -186,6 +186,8 @@ public class JenkinsTriggerOnRunListener {
     }
 
     JenkinsJobParameters parameterDefinitions = paramSynchronisationResult.getDefinitions();
+    // If Jenkins parameter definitions in the form when it was rendered,
+    // fail this stale submission
     if (paramSynchronisationResult.isDefinitionChanged()) {
       failTeamCityFirstAttempt(
           queued,

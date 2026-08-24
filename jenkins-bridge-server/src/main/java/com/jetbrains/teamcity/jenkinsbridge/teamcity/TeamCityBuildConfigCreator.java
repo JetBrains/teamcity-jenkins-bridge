@@ -6,6 +6,7 @@ import jetbrains.buildServer.serverSide.DuplicateBuildTypeNameException;
 import jetbrains.buildServer.serverSide.SBuildType;
 import jetbrains.buildServer.serverSide.SProject;
 import jetbrains.buildServer.serverSide.parameters.ParameterFactory;
+import org.jetbrains.annotations.NotNull;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -31,7 +32,7 @@ public class TeamCityBuildConfigCreator {
 
   private final ParameterFactory parameterFactory;
 
-  public TeamCityBuildConfigCreator(ParameterFactory parameterFactory) {
+  public TeamCityBuildConfigCreator(@NotNull ParameterFactory parameterFactory) {
     this.parameterFactory = parameterFactory;
   }
 
@@ -48,13 +49,14 @@ public class TeamCityBuildConfigCreator {
    * @param multibranch whether the Jenkins job represents a multibranch pipeline
    * @return the newly created, configured, but not-yet-persisted build type
    */
+  @NotNull
   public SBuildType createMirrorBuildType(
-      SProject project,
-      String externalId,
-      String fullName,
-      String connectionId,
-      String jenkinsUrl,
-      String jenkinsType,
+      @NotNull SProject project,
+      @NotNull String externalId,
+      @NotNull String fullName,
+      @NotNull String connectionId,
+      @NotNull String jenkinsUrl,
+      @NotNull String jenkinsType,
       boolean multibranch
   ) {
     SBuildType buildType = createBuildType(project, externalId, fullName);
@@ -75,7 +77,12 @@ public class TeamCityBuildConfigCreator {
     return buildType;
   }
 
-  private SBuildType createBuildType(SProject project, String externalId, String fullName) {
+  @NotNull
+  private SBuildType createBuildType(
+      @NotNull SProject project,
+      @NotNull String externalId,
+      @NotNull String fullName
+  ) {
     String jobName = lastPathSegment(fullName);
     try {
       return project.createBuildType(externalId, jobName);

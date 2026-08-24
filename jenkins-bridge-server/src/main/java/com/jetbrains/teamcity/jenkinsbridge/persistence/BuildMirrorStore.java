@@ -262,26 +262,28 @@ public class BuildMirrorStore {
     state.setLastError(error.getMessage());
   }
 
-  public synchronized Set<String> getImportedJenkinsParameterNames(String buildTypeExternalId)
+  @NotNull
+  public synchronized Set<String> getImportedJenkinsParameterNames(@NotNull String buildTypeExternalId)
       throws IOException {
     ensureStateIsLoaded();
     return state.getImportedJenkinsParameterNames(buildTypeExternalId);
   }
 
-  public synchronized void saveImportedJenkinsParameterNames(String buildTypeExternalId,
-                                                              Set<String> names) throws IOException {
+  public synchronized void saveImportedJenkinsParameterNames(@NotNull String buildTypeExternalId,
+                                                              @NotNull Set<String> names) throws IOException {
     ensureStateIsLoaded();
     state.putImportedJenkinsParameterNames(buildTypeExternalId, names);
   }
 
-  public synchronized String getImportedJenkinsParameterSnapshot(String buildTypeExternalId)
+  @Nullable
+  public synchronized String getImportedJenkinsParameterSnapshot(@NotNull String buildTypeExternalId)
       throws IOException {
     ensureStateIsLoaded();
     return state.getImportedJenkinsParameterSnapshot(buildTypeExternalId);
   }
 
-  public synchronized void saveImportedJenkinsParameterSnapshot(String buildTypeExternalId,
-                                                                 String snapshot) throws IOException {
+  public synchronized void saveImportedJenkinsParameterSnapshot(@NotNull String buildTypeExternalId,
+                                                                 @NotNull String snapshot) throws IOException {
     ensureStateIsLoaded();
     state.putImportedJenkinsParameterSnapshot(buildTypeExternalId, snapshot);
   }
