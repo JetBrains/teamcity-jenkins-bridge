@@ -20,11 +20,7 @@ public class JenkinsBridgeSettingsProvider {
         TeamCityProperties.getBoolean(ENABLED, true),
         TeamCityProperties.getInteger(POLL_SECONDS, 10),
         TeamCityProperties.getInteger(PARAMETER_REFRESH_POLL_CYCLES, 100),
-        TeamCityProperties.getInteger(PENDING_TRIGGER_TIMEOUT_MINUTES, 1440),
-        // Legacy, only used by the deprecated TeamCityClient.
-        TeamCityProperties.getProperty("jenkins.bridge.teamCityUrl", ""),
-        TeamCityProperties.getProperty("jenkins.bridge.teamCityUser", ""),
-        TeamCityProperties.getProperty("jenkins.bridge.teamCityPassword", "")
+        TeamCityProperties.getInteger(PENDING_TRIGGER_TIMEOUT_MINUTES, 1440)
     );
   }
 }

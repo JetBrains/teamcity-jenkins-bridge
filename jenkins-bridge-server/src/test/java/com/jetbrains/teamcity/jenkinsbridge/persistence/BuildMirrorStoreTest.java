@@ -6,14 +6,11 @@ import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsPipelineGraph;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsPipelineGraphNode;
 import com.jetbrains.teamcity.jenkinsbridge.model.GraphConfidence;
 import com.jetbrains.teamcity.jenkinsbridge.settings.JenkinsBridgeSettings;
-import com.jetbrains.teamcity.jenkinsbridge.settings.JenkinsBridgeSettingsProvider;
 import jetbrains.buildServer.serverSide.CustomDataStorage;
 import jetbrains.buildServer.serverSide.ProjectManager;
 import jetbrains.buildServer.serverSide.SProject;
 import org.junit.Test;
 
-import java.io.File;
-import java.lang.reflect.Constructor;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -47,16 +44,15 @@ public class BuildMirrorStoreTest {
 
   @Test
   public void lastSeenBuildNumberPersistsAndIsMonotonic() throws Exception {
-    JenkinsBridgeSettingsProvider provider = providerWithTempStateFile();
     ProjectManager projectManager = buildMockProjectManager();
-    BuildMirrorStore store = new BuildMirrorStore(null, provider, projectManager);
+    BuildMirrorStore store = new BuildMirrorStore(projectManager);
 
     assertEquals(0, store.getLastSeenBuildNumber("job"));
     store.setLastSeenBuildNumber("job", 42);
     assertEquals(42, store.getLastSeenBuildNumber("job"));
 
     // A fresh store instance must read the watermark back from the shared custom data storage.
-    BuildMirrorStore reloaded = new BuildMirrorStore(null, provider, projectManager);
+    BuildMirrorStore reloaded = new BuildMirrorStore(projectManager);
     assertEquals(42, reloaded.getLastSeenBuildNumber("job"));
 
     // Lower values are ignored (watermark only moves forward).
@@ -66,33 +62,31 @@ public class BuildMirrorStoreTest {
 
   @Test
   public void importedJenkinsParameterNamesPersistWithoutDelimiterAmbiguity() throws Exception {
-    JenkinsBridgeSettingsProvider provider = providerWithTempStateFile();
     ProjectManager projectManager = buildMockProjectManager();
-    BuildMirrorStore store = new BuildMirrorStore(null, provider, projectManager);
+    BuildMirrorStore store = new BuildMirrorStore(projectManager);
 
     store.saveImportedJenkinsParameterNames("buildType", Set.of("RELEASE", "release,with,commas"));
 
-    BuildMirrorStore reloaded = new BuildMirrorStore(null, provider, projectManager);
+    BuildMirrorStore reloaded = new BuildMirrorStore(projectManager);
     assertEquals(Set.of("RELEASE", "release,with,commas"),
         reloaded.getImportedJenkinsParameterNames("buildType"));
   }
 
   @Test
   public void importedJenkinsParameterSnapshotPersistsAcrossReload() throws Exception {
-    JenkinsBridgeSettingsProvider provider = providerWithTempStateFile();
     ProjectManager projectManager = buildMockProjectManager();
-    BuildMirrorStore store = new BuildMirrorStore(null, provider, projectManager);
+    BuildMirrorStore store = new BuildMirrorStore(projectManager);
 
     store.saveImportedJenkinsParameterSnapshot("buildType", "[{\"name\":\"RELEASE\"}]");
 
-    BuildMirrorStore reloaded = new BuildMirrorStore(null, provider, projectManager);
+    BuildMirrorStore reloaded = new BuildMirrorStore(projectManager);
     assertEquals("[{\"name\":\"RELEASE\"}]",
         reloaded.getImportedJenkinsParameterSnapshot("buildType"));
   }
 
   @Test
   public void getActiveMirrorsExcludesFinishedBuilds() throws Exception {
-    BuildMirrorStore store = new BuildMirrorStore(null, providerWithTempStateFile(), buildMockProjectManager());
+    BuildMirrorStore store = new BuildMirrorStore(buildMockProjectManager());
 
     store.getOrCreateMirror(BuildMirrorStore.buildKey("job", 1), "job", "buildType", buildInfo(1));
     BuildMirror finished = store.getOrCreateMirror(BuildMirrorStore.buildKey("job", 2), "job", "buildType", buildInfo(2));
@@ -106,9 +100,8 @@ public class BuildMirrorStoreTest {
 
   @Test
   public void pruneFinishedMirrorsRemovesFinishedAndPersistsAcrossReload() throws Exception {
-    JenkinsBridgeSettingsProvider provider = providerWithTempStateFile();
     ProjectManager projectManager = buildMockProjectManager();
-    BuildMirrorStore store = new BuildMirrorStore(null, provider, projectManager);
+    BuildMirrorStore store = new BuildMirrorStore(projectManager);
 
     store.getOrCreateMirror(BuildMirrorStore.buildKey("job", 1), "job", "buildType", buildInfo(1));
     BuildMirror finished = store.getOrCreateMirror(BuildMirrorStore.buildKey("job", 2), "job", "buildType", buildInfo(2));
@@ -123,14 +116,14 @@ public class BuildMirrorStoreTest {
     assertNotNull(store.findMirror(BuildMirrorStore.buildKey("job", 1)));
 
     // Assert that pruning is persisted.
-    BuildMirrorStore reloaded = new BuildMirrorStore(null, provider, projectManager);
+    BuildMirrorStore reloaded = new BuildMirrorStore(projectManager);
     assertNull(reloaded.findMirror(BuildMirrorStore.buildKey("job", 2)));
     assertNotNull(reloaded.findMirror(BuildMirrorStore.buildKey("job", 1)));
   }
 
   @Test
   public void pruneFinishedMirrorsReturnsEmptyListWhenNoneFinished() throws Exception {
-    BuildMirrorStore store = new BuildMirrorStore(null, providerWithTempStateFile(), buildMockProjectManager());
+    BuildMirrorStore store = new BuildMirrorStore(buildMockProjectManager());
     store.getOrCreateMirror(BuildMirrorStore.buildKey("job", 1), "job", "buildType", buildInfo(1));
 
     List<BuildMirror> pruned = store.pruneFinishedMirrors();
@@ -141,7 +134,7 @@ public class BuildMirrorStoreTest {
 
   @Test
   public void findMirrorReturnsNullWhenAbsent() throws Exception {
-    BuildMirrorStore store = new BuildMirrorStore(null, providerWithTempStateFile(), buildMockProjectManager());
+    BuildMirrorStore store = new BuildMirrorStore(buildMockProjectManager());
     store.getOrCreateMirror(BuildMirrorStore.buildKey("job", 1), "job", "buildType", buildInfo(1));
 
     assertNotNull(store.findMirror(BuildMirrorStore.buildKey("job", 1)));
@@ -150,7 +143,7 @@ public class BuildMirrorStoreTest {
 
   @Test
   public void findMirrorByTcBuildIdReturnsMirrorWhenStored() throws Exception {
-    BuildMirrorStore store = new BuildMirrorStore(null, providerWithTempStateFile(), buildMockProjectManager());
+    BuildMirrorStore store = new BuildMirrorStore(buildMockProjectManager());
     BuildMirror mirror = store.getOrCreateMirror(BuildMirrorStore.buildKey("job", 1), "job", "buildType", buildInfo(1));
     mirror.setTeamCityBuildId(4242L);
     store.saveMirror(mirror);
@@ -162,7 +155,7 @@ public class BuildMirrorStoreTest {
 
   @Test
   public void findMirrorByTcBuildIdReturnsNullWhenAbsentOrUnbound() throws Exception {
-    BuildMirrorStore store = new BuildMirrorStore(null, providerWithTempStateFile(), buildMockProjectManager());
+    BuildMirrorStore store = new BuildMirrorStore(buildMockProjectManager());
     // Mirror with no teamCityBuildId set (null) must never match a real id.
     store.getOrCreateMirror(BuildMirrorStore.buildKey("job", 1), "job", "buildType", buildInfo(1));
 
@@ -185,7 +178,7 @@ public class BuildMirrorStoreTest {
     ProjectManager projectManager = mock(ProjectManager.class);
     when(projectManager.getRootProject()).thenReturn(rootProject);
 
-    BuildMirrorStore store = new BuildMirrorStore(null, providerWithTempStateFile(), projectManager);
+    BuildMirrorStore store = new BuildMirrorStore(projectManager);
 
     try {
       store.getLastSeenBuildNumber("job");
@@ -209,7 +202,7 @@ public class BuildMirrorStoreTest {
     ProjectManager projectManager = mock(ProjectManager.class);
     when(projectManager.getRootProject()).thenReturn(rootProject);
 
-    BuildMirrorStore store = new BuildMirrorStore(null, providerWithTempStateFile(), projectManager);
+    BuildMirrorStore store = new BuildMirrorStore(projectManager);
 
     try {
       store.getLastSeenBuildNumber("job");
@@ -222,15 +215,14 @@ public class BuildMirrorStoreTest {
 
   @Test
   public void pipelineGraphSnapshotPersistsAcrossReload() throws Exception {
-    JenkinsBridgeSettingsProvider provider = providerWithTempStateFile();
     ProjectManager projectManager = buildMockProjectManager();
-    BuildMirrorStore store = new BuildMirrorStore(null, provider, projectManager);
+    BuildMirrorStore store = new BuildMirrorStore(projectManager);
     BuildMirror mirror = store.getOrCreateMirror(BuildMirrorStore.buildKey("job", 7), "job", "buildType", buildInfo(7));
 
     mirror.setPipelineGraph(graph("hash-a", "SUCCESS", Collections.<String>emptyList()));
     store.saveMirror(mirror);
 
-    BuildMirrorStore reloaded = new BuildMirrorStore(null, provider, projectManager);
+    BuildMirrorStore reloaded = new BuildMirrorStore(projectManager);
     BuildMirror restored = reloaded.findMirror(BuildMirrorStore.buildKey("job", 7));
 
     assertNotNull(restored);
@@ -242,9 +234,8 @@ public class BuildMirrorStoreTest {
 
   @Test
   public void jenkinsBuildParametersPersistAcrossReload() throws Exception {
-    JenkinsBridgeSettingsProvider provider = providerWithTempStateFile();
     ProjectManager projectManager = buildMockProjectManager();
-    BuildMirrorStore store = new BuildMirrorStore(null, provider, projectManager);
+    BuildMirrorStore store = new BuildMirrorStore(projectManager);
     BuildMirror mirror = store.getOrCreateMirror(BuildMirrorStore.buildKey("job", 9), "job", "buildType", buildInfo(9));
 
     Map<String, String> parameters = new LinkedHashMap<String, String>();
@@ -253,7 +244,7 @@ public class BuildMirrorStoreTest {
     mirror.setJenkinsBuildParameters(parameters);
     store.saveMirror(mirror);
 
-    BuildMirrorStore reloaded = new BuildMirrorStore(null, provider, projectManager);
+    BuildMirrorStore reloaded = new BuildMirrorStore(projectManager);
     BuildMirror restored = reloaded.findMirror(BuildMirrorStore.buildKey("job", 9));
 
     assertNotNull(restored);
@@ -264,9 +255,8 @@ public class BuildMirrorStoreTest {
 
   @Test
   public void pipelineChainSnapshotPersistsAcrossReload() throws Exception {
-    JenkinsBridgeSettingsProvider provider = providerWithTempStateFile();
     ProjectManager projectManager = buildMockProjectManager();
-    BuildMirrorStore store = new BuildMirrorStore(null, provider, projectManager);
+    BuildMirrorStore store = new BuildMirrorStore(projectManager);
     BuildMirror mirror = store.getOrCreateMirror(BuildMirrorStore.buildKey("job", 8), "job", "buildType", buildInfo(8));
 
     Map<String, PipelineChainNodeMirror> nodes = new LinkedHashMap<String, PipelineChainNodeMirror>();
@@ -282,7 +272,7 @@ public class BuildMirrorStoreTest {
         true));
     store.saveMirror(mirror);
 
-    BuildMirrorStore reloaded = new BuildMirrorStore(null, provider, projectManager);
+    BuildMirrorStore reloaded = new BuildMirrorStore(projectManager);
     BuildMirror restored = reloaded.findMirror(BuildMirrorStore.buildKey("job", 8));
 
     assertNotNull(restored);
@@ -333,29 +323,6 @@ public class BuildMirrorStoreTest {
         hash,
         GraphConfidence.EXPLICIT,
         Collections.<String>emptyList());
-  }
-
-  private static JenkinsBridgeSettingsProvider providerWithTempStateFile() throws Exception {
-    File stateFile = File.createTempFile("jenkins-bridge-store-test", ".json");
-    stateFile.delete();
-    stateFile.deleteOnExit();
-    return providerForStateFile(stateFile.getAbsolutePath());
-  }
-
-  private static JenkinsBridgeSettingsProvider providerForStateFile(final String path) {
-    return new JenkinsBridgeSettingsProvider() {
-      @Override
-      public JenkinsBridgeSettings load() {
-        try {
-          Constructor<JenkinsBridgeSettings> constructor = JenkinsBridgeSettings.class.getDeclaredConstructor(
-              boolean.class, int.class, int.class, String.class, String.class, String.class);
-          constructor.setAccessible(true);
-          return constructor.newInstance(true, 10, 1440, "", "", "");
-        } catch (Exception e) {
-          throw new AssertionError(e);
-        }
-      }
-    };
   }
 
   /**

@@ -1,25 +1,14 @@
 package com.jetbrains.teamcity.jenkinsbridge.persistence;
 
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
-import com.google.gson.JsonParseException;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsBuildInfo;
-import com.jetbrains.teamcity.jenkinsbridge.settings.JenkinsBridgeSettingsProvider;
 import jetbrains.buildServer.serverSide.CustomDataStorage;
 import jetbrains.buildServer.serverSide.ProjectManager;
-import jetbrains.buildServer.serverSide.ServerPaths;
 
 import com.intellij.openapi.diagnostic.Logger;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
-import java.io.Reader;
-import java.io.Writer;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -32,17 +21,12 @@ public class BuildMirrorStore {
   private static final Logger LOG = Logger.getInstance(BuildMirrorStore.class.getName());
   public static final String CUSTOM_DATA_STORAGE_NAME = "jenkinsBridgeStateStorage";
 
-  private final ServerPaths serverPaths;
   private final ProjectManager projectManager;
-  private final Gson gson = new GsonBuilder().setPrettyPrinting().create();
   @Nullable
   private CustomDataStorage myStorage;
-  @Deprecated
-  private Path loadedStateFile;
   private BridgeState state;
 
-  public BuildMirrorStore(ServerPaths serverPaths, JenkinsBridgeSettingsProvider settingsProvider, ProjectManager projectManager) {
-    this.serverPaths = serverPaths;
+  public BuildMirrorStore(ProjectManager projectManager) {
     this.projectManager = projectManager;
   }
 
@@ -288,16 +272,6 @@ public class BuildMirrorStore {
     state.putImportedJenkinsParameterSnapshot(buildTypeExternalId, snapshot);
   }
 
-  /**
-   * Uses files in the plugin folder instead of {@link CustomDataStorage}.
-   */
-  @Deprecated
-  public Path getStateFile() {
-    return serverPaths.getPluginDataDirectory().toPath()
-        .resolve("jenkins-bridge")
-        .resolve("jenkins-teamcity-mapping.json");
-  }
-
   public static String buildKey(String jobName, int buildNumber) {
     return jobName + "#" + buildNumber;
   }
@@ -321,50 +295,6 @@ public class BuildMirrorStore {
     return Long.toString(teamCityPromotionId);
   }
 
-  /**
-   * Uses files in the plugin folder instead of {@link CustomDataStorage}.
-   */
-  @Deprecated
-  private void ensureLoaded() throws IOException {
-    Path stateFile = getStateFile();
-    if (state != null && stateFile.equals(loadedStateFile)) {
-      return;
-    }
-
-    if (!Files.exists(stateFile)) {
-      state = new BridgeState(getCustomDataStorage());
-      state.setVersion(1);
-      loadedStateFile = stateFile;
-      return;
-    }
-
-    JsonParseException parseError = null;
-    try (Reader reader = Files.newBufferedReader(stateFile, StandardCharsets.UTF_8)) {
-      state = gson.fromJson(reader, BridgeState.class);
-    } catch (JsonParseException e) {
-      parseError = e;
-    }
-
-    if (parseError != null) {
-      // A corrupt/truncated state file must not brick the bridge (R7). Move it aside and start
-      // fresh; mirrors re-bind to existing TeamCity builds via restore-by-key on the next sync.
-      LOG.warn("Jenkins Bridge state file " + stateFile + " is corrupt; quarantining it and starting with empty state",
-          parseError);
-      quarantineCorruptStateFile(stateFile);
-      state = new BridgeState(getCustomDataStorage());
-      state.setVersion(1);
-      loadedStateFile = stateFile;
-      return;
-    }
-
-    if (state == null) {
-      state = new BridgeState(getCustomDataStorage());
-    }
-    state.setVersion(1);
-    state.getBuilds();
-    loadedStateFile = stateFile;
-  }
-
   private void ensureStateIsLoaded() throws IOException {
     initializeCustomDataStorage();
     Map<String, String> storedValues = getCustomDataStorage().getValues();
@@ -385,44 +315,6 @@ public class BuildMirrorStore {
       // failure and the existing state remains available for diagnosis or manual recovery.
       LOG.warn("Jenkins Bridge state is corrupt; preserving it and stopping this operation", e);
       throw e;
-    }
-  }
-
-  /**
-   * Uses files in the plugin folder instead of {@link CustomDataStorage}.
-   */
-  @Deprecated
-  private void quarantineCorruptStateFile(Path stateFile) {
-    Path target = stateFile.resolveSibling(
-        stateFile.getFileName().toString() + ".corrupt-" + System.currentTimeMillis());
-    try {
-      Files.move(stateFile, target);
-      LOG.warn("Moved corrupt Jenkins Bridge state file to " + target);
-    } catch (IOException moveError) {
-      LOG.warn("Failed to move corrupt Jenkins Bridge state file " + stateFile + " aside", moveError);
-    }
-  }
-
-  /**
-   * Uses files in the plugin folder instead of {@link CustomDataStorage}.
-   */
-  @Deprecated
-  private void saveState() throws IOException {
-    Path stateFile = loadedStateFile == null ? getStateFile() : loadedStateFile;
-    Path parent = stateFile.getParent();
-    if (parent != null) {
-      Files.createDirectories(parent);
-    }
-
-    Path temporaryFile = stateFile.resolveSibling(stateFile.getFileName().toString() + ".tmp");
-    try (Writer writer = Files.newBufferedWriter(temporaryFile, StandardCharsets.UTF_8)) {
-      gson.toJson(state, writer);
-    }
-
-    try {
-      Files.move(temporaryFile, stateFile, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-    } catch (IOException e) {
-      Files.move(temporaryFile, stateFile, StandardCopyOption.REPLACE_EXISTING);
     }
   }
 
