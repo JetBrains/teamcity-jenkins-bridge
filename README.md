@@ -198,6 +198,15 @@ server restart to take effect.
 
 By default, the mirror state is stored in TeamCity's internal database.
 
+Active sync records are pruned only when the total persisted mirror count is
+over 1,000. The main node scans finished records after a poll cycle and keeps
+pruning scoped to mappings that were polled successfully. A per-mapping
+`lastPruned` UTC boundary prevents old Jenkins builds from being mirrored again.
+
+Pipeline Graph result metadata is stored separately and remains available while
+the TeamCity build exists. TeamCity cleanup or build deletion removes that
+metadata.
+
 The build feature's "No. of builds to import on first sync" setting controls only
 defaults to 1 (only the newest Jenkins build). After the
 first poll, discovery is incremental, and every new Jenkins build after the

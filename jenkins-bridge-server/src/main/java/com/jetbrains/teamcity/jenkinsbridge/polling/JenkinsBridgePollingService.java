@@ -186,6 +186,7 @@ public class JenkinsBridgePollingService {
     boolean refreshParametersRequired = shouldRefreshParameters(
         settings.getParameterRefreshPollCycles());
     List<MirroredJob> mirroredJobs = mirroredJobProvider.discoverMirroredJobs();
+    Set<String> successfullyPolledMappings = new HashSet<String>();
     if (systemProblemReporter != null) {
       systemProblemReporter.reconcile(mirroredJobs);
     }
@@ -202,7 +203,7 @@ public class JenkinsBridgePollingService {
         if (refreshParametersRequired) {
           refreshParameters(mirroredJob);
         }
-        pollPipeline(mirroredJob);
+        successfullyPolledMappings.addAll(pollPipeline(mirroredJob));
       } catch (BridgeHttpException e) {
         reportAuthoritativePollingFailure(mirroredJob, e);
         LOG.warn("Jenkins Bridge: failed to poll " + mirroredJob.describeForLog(), e);
@@ -214,6 +215,24 @@ public class JenkinsBridgePollingService {
         LOG.error("Jenkins Bridge: failed to poll " + mirroredJob.describeForLog(), e);
       }
     }
+    checkIfWeNeedPruning(successfullyPolledMappings);
+  }
+
+  private void checkIfWeNeedPruning(Set<String> successfullyPolledMappings) throws IOException {
+    final int pruningThreshold = 1000;
+    if (mirrorStore.getMirrorCount() <= pruningThreshold || successfullyPolledMappings.isEmpty()) {
+      return;
+    }
+    Set<String> mappingsWithFinishedMirrors =
+        mirrorStore.getFinishedMirrorMappings(successfullyPolledMappings);
+    if (mappingsWithFinishedMirrors.isEmpty()) return;
+    String pruneTime = Instant.now().toString();
+    for (String mapping : mappingsWithFinishedMirrors) {
+      mirrorStore.setLastPruned(mapping, pruneTime);
+    }
+    mirrorStore.pruneFinishedMirrors(mappingsWithFinishedMirrors);
+    LOG.info("Jenkins Bridge pruned finished mirrors for "
+        + mappingsWithFinishedMirrors.size() + " mapping(s)");
   }
 
   private boolean shouldRefreshParameters(int refreshIntervalCycles) {
@@ -423,11 +442,11 @@ public class JenkinsBridgePollingService {
   /**
    * Calls {@code pollJob} once for regular pipelines, and once for each branch in the case of a multibranch pipeline.
    */
-  private void pollPipeline(MirroredJob mirroredJob)
+  private Set<String> pollPipeline(MirroredJob mirroredJob)
       throws BridgeHttpException, JenkinsDataException, IOException {
     if (!mirroredJob.hasMinimumConfiguration()) {
       LOG.warn(mirroredJob.describeMinimumConfigurationProblem());
-      return;
+      return Collections.emptySet();
     }
 
     JenkinsClient jenkinsClient = jenkinsClientFor(mirroredJob);
@@ -447,12 +466,17 @@ public class JenkinsBridgePollingService {
         outcome.merge(pollJob(jenkinsClient, branchJob, entry.getValue(), recentBuildLimit));
       }
       updateSystemProblem(mirroredJob, outcome);
-      return;
+      Set<String> mappings = new HashSet<String>();
+      for (String branch : branchBuilds.keySet()) {
+        mappings.add(mirroredJob.teamCityBuildTypeExternalId() + "::" + branch);
+      }
+      return mappings;
     }
 
     JobPollOutcome outcome = pollJob(
         jenkinsClient, mirroredJob, jenkinsClient.getBuilds(mirroredJob.jenkinsJob()), recentBuildLimit);
     updateSystemProblem(mirroredJob, outcome);
+    return Collections.singleton(mirroredJob.getMirrorKeyPrefix());
   }
 
   void reportAuthoritativePollingFailure(MirroredJob mirroredJob, BridgeHttpException failure) {
@@ -518,6 +542,7 @@ public class JenkinsBridgePollingService {
     int latest = maxBuildNumber(builds);
     int oldest = minBuildNumber(builds);
     int lastSeen = mirrorStore.getLastSeenBuildNumber(keyPrefix);
+    String lastPruned = mirrorStore.getLastPruned(keyPrefix);
     int coldStartAfter = lastSeen;
     boolean coldStart = lastSeen == 0;
     boolean resetDetected = false;
@@ -550,7 +575,8 @@ public class JenkinsBridgePollingService {
 
     List<JenkinsBuildInfo> toProcess = new ArrayList<JenkinsBuildInfo>();
     for (JenkinsBuildInfo build : builds) {
-      if (shouldProcessDiscoveredBuild(jenkinsClient, build, keyPrefix, lastSeen, coldStartAfter, coldStart, resetDetected)) {
+      if (shouldProcessDiscoveredBuild(jenkinsClient, build, keyPrefix, lastSeen, coldStartAfter,
+          coldStart, resetDetected, lastPruned)) {
         toProcess.add(build);
       }
     }
@@ -602,7 +628,8 @@ public class JenkinsBridgePollingService {
       int lastSeen,
       int coldStartAfter,
       boolean coldStart,
-      boolean resetDetected
+      boolean resetDetected,
+      @Nullable String lastPruned
   ) throws IOException {
     // A newly triggered run must be considered even when the numeric watermark has already moved
     // past it (for example after a coalesced Jenkins submission). Queue ID ownership outranks the
@@ -615,6 +642,14 @@ public class JenkinsBridgePollingService {
     BuildMirror current = mirrorStore.findMirror(currentKey);
     if (current != null) {
       return current.getSyncState() != SyncState.TEAMCITY_FINISHED;
+    }
+
+    if (lastPruned != null && build.getTimestamp() > 0L) {
+      try {
+        if (build.getTimestamp() <= Instant.parse(lastPruned).toEpochMilli()) return false;
+      } catch (DateTimeParseException ignored) {
+        LOG.warn("Ignoring invalid Jenkins Bridge prune boundary for " + keyPrefix + ": " + lastPruned);
+      }
     }
 
     if (coldStart) {

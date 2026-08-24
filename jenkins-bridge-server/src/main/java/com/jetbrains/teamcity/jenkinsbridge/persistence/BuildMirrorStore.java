@@ -22,6 +22,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -155,7 +156,12 @@ public class BuildMirrorStore {
    */
   public synchronized BuildMirror findMirror(String key) throws IOException {
     ensureStateIsLoaded();
-    return state.getBuilds().get(key);
+    BuildMirror mirror = state.getBuilds().get(key);
+    if (mirror != null) return mirror;
+    for (BuildResultMetadata metadata : state.getResultMetadata().values()) {
+      if (key.equals(metadata.getJenkinsBuildKey())) return metadata.toMirror();
+    }
+    return null;
   }
 
   /**
@@ -172,7 +178,73 @@ public class BuildMirrorStore {
         return mirror;
       }
     }
+    for (BuildResultMetadata metadata : state.getResultMetadata().values()) {
+      if (metadata.getTeamCityBuildId() != null && metadata.getTeamCityBuildId() == tcBuildId) {
+        return metadata.toMirror();
+      }
+    }
     return null;
+  }
+
+  public synchronized void saveResultMetadata(BuildMirror mirror) throws IOException {
+    ensureStateIsLoaded();
+    if (mirror.getTeamCityBuildId() != null) {
+      state.putResultMetadata(Long.toString(mirror.getTeamCityBuildId()), BuildResultMetadata.from(mirror));
+    }
+  }
+
+  public synchronized void removeResultMetadata(Collection<Long> buildIds) throws IOException {
+    ensureStateIsLoaded();
+    List<String> ids = new ArrayList<String>();
+    for (Long id : buildIds) if (id != null) ids.add(Long.toString(id));
+    state.removeResultMetadata(ids);
+  }
+
+  public synchronized int getMirrorCount() throws IOException {
+    ensureStateIsLoaded();
+    return state.getBuilds().size();
+  }
+
+  @NotNull
+  public synchronized Set<String> getFinishedMirrorMappings(@NotNull Set<String> mappingKeys)
+      throws IOException {
+    ensureStateIsLoaded();
+    Set<String> result = new java.util.HashSet<String>();
+    for (BuildMirror mirror : state.getBuilds().values()) {
+      String mappingKey = mirror.getTeamCityBuildTypeId() + "::" + mirror.getJenkinsJob();
+      if (mirror.getSyncState() == SyncState.TEAMCITY_FINISHED && mappingKeys.contains(mappingKey)) {
+        result.add(mappingKey);
+      }
+    }
+    return result;
+  }
+
+  public synchronized List<BuildMirror> pruneFinishedMirrors(@NotNull Set<String> mappingKeys)
+      throws IOException {
+    ensureStateIsLoaded();
+    List<BuildMirror> pruned = new ArrayList<BuildMirror>();
+    List<String> keys = new ArrayList<String>();
+    for (Map.Entry<String, BuildMirror> entry : state.getBuilds().entrySet()) {
+      BuildMirror mirror = entry.getValue();
+      String mappingKey = mirror.getTeamCityBuildTypeId() + "::" + mirror.getJenkinsJob();
+      if (mirror.getSyncState() == SyncState.TEAMCITY_FINISHED && mappingKeys.contains(mappingKey)) {
+        saveResultMetadata(mirror);
+        pruned.add(mirror);
+        keys.add(entry.getKey());
+      }
+    }
+    state.removeBuilds(keys);
+    return pruned;
+  }
+
+  public synchronized String getLastPruned(String mappingKey) throws IOException {
+    ensureStateIsLoaded();
+    return state.getLastPruned(mappingKey);
+  }
+
+  public synchronized void setLastPruned(String mappingKey, String timestamp) throws IOException {
+    ensureStateIsLoaded();
+    state.setLastPruned(mappingKey, timestamp);
   }
 
   /**
@@ -207,26 +279,6 @@ public class BuildMirrorStore {
       }
     }
     return active;
-  }
-
-  /**
-   * Removes the mirrors that have reached {@code TEAMCITY_FINISHED} from the store and returns them.
-   *
-   * @return The list of pruned mirrors.
-   * @throws IOException If reading or writing the state file fails.
-   */
-  public synchronized List<BuildMirror> pruneFinishedMirrors() throws IOException {
-    ensureStateIsLoaded();
-    List<BuildMirror> pruned = new ArrayList<>();
-    List<String> keysToRemove = new ArrayList<>();
-    for (Map.Entry<String, BuildMirror> entry : state.getBuilds().entrySet()) {
-      if (entry.getValue().getSyncState() == SyncState.TEAMCITY_FINISHED) {
-        pruned.add(entry.getValue());
-        keysToRemove.add(entry.getKey());
-      }
-    }
-    state.removeBuilds(keysToRemove);
-    return pruned;
   }
 
   public synchronized int getLastSeenBuildNumber(String jobName) throws IOException {
@@ -376,6 +428,7 @@ public class BuildMirrorStore {
     try {
       state.getVersion();
       state.getBuilds();
+      state.getResultMetadata();
       state.getPendingTriggers();
       state.getLastSeenBuildNumbers();
       state.getLastPollTime();

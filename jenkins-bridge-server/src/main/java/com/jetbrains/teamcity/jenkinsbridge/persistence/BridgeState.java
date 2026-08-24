@@ -6,6 +6,7 @@ import com.google.gson.JsonParseException;
 import com.google.gson.reflect.TypeToken;
 import jetbrains.buildServer.serverSide.CustomDataStorage;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.Collection;
 import java.util.Collections;
@@ -18,8 +19,10 @@ public class BridgeState {
   private static final Gson OUR_GSON = new GsonBuilder().setPrettyPrinting().create();
   private static final String VERSION_KEY = "version";
   private static final String BUILD_KEY_PREFIX = "build-";
+  private static final String RESULT_METADATA_KEY_PREFIX = "result-metadata-";
   private static final String PENDING_TRIGGER_KEY_PREFIX = "pending-trigger-";
   private static final String LAST_SEEN_BUILD_NUMBER_KEY_PREFIX = "last-seen-build-number-";
+  private static final String LAST_PRUNED_KEY_PREFIX = "last-pruned-";
   private static final String LAST_POLL_TIME_KEY = "last-poll-time";
   private static final String LAST_ERROR_KEY = "last-error";
   private static final String JENKINS_PARAMETER_KEY_PREFIX = "jenkins-parameter-names-";
@@ -83,6 +86,31 @@ public class BridgeState {
   }
 
   @NotNull
+  public Map<String, BuildResultMetadata> getResultMetadata() throws BridgeStateCorruptionException {
+    Map<String, BuildResultMetadata> result = new LinkedHashMap<String, BuildResultMetadata>();
+    Map<String, String> values = myStorage.getValues();
+    if (values != null) {
+      for (Map.Entry<String, String> entry : values.entrySet()) {
+        if (!entry.getKey().startsWith(RESULT_METADATA_KEY_PREFIX) || entry.getValue() == null) continue;
+        BuildResultMetadata metadata = parseEntry(entry.getKey(), entry.getValue(), BuildResultMetadata.class);
+        if (metadata == null) throw new BridgeStateCorruptionException("Persisted result metadata entry " + entry.getKey() + " is null");
+        result.put(entry.getKey().substring(RESULT_METADATA_KEY_PREFIX.length()), metadata);
+      }
+    }
+    return result;
+  }
+
+  public void putResultMetadata(@NotNull String buildId, @NotNull BuildResultMetadata metadata) {
+    myStorage.putValue(RESULT_METADATA_KEY_PREFIX + buildId, OUR_GSON.toJson(metadata));
+  }
+
+  public void removeResultMetadata(@NotNull Collection<String> buildIds) {
+    if (buildIds.isEmpty()) return;
+    Set<String> keys = buildIds.stream().map(id -> RESULT_METADATA_KEY_PREFIX + id).collect(Collectors.toSet());
+    myStorage.updateValues(Collections.emptyMap(), keys);
+  }
+
+  @NotNull
   public Map<String, PendingTrigger> getPendingTriggers() throws BridgeStateCorruptionException {
     Map<String, String> stateMap = myStorage.getValues();
     Map<String, PendingTrigger> pendingTriggers = new LinkedHashMap<String, PendingTrigger>();
@@ -135,6 +163,15 @@ public class BridgeState {
 
   public void putLastSeenBuildNumber(@NotNull String jobName, int buildNumber) {
     myStorage.putValue(LAST_SEEN_BUILD_NUMBER_KEY_PREFIX + jobName, Integer.toString(buildNumber));
+  }
+
+  @Nullable
+  public String getLastPruned(@NotNull String mappingKey) {
+    return myStorage.getValue(LAST_PRUNED_KEY_PREFIX + mappingKey);
+  }
+
+  public void setLastPruned(@NotNull String mappingKey, @NotNull String timestamp) {
+    myStorage.putValue(LAST_PRUNED_KEY_PREFIX + mappingKey, timestamp);
   }
 
   public String getLastPollTime() {

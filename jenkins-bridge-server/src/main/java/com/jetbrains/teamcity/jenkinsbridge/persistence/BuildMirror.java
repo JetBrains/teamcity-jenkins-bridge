@@ -81,6 +81,22 @@ public class BuildMirror {
     return mirror;
   }
 
+  static BuildMirror fromResultMetadata(
+      String key, String job, int number, long timestamp, String url,
+      Long teamCityBuildId, String buildTypeId, JenkinsPipelineGraph graph) {
+    BuildMirror mirror = new BuildMirror();
+    mirror.jenkinsBuildKey = key;
+    mirror.jenkinsJob = job;
+    mirror.jenkinsBuildNumber = number;
+    mirror.jenkinsBuildTimestamp = timestamp;
+    mirror.jenkinsBuildUrl = url;
+    mirror.teamCityBuildId = teamCityBuildId;
+    mirror.teamCityBuildTypeId = buildTypeId;
+    mirror.pipelineGraph = graph;
+    mirror.syncState = SyncState.TEAMCITY_FINISHED;
+    return mirror;
+  }
+
   public String getJenkinsBuildKey() {
     return jenkinsBuildKey;
   }

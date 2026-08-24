@@ -69,6 +69,10 @@
   <bean id="buildMirrorResolver"
         class="com.jetbrains.teamcity.jenkinsbridge.persistence.BuildMirrorResolver"/>
 
+  <bean id="buildResultMetadataCleanup"
+        class="com.jetbrains.teamcity.jenkinsbridge.persistence.BuildResultMetadataCleanup"
+        destroy-method="dispose"/>
+
   <bean id="bridgeBuildFeature"
         class="com.jetbrains.teamcity.jenkinsbridge.feature.BridgeBuildFeature"/>
 

@@ -682,6 +682,7 @@ public class TeamCityBuildMirrorService {
     // TODO we should log here if there is an artifact sync failure
 
     mirrorStore.saveMirror(mirror);
+    mirrorStore.saveResultMetadata(mirror);
   }
 
   /**
@@ -722,6 +723,7 @@ public class TeamCityBuildMirrorService {
       mirror.setPipelineChain(chain);
       mirror.setLastError(null);
       mirrorStore.saveMirror(mirror);
+      mirrorStore.saveResultMetadata(mirror);
     }
   }
 

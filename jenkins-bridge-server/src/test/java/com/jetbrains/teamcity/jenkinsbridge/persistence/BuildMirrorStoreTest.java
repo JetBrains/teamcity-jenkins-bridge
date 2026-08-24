@@ -91,6 +91,42 @@ public class BuildMirrorStoreTest {
   }
 
   @Test
+  public void pruneBoundaryAndResultMetadataPersistAcrossReload() throws Exception {
+    ProjectManager projectManager = buildMockProjectManager();
+    BuildMirrorStore store = new BuildMirrorStore(null, providerWithTempStateFile(), projectManager);
+    BuildMirror mirror = store.getOrCreateMirror(
+        BuildMirrorStore.buildKey("job", 2), "job", "buildType", buildInfo(2, 1710000000002L));
+    mirror.setTeamCityBuildId(42L);
+    mirror.setSyncState(SyncState.TEAMCITY_FINISHED);
+    store.saveMirror(mirror);
+    store.setLastPruned("buildType::job", "2026-08-24T12:00:00Z");
+    store.pruneFinishedMirrors(Set.of("buildType::job"));
+
+    BuildMirrorStore reloaded = new BuildMirrorStore(null, providerWithTempStateFile(), projectManager);
+    assertEquals("2026-08-24T12:00:00Z", reloaded.getLastPruned("buildType::job"));
+    assertNotNull(reloaded.findMirror(BuildMirrorStore.buildKey("job", 2)));
+    assertNotNull(reloaded.findMirrorByTcBuildId(42L));
+  }
+
+  @Test
+  public void scopedPruningLeavesOtherMappingsUntouched() throws Exception {
+    JenkinsBridgeSettingsProvider provider = providerWithTempStateFile();
+    ProjectManager projectManager = buildMockProjectManager();
+    BuildMirrorStore store = new BuildMirrorStore(null, provider, projectManager);
+    BuildMirror selected = store.getOrCreateMirror("type-a::job#1", "job", "type-a", buildInfo(1));
+    selected.setSyncState(SyncState.TEAMCITY_FINISHED);
+    store.saveMirror(selected);
+    BuildMirror other = store.getOrCreateMirror("type-b::job#1", "job", "type-b", buildInfo(1));
+    other.setSyncState(SyncState.TEAMCITY_FINISHED);
+    store.saveMirror(other);
+
+    store.pruneFinishedMirrors(Set.of("type-a::job"));
+
+    assertNull(store.findMirror("type-a::job#1"));
+    assertNotNull(store.findMirror("type-b::job#1"));
+  }
+
+  @Test
   public void getActiveMirrorsExcludesFinishedBuilds() throws Exception {
     BuildMirrorStore store = new BuildMirrorStore(null, providerWithTempStateFile(), buildMockProjectManager());
 
@@ -115,7 +151,7 @@ public class BuildMirrorStoreTest {
     finished.setSyncState(SyncState.TEAMCITY_FINISHED);
     store.saveMirror(finished);
 
-    List<BuildMirror> pruned = store.pruneFinishedMirrors();
+    List<BuildMirror> pruned = store.pruneFinishedMirrors(Set.of("buildType::job"));
     assertEquals(1, pruned.size());
     assertEquals(2, pruned.get(0).getJenkinsBuildNumber());
 
@@ -133,7 +169,7 @@ public class BuildMirrorStoreTest {
     BuildMirrorStore store = new BuildMirrorStore(null, providerWithTempStateFile(), buildMockProjectManager());
     store.getOrCreateMirror(BuildMirrorStore.buildKey("job", 1), "job", "buildType", buildInfo(1));
 
-    List<BuildMirror> pruned = store.pruneFinishedMirrors();
+    List<BuildMirror> pruned = store.pruneFinishedMirrors(Set.of("buildType::job"));
 
     assertTrue(pruned.isEmpty());
     assertNotNull(store.findMirror(BuildMirrorStore.buildKey("job", 1)));
