@@ -63,8 +63,9 @@ public class PipelineChainPlanner {
   }
 
   private String buildTypeExternalId(String sourceBuildTypeExternalId, String runHash, String nodeId) {
-    return pipelineExternalId(sourceBuildTypeExternalId,
-        "JenkinsFlow_" + runHash + "_" + (nodeId == null ? "Node" : nodeId));
+    String safeNodeId = nodeId == null ? "Node" : nodeId;
+    String userString = "JenkinsFlow_" + runHash + "_" + safeNodeId;
+    return pipelineExternalId(sourceBuildTypeExternalId, userString);
   }
 
   private String pipelineExternalId(String sourceBuildTypeExternalId, String userString) {
