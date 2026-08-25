@@ -220,8 +220,10 @@ public class JenkinsBridgePollingService {
   }
 
   /**
-   * Prunes finished active mirrors only after the total mirror count exceeds the threshold. The
-   * second scan identifies finished records belonging to mappings successfully polled this cycle.
+   * Checks whether pruning is needed and prunes finished active mirrors when it is. A total mirror
+   * count of 1,000 or fewer returns without scanning. Above 1,000, the second scan finds finished
+   * mirrors belonging to mappings successfully polled in this cycle; an empty result also returns
+   * without pruning.
    */
   private void checkIfWeNeedPruning(Set<String> successfullyPolledMappings) throws IOException {
     if (mirrorStore.getMirrorCount() <= FINISHED_MIRROR_PRUNING_THRESHOLD
@@ -667,8 +669,9 @@ public class JenkinsBridgePollingService {
       return false;
     }
 
-    // New keys include the Jenkins timestamp so reused build numbers can coexist. The legacy lookup
-    // preserves compatibility with mirrors written before timestamped keys were introduced.
+    // New keys include the Jenkins timestamp so reused build numbers can coexist. Keep this lookup
+    // for state written before timestamped keys were introduced; otherwise an existing mirror could
+    // be rediscovered under its new key after an upgrade.
     BuildMirror legacy = mirrorStore.findMirror(BuildMirrorStore.buildKey(keyPrefix, build.getNumber()));
     return legacy == null;
   }

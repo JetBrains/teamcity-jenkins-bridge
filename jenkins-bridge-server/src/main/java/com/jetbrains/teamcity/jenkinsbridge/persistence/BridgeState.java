@@ -85,6 +85,7 @@ public class BridgeState {
     myStorage.updateValues(Collections.emptyMap(), storageKeys);
   }
 
+  /** Returns the persisted result-page records keyed by TeamCity build ID. */
   @NotNull
   public Map<String, BuildResultMetadata> getResultMetadata() throws BridgeStateCorruptionException {
     Map<String, BuildResultMetadata> result = new LinkedHashMap<String, BuildResultMetadata>();
@@ -100,10 +101,12 @@ public class BridgeState {
     return result;
   }
 
+  /** Stores result-page data separately from active mirror synchronization state. */
   public void putResultMetadata(@NotNull String buildId, @NotNull BuildResultMetadata metadata) {
     myStorage.putValue(RESULT_METADATA_KEY_PREFIX + buildId, OUR_GSON.toJson(metadata));
   }
 
+  /** Removes result-page records for the supplied TeamCity build IDs. */
   public void removeResultMetadata(@NotNull Collection<String> buildIds) {
     if (buildIds.isEmpty()) return;
     Set<String> keys = buildIds.stream().map(id -> RESULT_METADATA_KEY_PREFIX + id).collect(Collectors.toSet());

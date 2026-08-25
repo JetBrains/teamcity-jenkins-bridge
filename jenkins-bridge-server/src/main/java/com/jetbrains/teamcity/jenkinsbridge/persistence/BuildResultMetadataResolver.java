@@ -6,7 +6,11 @@ import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 
-/** Resolves durable result-page metadata, independently of active synchronization state. */
+/**
+ * Resolves durable result-page metadata, independently of active synchronization state. Lookup first
+ * uses the Jenkins build key and then TeamCity promotion/build IDs because either TeamCity-first or
+ * Jenkins-first builds may lack one of those correlation values.
+ */
 public class BuildResultMetadataResolver {
   private final BuildMirrorStore mirrorStore;
 

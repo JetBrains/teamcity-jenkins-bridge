@@ -212,12 +212,16 @@ public class BuildMirrorStore {
 
   public synchronized void saveResultMetadata(BuildMirror mirror) throws IOException {
     ensureStateIsLoaded();
-    if (mirror.getTeamCityBuildId() != null) {
-      state.putResultMetadata(Long.toString(mirror.getTeamCityBuildId()), BuildResultMetadata.from(mirror));
+    Long buildId = mirror.getTeamCityBuildId();
+    if (buildId == null) {
+      LOG.warn("Jenkins Bridge cannot persist result metadata for mirror "
+          + mirror.getJenkinsBuildKey() + " because it has no TeamCity build ID");
+      return;
     }
+    state.putResultMetadata(Long.toString(buildId), BuildResultMetadata.from(mirror));
   }
 
-  public synchronized void removeResultMetadata(Collection<Long> buildIds) throws IOException {
+  public synchronized void removeResultMetadata(@NotNull Collection<Long> buildIds) throws IOException {
     ensureStateIsLoaded();
     List<String> ids = new ArrayList<String>();
     for (Long id : buildIds) {

@@ -36,10 +36,16 @@ public class TeamCityBuildResultMetadataIT extends BaseServerTestCase {
     BuildCleanupContext context = org.mockito.Mockito.mock(BuildCleanupContext.class);
     when(context.getBuildIds()).thenReturn(Collections.singletonList(700L));
     EventDispatcher<BuildServerListener> dispatcher = org.mockito.Mockito.mock(EventDispatcher.class);
-    BuildResultMetadataCleanup cleanup = new BuildResultMetadataCleanup(store, dispatcher);
+    BuildMirror orphan = BuildMirror.create("job#8", "job", JenkinsBuildInfo.fromJson(json),
+        myBuildType.getExternalId(), "2026-08-24T12:00:00Z");
+    orphan.setTeamCityBuildId(701L);
+    store.saveResultMetadata(orphan);
+    BuildResultMetadataCleanup cleanup = new BuildResultMetadataCleanup(
+        store, dispatcher, myFixture.getBuildsManager());
     cleanup.cleanupBuildsData(context);
 
     assertNull(store.findResultMetadataByTeamCityBuildId(700L));
+    assertNull(store.findResultMetadataByTeamCityBuildId(701L));
     cleanup.dispose();
   }
 }
