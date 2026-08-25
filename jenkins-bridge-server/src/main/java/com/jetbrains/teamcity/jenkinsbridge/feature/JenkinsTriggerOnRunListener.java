@@ -156,11 +156,16 @@ public class JenkinsTriggerOnRunListener {
       return;
     }
     String controller = jenkinsClient.getControllerIdentity();
+    JenkinsTriggerCorrelation.Payload correlation = JenkinsTriggerCorrelation.decode(
+        promotion.getCustomParameters().get(TeamCityBuildParameters.TRIGGER_CORRELATION));
+    String cause = correlation == null ? "Jenkins Bridge: TeamCity promotion " + promotion.getId()
+        : correlation.getCause();
+    String originatingNode = correlation == null ? "" : correlation.getNodeId();
     // Persist an unresolved intent before POST. If TeamCity dies around the request boundary,
     // startup can find this record and either bind the accepted Jenkins run or fail the TeamCity
     // promotion with an explicit uncertain-trigger reason.
     PendingTrigger provisional = new PendingTrigger(
-        promotion.getId(), job, buildType.getExternalId(), "", -1L, controller, now());
+        promotion.getId(), job, buildType.getExternalId(), "", -1L, controller, now(), cause, originatingNode);
     mirrorStore.savePendingTrigger(provisional);
     LOG.debug(TeamCityNodeLog.currentNode(teamCityNodes)
         + " [Jenkins Bridge DEBUG] Saved provisional Jenkins trigger for TeamCity promotion "
@@ -215,7 +220,7 @@ public class JenkinsTriggerOnRunListener {
       LOG.debug(TeamCityNodeLog.currentNode(teamCityNodes)
           + " [Jenkins Bridge DEBUG] Sending Jenkins trigger request for TeamCity promotion "
           + promotion.getId());
-      trigger = jenkinsClient.triggerBuildWithQueueId(job, parameters);
+      trigger = jenkinsClient.triggerBuildWithQueueId(job, parameters, cause);
     } catch (BridgeHttpException | JenkinsDataException e) {
       failTeamCityFirstAttempt(
           queued,
@@ -227,12 +232,8 @@ public class JenkinsTriggerOnRunListener {
     }
 
     if (!trigger.hasQueueId() || trigger.getQueueItemUrl().trim().isEmpty()) {
-      failTeamCityFirstAttempt(
-          queued,
-          promotion.getId(),
-          "Jenkins Bridge called Jenkins but could not correlate the trigger response. "
-              + "This build is failed because the result is uncertain; check Jenkins for an accepted build.",
-          null);
+      LOG.warn("Jenkins Bridge received no queue location for TeamCity promotion " + promotion.getId()
+          + "; retaining the cause-correlated pending trigger for polling");
       return;
     }
 
@@ -242,8 +243,7 @@ public class JenkinsTriggerOnRunListener {
         buildType.getExternalId(),
         trigger.getQueueItemUrl(),
         trigger.getQueueId(),
-        controller,
-        now());
+        controller, now(), cause, originatingNode);
     mirrorStore.savePendingTrigger(pendingTrigger);
     LOG.info(TeamCityNodeLog.currentNode(teamCityNodes) + " Jenkins Bridge triggered " + job
         + " from TeamCity promotion " + promotion.getId()
@@ -338,6 +338,7 @@ public class JenkinsTriggerOnRunListener {
     result.putAll(promotion.getCustomParameters());
     result.remove(BridgeBuildFeatureConstants.JENKINS_BUILD_KEY_PARAM);
     result.remove(TeamCityBuildParameters.AGENTLESS_BUILD_PROPERTY);
+    result.remove(TeamCityBuildParameters.TRIGGER_CORRELATION);
     return JenkinsParameterPayloadBuilder.build(parameterDefinitions, result);
   }
 

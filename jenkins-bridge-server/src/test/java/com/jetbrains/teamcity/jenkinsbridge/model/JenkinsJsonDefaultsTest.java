@@ -23,4 +23,12 @@ public class JenkinsJsonDefaultsTest {
     assertEquals("", testCase.getName());
     assertEquals("", testCase.getStatus());
   }
+
+  @Test
+  public void buildCausesAreReadFromActions() {
+    JsonObject json = com.google.gson.JsonParser.parseString(
+        "{\"actions\":[{\"causes\":[{\"shortDescription\":\"Jenkins Bridge: promotion 42\"}]}]}")
+        .getAsJsonObject();
+    assertEquals("Jenkins Bridge: promotion 42", JenkinsBuildInfo.fromJson(json).getCauses().get(0));
+  }
 }

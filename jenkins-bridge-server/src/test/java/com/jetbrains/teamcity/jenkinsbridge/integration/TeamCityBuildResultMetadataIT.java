@@ -22,7 +22,7 @@ import static org.testng.Assert.assertNull;
 public class TeamCityBuildResultMetadataIT extends BaseServerTestCase {
   @Test
   public void cleanupRemovesMetadataForSelectedBuildIds() throws Exception {
-    BuildMirrorStore store = new BuildMirrorStore(null, null, myProjectManager);
+    BuildMirrorStore store = new BuildMirrorStore(myProjectManager);
     JsonObject json = new JsonObject();
     json.addProperty("number", 7);
     json.addProperty("timestamp", 1710000000007L);

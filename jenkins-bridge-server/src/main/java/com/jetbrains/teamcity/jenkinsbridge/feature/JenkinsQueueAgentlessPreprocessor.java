@@ -7,6 +7,8 @@ import jetbrains.buildServer.serverSide.AddToQueuePreprocessor;
 import jetbrains.buildServer.serverSide.BuildPromotion;
 import jetbrains.buildServer.serverSide.BuildPromotionEx;
 import jetbrains.buildServer.serverSide.SBuildType;
+import jetbrains.buildServer.serverSide.TeamCityNode;
+import jetbrains.buildServer.serverSide.TeamCityNodes;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -30,6 +32,11 @@ import java.util.Map;
  */
 public class JenkinsQueueAgentlessPreprocessor implements AddToQueuePreprocessor {
   private static final Logger LOG = Logger.getInstance(JenkinsQueueAgentlessPreprocessor.class.getName());
+  private final TeamCityNodes teamCityNodes;
+
+  public JenkinsQueueAgentlessPreprocessor(TeamCityNodes teamCityNodes) {
+    this.teamCityNodes = teamCityNodes;
+  }
 
   @Override
   public Map<BuildPromotion, AgentRestrictor> preprocess(
@@ -39,7 +46,7 @@ public class JenkinsQueueAgentlessPreprocessor implements AddToQueuePreprocessor
     }
     for (BuildPromotion promotion : promotions.keySet()) {
       try {
-        markAgentlessIfBridge(promotion);
+        addBridgeParametersIfNeeded(promotion, triggeredBy);
       } catch (RuntimeException e) {
         // Never break queueing for a bug in the bridge; the build just stays non-agentless and the
         // existing post-queue listener + poller still mirror it (only the live-in-queue view suffers).
@@ -51,7 +58,7 @@ public class JenkinsQueueAgentlessPreprocessor implements AddToQueuePreprocessor
     return promotions;
   }
 
-  private void markAgentlessIfBridge(BuildPromotion promotion) {
+  private void addBridgeParametersIfNeeded(BuildPromotion promotion, String triggeredBy) {
     SBuildType buildType = promotion.getBuildType();
     if (buildType == null || !hasBridgeFeature(buildType)) {
       return;
@@ -64,14 +71,24 @@ public class JenkinsQueueAgentlessPreprocessor implements AddToQueuePreprocessor
       return;
     }
     BuildPromotionEx ex = (BuildPromotionEx) promotion;
-    if (ex.isAgentLessBuild()) {
-      return;
-    }
     Map<String, String> parameters = new LinkedHashMap<String, String>(promotion.getCustomParameters());
-    parameters.put(TeamCityBuildParameters.AGENTLESS_BUILD_PROPERTY, "true");
+    if (!ex.isAgentLessBuild()) {
+      parameters.put(TeamCityBuildParameters.AGENTLESS_BUILD_PROPERTY, "true");
+    }
+    if (!parameters.containsKey(TeamCityBuildParameters.TRIGGER_CORRELATION)) {
+      TeamCityNode node = teamCityNodes == null ? null : teamCityNodes.getCurrentNode();
+      String nodeId = node == null ? "unknown" : node.getId();
+      String triggerCorrelation = JenkinsTriggerCorrelation.encode(
+          promotion.getId(), nodeId, triggeredBy, java.time.Instant.now().toString());
+      parameters.put(TeamCityBuildParameters.TRIGGER_CORRELATION, triggerCorrelation);
+    }
     ex.setCustomParameters(parameters);
     LOG.info("Jenkins Bridge: marked TeamCity promotion " + promotion.getId()
         + " agentless before queueing");
+  }
+
+  public JenkinsQueueAgentlessPreprocessor() {
+    this(null);
   }
 
   private boolean hasBridgeFeature(SBuildType buildType) {

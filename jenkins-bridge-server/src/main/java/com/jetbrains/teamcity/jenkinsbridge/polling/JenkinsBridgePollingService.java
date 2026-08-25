@@ -605,8 +605,8 @@ public class JenkinsBridgePollingService {
 
     List<JenkinsBuildInfo> toProcess = new ArrayList<JenkinsBuildInfo>();
     for (JenkinsBuildInfo build : builds) {
-      if (shouldProcessDiscoveredBuild(jenkinsClient, build, keyPrefix, lastSeen, coldStartAfter,
-          coldStart, resetDetected, lastPruned)) {
+      if (shouldProcessDiscoveredBuild(jenkinsClient, mirroredJob.jenkinsJob(), build, keyPrefix, lastSeen,
+          coldStartAfter, coldStart, resetDetected, lastPruned)) {
         toProcess.add(build);
       }
     }
@@ -653,6 +653,7 @@ public class JenkinsBridgePollingService {
 
   private boolean shouldProcessDiscoveredBuild(
       JenkinsClient jenkinsClient,
+      String job,
       JenkinsBuildInfo build,
       String keyPrefix,
       int lastSeen,
@@ -668,6 +669,7 @@ public class JenkinsBridgePollingService {
         && mirrorStore.findPendingTrigger(jenkinsClient.getControllerIdentity(), build.getQueueId()) != null) {
       return true;
     }
+    if (hasPendingCause(jenkinsClient, job, build)) return true;
     String currentKey = BuildMirrorStore.buildKey(keyPrefix, build);
     BuildMirror current = mirrorStore.findMirror(currentKey);
     if (current != null) {
@@ -709,6 +711,16 @@ public class JenkinsBridgePollingService {
     }
   }
 
+  private boolean hasPendingCause(JenkinsClient jenkinsClient, String job, JenkinsBuildInfo build)
+      throws IOException {
+    for (String cause : build.getCauses()) {
+      if (mirrorStore.findPendingTriggerByCause(jenkinsClient.getControllerIdentity(), job, cause) != null) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   /**
    * Synchronizes a discovered build and reports whether discovery/tracking succeeded.
    *
@@ -730,6 +742,16 @@ public class JenkinsBridgePollingService {
       mirror = mirrorStore.getOrCreateMirror(mirrorKey, job, mirroredJob.teamCityBuildTypeExternalId(), buildInfo);
       discoveredAndTracked = true;
       PendingTrigger pending = mirrorStore.findPendingTrigger(jenkinsClient.getControllerIdentity(), buildInfo.getQueueId());
+      if (pending == null) {
+        for (String cause : buildInfo.getCauses()) {
+          PendingTrigger candidate = mirrorStore.findPendingTriggerByCause(
+              jenkinsClient.getControllerIdentity(), job, cause);
+          if (candidate != null) {
+            pending = candidate;
+            break;
+          }
+        }
+      }
       if (pending != null) {
         boolean ownershipMatches = job.equals(pending.getJenkinsJob())
             && mirroredJob.teamCityBuildTypeExternalId().equals(pending.getTeamCityBuildTypeExternalId());

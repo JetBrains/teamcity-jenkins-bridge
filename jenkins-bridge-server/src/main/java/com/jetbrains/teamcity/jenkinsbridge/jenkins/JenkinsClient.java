@@ -143,7 +143,7 @@ public class JenkinsClient {
 
   private List<JenkinsBuildInfo> fetchBuildInfos(String jobName, String collection)
       throws BridgeHttpException, JenkinsDataException {
-    String tree = collection + "[number,timestamp,url,queueId]";
+    String tree = collection + "[number,timestamp,url,queueId,actions[causes[shortDescription]]]";
     String url = myConnection.getUrl()
         + jenkinsJobPath(jobName)
         + "/api/json?tree="
@@ -168,7 +168,7 @@ public class JenkinsClient {
 
   public JenkinsBuildInfo getBuildInfo(String jobName, int buildNumber)
       throws BridgeHttpException, JenkinsDataException {
-    String tree = "number,queueId,building,result,timestamp,duration,estimatedDuration,url";
+    String tree = "number,queueId,building,result,timestamp,duration,estimatedDuration,url,actions[causes[shortDescription]]";
     String url = myConnection.getUrl()
         + jenkinsJobPath(jobName)
         + "/"
@@ -1126,12 +1126,15 @@ public class JenkinsClient {
    */
   public JenkinsTriggerResponse triggerBuildWithQueueId(String jobName, Map<String, String> parameters)
       throws BridgeHttpException, JenkinsDataException {
+    return triggerBuildWithQueueId(jobName, parameters, null);
+  }
+
+  public JenkinsTriggerResponse triggerBuildWithQueueId(String jobName, Map<String, String> parameters,
+                                                        String cause)
+      throws BridgeHttpException, JenkinsDataException {
     boolean parameterized = parameters != null && !parameters.isEmpty();
 
-    String url = myConnection.getUrl()
-        + jenkinsJobPath(jobName)
-        + "/"
-        + (parameterized ? "buildWithParameters" : "build");
+    String url = buildTriggerUrl(jobName, parameterized, cause);
 
     String body = parameterized ? encodeForm(parameters) : "";
 
@@ -1149,6 +1152,15 @@ public class JenkinsClient {
     String normalizedLocation = normalizeQueueItemUrl(location, myConnection.getUrl());
     long queueId = parseQueueId(normalizedLocation);
     return new JenkinsTriggerResponse(normalizedLocation, queueId);
+  }
+
+  @NotNull
+  private String buildTriggerUrl(@NotNull String jobName, boolean parameterized, @Nullable String cause) {
+    String endpoint = parameterized ? "buildWithParameters" : "build";
+    String causeParameter = cause == null || cause.trim().isEmpty()
+        ? ""
+        : "?cause=" + encodeQueryValue(cause);
+    return myConnection.getUrl() + jenkinsJobPath(jobName) + "/" + endpoint + causeParameter;
   }
 
   /** Returns the numeric queue id in a Jenkins queue-item URL, or -1 for an invalid URL. */

@@ -291,7 +291,7 @@ public class JenkinsClientTest {
 
     List<JenkinsBuildInfo> builds = client.getBuilds("folder/job");
 
-    assertEquals("http://jenkins/job/folder/job/job/api/json?tree=builds%5Bnumber%2Ctimestamp%2Curl%2CqueueId%5D", httpClient.url);
+    assertEquals("http://jenkins/job/folder/job/job/api/json?tree=builds%5Bnumber%2Ctimestamp%2Curl%2CqueueId%2Cactions%5Bcauses%5BshortDescription%5D%5D%5D", httpClient.url);
     assertEquals(2, builds.size());
     assertEquals(50, builds.get(0).getNumber());
     assertEquals(1710000000050L, builds.get(0).getTimestamp());
@@ -318,7 +318,7 @@ public class JenkinsClientTest {
 
     List<JenkinsBuildInfo> builds = client.getAllBuilds("job");
 
-    assertEquals("http://jenkins/job/job/api/json?tree=allBuilds%5Bnumber%2Ctimestamp%2Curl%2CqueueId%5D", httpClient.url);
+    assertEquals("http://jenkins/job/job/api/json?tree=allBuilds%5Bnumber%2Ctimestamp%2Curl%2CqueueId%2Cactions%5Bcauses%5BshortDescription%5D%5D%5D", httpClient.url);
     assertEquals(1, builds.size());
     assertEquals(2, builds.get(0).getNumber());
     assertEquals(1710000000002L, builds.get(0).getTimestamp());
@@ -756,6 +756,20 @@ public class JenkinsClientTest {
     assertEquals("http://jenkins/job/job/build", httpClient.postUrl);
     assertEquals("", httpClient.postBody);
     assertEquals("http://jenkins/queue/item/42/", queueUrl);
+  }
+
+  @Test
+  public void triggerBuildWithCauseUsesQueryParameterAndKeepsFormBodySeparate() throws Exception {
+    TriggerHttpClient httpClient = new TriggerHttpClient();
+    JenkinsClient client = new JenkinsClient(testConnection(), httpClient, newJaxbUnmarshaller());
+    Map<String, String> values = new LinkedHashMap<String, String>();
+    values.put("BRANCH", "feature/x");
+
+    client.triggerBuildWithQueueId("job", values, "Jenkins Bridge: promotion 42 (node secondary 1)");
+
+    assertEquals("http://jenkins/job/job/buildWithParameters?cause=Jenkins+Bridge%3A+promotion+42+%28node+secondary+1%29",
+        httpClient.postUrl);
+    assertEquals("BRANCH=feature%2Fx", httpClient.postBody);
   }
 
   @Test

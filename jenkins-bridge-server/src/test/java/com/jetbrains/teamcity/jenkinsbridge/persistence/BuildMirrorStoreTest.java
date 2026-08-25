@@ -87,7 +87,7 @@ public class BuildMirrorStoreTest {
   @Test
   public void pruneBoundaryAndResultMetadataPersistAcrossReload() throws Exception {
     ProjectManager projectManager = buildMockProjectManager();
-    BuildMirrorStore store = new BuildMirrorStore(null, providerWithTempStateFile(), projectManager);
+    BuildMirrorStore store = new BuildMirrorStore(projectManager);
     BuildMirror mirror = store.getOrCreateMirror(
         BuildMirrorStore.buildKey("job", 2), "job", "buildType", buildInfo(2, 1710000000002L));
     mirror.setTeamCityBuildId(42L);
@@ -96,7 +96,7 @@ public class BuildMirrorStoreTest {
     store.setLastPruned("buildType::job", "2026-08-24T12:00:00Z");
     store.pruneFinishedMirrors(Set.of("buildType::job"));
 
-    BuildMirrorStore reloaded = new BuildMirrorStore(null, providerWithTempStateFile(), projectManager);
+    BuildMirrorStore reloaded = new BuildMirrorStore(projectManager);
     assertEquals("2026-08-24T12:00:00Z", reloaded.getLastPruned("buildType::job"));
     assertNull(reloaded.findMirror(BuildMirrorStore.buildKey("job", 2)));
     assertNotNull(reloaded.findResultMetadataByTeamCityBuildId(42L));
@@ -104,9 +104,8 @@ public class BuildMirrorStoreTest {
 
   @Test
   public void scopedPruningLeavesOtherMappingsUntouched() throws Exception {
-    JenkinsBridgeSettingsProvider provider = providerWithTempStateFile();
     ProjectManager projectManager = buildMockProjectManager();
-    BuildMirrorStore store = new BuildMirrorStore(null, provider, projectManager);
+    BuildMirrorStore store = new BuildMirrorStore(projectManager);
     BuildMirror selected = store.getOrCreateMirror("type-a::job#1", "job", "type-a", buildInfo(1));
     selected.setSyncState(SyncState.TEAMCITY_FINISHED);
     store.saveMirror(selected);
