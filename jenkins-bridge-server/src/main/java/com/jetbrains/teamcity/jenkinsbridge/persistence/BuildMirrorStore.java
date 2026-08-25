@@ -6,6 +6,7 @@ import com.google.gson.JsonParseException;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsBuildInfo;
 import com.jetbrains.teamcity.jenkinsbridge.settings.JenkinsBridgeSettingsProvider;
 import jetbrains.buildServer.serverSide.CustomDataStorage;
+import jetbrains.buildServer.serverSide.BuildsManager;
 import jetbrains.buildServer.serverSide.ProjectManager;
 import jetbrains.buildServer.serverSide.ServerPaths;
 
@@ -210,6 +211,21 @@ public class BuildMirrorStore {
       }
     }
     return ids;
+  }
+
+  /** Removes metadata whose TeamCity build no longer exists. Intended for periodic poll-cycle cleanup. */
+  public synchronized int removeOrphanedResultMetadata(@NotNull BuildsManager buildsManager) throws IOException {
+    Set<Long> orphanedIds = new java.util.HashSet<Long>();
+    for (Long buildId : getResultMetadataBuildIds()) {
+      if (buildsManager.findBuildInstanceById(buildId) == null) {
+        orphanedIds.add(buildId);
+      }
+    }
+    if (orphanedIds.isEmpty()) {
+      return 0;
+    }
+    removeResultMetadata(orphanedIds);
+    return orphanedIds.size();
   }
 
   public synchronized void saveResultMetadata(BuildMirror mirror) throws IOException {

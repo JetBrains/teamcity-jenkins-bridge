@@ -206,7 +206,8 @@ pruning scoped to mappings that were polled successfully. A per-mapping
 Pipeline Graph result metadata is stored separately and remains available while
 the TeamCity build exists. It is historical result-page data, not active
 synchronization state, and is never used by polling. TeamCity cleanup or build
-deletion removes that metadata.
+deletion removes matching metadata immediately. The main-node poll cycle also
+reconciles orphaned metadata every 100 cycles as a fallback.
 
 The build feature's "No. of builds to import on first sync" setting controls only
 defaults to 1 (only the newest Jenkins build). After the

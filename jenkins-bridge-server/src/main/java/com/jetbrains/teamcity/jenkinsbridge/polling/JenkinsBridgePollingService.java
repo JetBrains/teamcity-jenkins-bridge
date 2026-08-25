@@ -32,6 +32,7 @@ import com.jetbrains.teamcity.jenkinsbridge.util.TeamCityNodeLog;
 import com.jetbrains.teamcity.jenkinsbridge.util.Utilities;
 
 import jetbrains.buildServer.serverSide.ProjectManager;
+import jetbrains.buildServer.serverSide.BuildsManager;
 import jetbrains.buildServer.serverSide.SBuildType;
 import jetbrains.buildServer.serverSide.TeamCityNode;
 import jetbrains.buildServer.serverSide.TeamCityNodes;
@@ -59,11 +60,13 @@ import org.jetbrains.annotations.Nullable;
 
 public class JenkinsBridgePollingService {
   private static final int FINISHED_MIRROR_PRUNING_THRESHOLD = 1000;
+  private static final int ORPHAN_METADATA_RECONCILIATION_POLL_CYCLES = 100;
   private static final Logger LOG = Logger.getInstance(JenkinsBridgePollingService.class.getName());
 
   private final JenkinsBridgeSettingsProvider settingsProvider;
   private final JenkinsClientFactory jenkinsClientFactory;
   private final ProjectManager projectManager;
+  private final BuildsManager buildsManager;
   private final TeamCityBuildMirrorService mirrorService;
   private final BuildMirrorStore mirrorStore;
   private final MirroredJobProvider mirroredJobProvider;
@@ -81,6 +84,7 @@ public class JenkinsBridgePollingService {
       JenkinsBridgeSettingsProvider settingsProvider,
       JenkinsClientFactory jenkinsClientFactory,
       ProjectManager projectManager,
+      BuildsManager buildsManager,
       TeamCityBuildMirrorService mirrorService,
       BuildMirrorStore mirrorStore,
       MirroredJobProvider mirroredJobProvider,
@@ -93,6 +97,7 @@ public class JenkinsBridgePollingService {
     this.settingsProvider = settingsProvider;
     this.jenkinsClientFactory = jenkinsClientFactory;
     this.projectManager = projectManager;
+    this.buildsManager = buildsManager;
     this.mirrorService = mirrorService;
     this.mirrorStore = mirrorStore;
     this.mirroredJobProvider = mirroredJobProvider;
@@ -217,6 +222,24 @@ public class JenkinsBridgePollingService {
       }
     }
     checkIfWeNeedPruning(successfullyPolledMappings);
+    reconcileOrphanedMetadataIfDue();
+  }
+
+  private void reconcileOrphanedMetadataIfDue() {
+    // This is deliberately infrequent: orphaned metadata is exceptional, and regular deletion
+    // events already remove metadata for normal TeamCity cleanup.
+    if (pollCycle % ORPHAN_METADATA_RECONCILIATION_POLL_CYCLES != 0) {
+      return;
+    }
+    try {
+      int removed = mirrorStore.removeOrphanedResultMetadata(buildsManager);
+      if (removed > 0) {
+        LOG.info("Jenkins Bridge removed " + removed + " orphaned result metadata record(s)");
+      }
+    } catch (IOException | RuntimeException e) {
+      // Orphan reconciliation is best effort and must not fail the Jenkins poll cycle.
+      LOG.error("Could not reconcile orphaned Jenkins Bridge result metadata", e);
+    }
   }
 
   /**

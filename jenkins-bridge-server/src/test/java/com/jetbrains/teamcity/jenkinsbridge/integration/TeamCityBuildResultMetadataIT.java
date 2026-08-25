@@ -17,6 +17,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertEquals;
 
 /** Verifies result metadata cleanup against TeamCity's real database-backed custom storage. */
 public class TeamCityBuildResultMetadataIT extends BaseServerTestCase {
@@ -40,11 +41,12 @@ public class TeamCityBuildResultMetadataIT extends BaseServerTestCase {
         myBuildType.getExternalId(), "2026-08-24T12:00:00Z");
     orphan.setTeamCityBuildId(701L);
     store.saveResultMetadata(orphan);
-    BuildResultMetadataCleanup cleanup = new BuildResultMetadataCleanup(
-        store, dispatcher, myFixture.getBuildsManager());
+    BuildResultMetadataCleanup cleanup = new BuildResultMetadataCleanup(store, dispatcher);
     cleanup.cleanupBuildsData(context);
 
     assertNull(store.findResultMetadataByTeamCityBuildId(700L));
+    assertNotNull(store.findResultMetadataByTeamCityBuildId(701L));
+    assertEquals(1, store.removeOrphanedResultMetadata(myFixture.getBuildsManager()));
     assertNull(store.findResultMetadataByTeamCityBuildId(701L));
     cleanup.dispose();
   }
