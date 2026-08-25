@@ -16,6 +16,7 @@ public class PendingTrigger {
   private String triggerCause;
   private String originatingNode;
 
+  // TODO let's clean up those constructor overrides
   public PendingTrigger() {
   }
 
