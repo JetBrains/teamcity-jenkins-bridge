@@ -1,5 +1,6 @@
 package com.jetbrains.teamcity.jenkinsbridge.persistence;
 
+import com.jetbrains.teamcity.jenkinsbridge.feature.BridgeBuildFeatureConstants;
 import jetbrains.buildServer.serverSide.SBuild;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -20,16 +21,13 @@ public class BuildResultMetadataResolver {
 
   @Nullable
   public BuildResultMetadata resolve(@NotNull SBuild build) throws IOException {
-    String key = build.getParametersProvider().get(
-        com.jetbrains.teamcity.jenkinsbridge.feature.BridgeBuildFeatureConstants.JENKINS_BUILD_KEY_PARAM);
-    if (key != null && !key.trim().isEmpty()) {
-      BuildResultMetadata resultMetadata = mirrorStore.findResultMetadataByJenkinsBuildKey(key);
-      if (resultMetadata != null) {
-        return resultMetadata;
-      }
+    BuildResultMetadata resultMetadata = findByJenkinsBuildKey(build.getParametersProvider().get(
+        BridgeBuildFeatureConstants.JENKINS_BUILD_KEY_PARAM));
+    if (resultMetadata != null) {
+      return resultMetadata;
     }
     long promotionId = build.getBuildPromotion().getId();
-    BuildResultMetadata resultMetadata = mirrorStore.findResultMetadataByTeamCityBuildId(promotionId);
+    resultMetadata = mirrorStore.findResultMetadataByTeamCityBuildId(promotionId);
     if (resultMetadata != null) {
       return resultMetadata;
     }
@@ -38,5 +36,13 @@ public class BuildResultMetadataResolver {
       return null;
     }
     return mirrorStore.findResultMetadataByTeamCityBuildId(buildId);
+  }
+
+  @Nullable
+  private BuildResultMetadata findByJenkinsBuildKey(@Nullable String key) throws IOException {
+    if (key == null || key.trim().isEmpty()) {
+      return null;
+    }
+    return mirrorStore.findResultMetadataByJenkinsBuildKey(key);
   }
 }

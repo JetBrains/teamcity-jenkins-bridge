@@ -56,11 +56,15 @@ public class JenkinsBuildResultExtension extends SimplePageExtension {
   public void fillModel(@NotNull Map<String, Object> model, @NotNull HttpServletRequest request) {
     super.fillModel(model, request);
     SBuild build = findBuild(request);
-    if (build == null) return;
+    if (build == null) {
+      return;
+    }
     String url = null;
     try {
       BuildResultMetadata metadata = resultMetadataResolver.resolve(build);
-      if (metadata != null) url = metadata.getJenkinsBuildUrl();
+      if (metadata != null) {
+        url = metadata.getJenkinsBuildUrl();
+      }
     } catch (IOException ignored) {
       // Result-page decorations must remain best effort.
     }
