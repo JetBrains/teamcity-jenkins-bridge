@@ -31,7 +31,7 @@ public class TeamCityBuildResultMetadataIT extends BaseServerTestCase {
         myBuildType.getExternalId(), "2026-08-24T12:00:00Z");
     mirror.setTeamCityBuildId(700L);
     store.saveResultMetadata(mirror);
-    assertNotNull(store.findMirrorByTcBuildId(700L));
+    assertNotNull(store.findResultMetadataByTeamCityBuildId(700L));
 
     BuildCleanupContext context = org.mockito.Mockito.mock(BuildCleanupContext.class);
     when(context.getBuildIds()).thenReturn(Collections.singletonList(700L));
@@ -39,7 +39,7 @@ public class TeamCityBuildResultMetadataIT extends BaseServerTestCase {
     BuildResultMetadataCleanup cleanup = new BuildResultMetadataCleanup(store, dispatcher);
     cleanup.cleanupBuildsData(context);
 
-    assertNull(store.findMirrorByTcBuildId(700L));
+    assertNull(store.findResultMetadataByTeamCityBuildId(700L));
     cleanup.dispose();
   }
 }

@@ -58,6 +58,7 @@ import java.io.IOException;
 import org.jetbrains.annotations.Nullable;
 
 public class JenkinsBridgePollingService {
+  private static final int FINISHED_MIRROR_PRUNING_THRESHOLD = 1000;
   private static final Logger LOG = Logger.getInstance(JenkinsBridgePollingService.class.getName());
 
   private final JenkinsBridgeSettingsProvider settingsProvider;
@@ -218,14 +219,20 @@ public class JenkinsBridgePollingService {
     checkIfWeNeedPruning(successfullyPolledMappings);
   }
 
+  /**
+   * Prunes finished active mirrors only after the total mirror count exceeds the threshold. The
+   * second scan identifies finished records belonging to mappings successfully polled this cycle.
+   */
   private void checkIfWeNeedPruning(Set<String> successfullyPolledMappings) throws IOException {
-    final int pruningThreshold = 1000;
-    if (mirrorStore.getMirrorCount() <= pruningThreshold || successfullyPolledMappings.isEmpty()) {
+    if (mirrorStore.getMirrorCount() <= FINISHED_MIRROR_PRUNING_THRESHOLD
+        || successfullyPolledMappings.isEmpty()) {
       return;
     }
     Set<String> mappingsWithFinishedMirrors =
         mirrorStore.getFinishedMirrorMappings(successfullyPolledMappings);
-    if (mappingsWithFinishedMirrors.isEmpty()) return;
+    if (mappingsWithFinishedMirrors.isEmpty()) {
+      return;
+    }
     String pruneTime = Instant.now().toString();
     for (String mapping : mappingsWithFinishedMirrors) {
       mirrorStore.setLastPruned(mapping, pruneTime);
@@ -644,12 +651,8 @@ public class JenkinsBridgePollingService {
       return current.getSyncState() != SyncState.TEAMCITY_FINISHED;
     }
 
-    if (lastPruned != null && build.getTimestamp() > 0L) {
-      try {
-        if (build.getTimestamp() <= Instant.parse(lastPruned).toEpochMilli()) return false;
-      } catch (DateTimeParseException ignored) {
-        LOG.warn("Ignoring invalid Jenkins Bridge prune boundary for " + keyPrefix + ": " + lastPruned);
-      }
+    if (isBeforePruneBoundary(build.getTimestamp(), lastPruned, keyPrefix)) {
+      return false;
     }
 
     if (coldStart) {
@@ -664,8 +667,22 @@ public class JenkinsBridgePollingService {
       return false;
     }
 
+    // New keys include the Jenkins timestamp so reused build numbers can coexist. The legacy lookup
+    // preserves compatibility with mirrors written before timestamped keys were introduced.
     BuildMirror legacy = mirrorStore.findMirror(BuildMirrorStore.buildKey(keyPrefix, build.getNumber()));
     return legacy == null;
+  }
+
+  private boolean isBeforePruneBoundary(long buildTimestamp, @Nullable String lastPruned, String keyPrefix) {
+    if (lastPruned == null || buildTimestamp <= 0L) {
+      return false;
+    }
+    try {
+      return buildTimestamp <= Instant.parse(lastPruned).toEpochMilli();
+    } catch (DateTimeParseException e) {
+      LOG.error("Invalid Jenkins Bridge prune boundary for " + keyPrefix + ": " + lastPruned, e);
+      return false;
+    }
   }
 
   /**

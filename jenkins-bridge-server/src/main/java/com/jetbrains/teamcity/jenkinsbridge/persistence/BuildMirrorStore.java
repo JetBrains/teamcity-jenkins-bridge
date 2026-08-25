@@ -156,12 +156,7 @@ public class BuildMirrorStore {
    */
   public synchronized BuildMirror findMirror(String key) throws IOException {
     ensureStateIsLoaded();
-    BuildMirror mirror = state.getBuilds().get(key);
-    if (mirror != null) return mirror;
-    for (BuildResultMetadata metadata : state.getResultMetadata().values()) {
-      if (key.equals(metadata.getJenkinsBuildKey())) return metadata.toMirror();
-    }
-    return null;
+    return state.getBuilds().get(key);
   }
 
   /**
@@ -178,12 +173,41 @@ public class BuildMirrorStore {
         return mirror;
       }
     }
+    return null;
+  }
+
+  @Nullable
+  public synchronized BuildResultMetadata findResultMetadataByJenkinsBuildKey(@NotNull String key)
+      throws IOException {
+    ensureStateIsLoaded();
     for (BuildResultMetadata metadata : state.getResultMetadata().values()) {
-      if (metadata.getTeamCityBuildId() != null && metadata.getTeamCityBuildId() == tcBuildId) {
-        return metadata.toMirror();
+      if (key.equals(metadata.getJenkinsBuildKey())) {
+        return metadata;
       }
     }
     return null;
+  }
+
+  @Nullable
+  public synchronized BuildResultMetadata findResultMetadataByTeamCityBuildId(long buildId)
+      throws IOException {
+    ensureStateIsLoaded();
+    BuildResultMetadata metadata = state.getResultMetadata().get(Long.toString(buildId));
+    return metadata;
+  }
+
+  @NotNull
+  public synchronized Set<Long> getResultMetadataBuildIds() throws IOException {
+    ensureStateIsLoaded();
+    Set<Long> ids = new java.util.HashSet<Long>();
+    for (String id : state.getResultMetadata().keySet()) {
+      try {
+        ids.add(Long.valueOf(id));
+      } catch (NumberFormatException e) {
+        LOG.error("Ignoring invalid Jenkins Bridge result metadata key " + id, e);
+      }
+    }
+    return ids;
   }
 
   public synchronized void saveResultMetadata(BuildMirror mirror) throws IOException {
@@ -196,7 +220,11 @@ public class BuildMirrorStore {
   public synchronized void removeResultMetadata(Collection<Long> buildIds) throws IOException {
     ensureStateIsLoaded();
     List<String> ids = new ArrayList<String>();
-    for (Long id : buildIds) if (id != null) ids.add(Long.toString(id));
+    for (Long id : buildIds) {
+      if (id != null) {
+        ids.add(Long.toString(id));
+      }
+    }
     state.removeResultMetadata(ids);
   }
 

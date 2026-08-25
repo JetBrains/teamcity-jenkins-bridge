@@ -204,8 +204,9 @@ pruning scoped to mappings that were polled successfully. A per-mapping
 `lastPruned` UTC boundary prevents old Jenkins builds from being mirrored again.
 
 Pipeline Graph result metadata is stored separately and remains available while
-the TeamCity build exists. TeamCity cleanup or build deletion removes that
-metadata.
+the TeamCity build exists. It is historical result-page data, not active
+synchronization state, and is never used by polling. TeamCity cleanup or build
+deletion removes that metadata.
 
 The build feature's "No. of builds to import on first sync" setting controls only
 defaults to 1 (only the newest Jenkins build). After the

@@ -1,5 +1,6 @@
 package com.jetbrains.teamcity.jenkinsbridge.persistence;
 
+import com.intellij.openapi.diagnostic.Logger;
 import jetbrains.buildServer.serverSide.BuildServerAdapter;
 import jetbrains.buildServer.serverSide.BuildServerListener;
 import jetbrains.buildServer.serverSide.SFinishedBuild;
@@ -15,6 +16,7 @@ import org.jetbrains.annotations.NotNull;
 
 /** Removes result metadata when TeamCity removes the corresponding finished build. */
 public class BuildResultMetadataCleanup extends CleanupExtensionAdapter {
+  private static final Logger LOG = Logger.getInstance(BuildResultMetadataCleanup.class.getName());
   private final BuildMirrorStore mirrorStore;
   private final EventDispatcher<BuildServerListener> eventDispatcher;
   private final BuildServerListener listener = new BuildServerAdapter() {
@@ -27,7 +29,11 @@ public class BuildResultMetadataCleanup extends CleanupExtensionAdapter {
     public void entriesDeleted(Collection<SFinishedBuild> builds) {
       List<Long> ids = new ArrayList<Long>();
       if (builds != null) {
-        for (SFinishedBuild build : builds) if (build != null) ids.add(build.getBuildId());
+        for (SFinishedBuild build : builds) {
+          if (build != null) {
+            ids.add(build.getBuildId());
+          }
+        }
       }
       remove(ids);
     }
@@ -50,7 +56,9 @@ public class BuildResultMetadataCleanup extends CleanupExtensionAdapter {
   }
 
   private void remove(Long id) {
-    if (id == null) return;
+    if (id == null) {
+      return;
+    }
     List<Long> ids = new ArrayList<Long>();
     ids.add(id);
     remove(ids);
@@ -60,7 +68,7 @@ public class BuildResultMetadataCleanup extends CleanupExtensionAdapter {
     try {
       mirrorStore.removeResultMetadata(ids);
     } catch (IOException e) {
-      throw new IllegalStateException("Could not remove Jenkins Bridge result metadata", e);
+      LOG.error("Could not remove Jenkins Bridge result metadata", e);
     }
   }
 }

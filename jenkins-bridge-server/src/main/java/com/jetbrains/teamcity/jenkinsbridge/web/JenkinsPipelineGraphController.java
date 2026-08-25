@@ -9,12 +9,11 @@ import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsPipelineGraph;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsPipelineGraphNode;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsStageLog;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsStageStep;
-import com.jetbrains.teamcity.jenkinsbridge.persistence.BuildMirror;
-import com.jetbrains.teamcity.jenkinsbridge.persistence.BuildMirrorResolver;
+import com.jetbrains.teamcity.jenkinsbridge.persistence.BuildResultMetadata;
+import com.jetbrains.teamcity.jenkinsbridge.persistence.BuildResultMetadataResolver;
 import jetbrains.buildServer.controllers.BaseController;
 import jetbrains.buildServer.serverSide.BuildsManager;
 import jetbrains.buildServer.serverSide.SBuild;
-import jetbrains.buildServer.serverSide.SBuildType;
 import jetbrains.buildServer.serverSide.auth.Permission;
 import jetbrains.buildServer.web.openapi.WebControllerManager;
 import jetbrains.buildServer.web.util.SessionUser;
@@ -31,8 +30,9 @@ import static com.jetbrains.teamcity.jenkinsbridge.util.ProjectPermissionHelper.
 
 /**
  * AJAX endpoint backing the "Pipeline Graph" build-results tab. Given a TeamCity build id, resolves the
- * mirrored Jenkins build (via {@link BuildMirrorResolver}, which covers both creation flows) and returns
- * its normalized Blue Ocean pipeline graph as JSON for the tab's renderer. Read-only; requires VIEW_PROJECT
+ * persisted Jenkins result metadata and returns its normalized Blue Ocean pipeline graph as JSON for the
+ * tab's renderer. Result metadata is separate from active {@code BuildMirror} synchronization state.
+ * Read-only; requires VIEW_PROJECT
  * on the build's project. Returns {@code {"pipeline": false}} for non-mirror / non-pipeline builds.
  */
 public class JenkinsPipelineGraphController extends BaseController {
@@ -40,23 +40,23 @@ public class JenkinsPipelineGraphController extends BaseController {
   private static final Gson GSON = new Gson();
 
   private final BuildsManager buildsManager;
-  private final BuildMirrorResolver mirrorResolver;
+  private final BuildResultMetadataResolver resultMetadataResolver;
   private final JenkinsClientFactory jenkinsClientFactory;
 
   public JenkinsPipelineGraphController(
       WebControllerManager webControllerManager,
       BuildsManager buildsManager,
-      BuildMirrorResolver mirrorResolver,
+      BuildResultMetadataResolver resultMetadataResolver,
       JenkinsClientFactory jenkinsClientFactory
   ) {
     this.buildsManager = buildsManager;
-    this.mirrorResolver = mirrorResolver;
+    this.resultMetadataResolver = resultMetadataResolver;
     this.jenkinsClientFactory = jenkinsClientFactory;
     webControllerManager.registerController(PATH, this);
   }
 
   private JenkinsClient jenkinsClientFor(SBuild build) {
-    SBuildType buildType = build.getBuildType();
+    jetbrains.buildServer.serverSide.SBuildType buildType = build.getBuildType();
     if (buildType == null) {
       throw new IllegalStateException("Build " + build.getBuildId() + " has no build configuration");
     }
@@ -97,8 +97,8 @@ public class JenkinsPipelineGraphController extends BaseController {
 
   /** Package-private so it can be unit-tested without a servlet request. */
   GraphView graphViewForBuild(SBuild build) throws IOException {
-    BuildMirror mirror = mirrorResolver.resolve(build);
-    JenkinsPipelineGraph graph = mirror == null ? null : mirror.getPipelineGraph();
+    BuildResultMetadata metadata = resultMetadataResolver.resolve(build);
+    JenkinsPipelineGraph graph = metadata == null ? null : metadata.getPipelineGraph();
     if (graph == null || !graph.isPipeline() || graph.getNodes().isEmpty()) {
       return GraphView.notPipeline();
     }
@@ -115,13 +115,13 @@ public class JenkinsPipelineGraphController extends BaseController {
     if (nodeId == null || nodeId.trim().length() == 0) {
       return new StageLogView("", "");
     }
-    BuildMirror mirror = mirrorResolver.resolve(build);
-    if (mirror == null) {
+    BuildResultMetadata metadata = resultMetadataResolver.resolve(build);
+    if (metadata == null) {
       return new StageLogView(nodeId, "");
     }
     try {
       JenkinsStageLog log = jenkinsClientFor(build).getStageLog(
-          mirror.getJenkinsJob(), mirror.getJenkinsBuildNumber(), nodeId);
+          metadata.getJenkinsJob(), metadata.getJenkinsBuildNumber(), nodeId);
       return new StageLogView(nodeId, log.getText());
     } catch (BridgeHttpException | JenkinsDataException e) {
       StageLogView view = new StageLogView(nodeId, "");
@@ -139,14 +139,14 @@ public class JenkinsPipelineGraphController extends BaseController {
     if (nodeId == null || nodeId.trim().length() == 0) {
       return view;
     }
-    BuildMirror mirror = mirrorResolver.resolve(build);
-    if (mirror == null) {
+    BuildResultMetadata metadata = resultMetadataResolver.resolve(build);
+    if (metadata == null) {
       return view;
     }
     try {
-      String nodeName = nodeNameFromGraph(mirror, nodeId);
+      String nodeName = nodeNameFromGraph(metadata, nodeId);
       for (JenkinsStageStep step : jenkinsClientFor(build).getStageStepsForNode(
-          mirror.getJenkinsJob(), mirror.getJenkinsBuildNumber(), nodeId, nodeName)) {
+          metadata.getJenkinsJob(), metadata.getJenkinsBuildNumber(), nodeId, nodeName)) {
         view.steps.add(new StepView(step));
       }
     } catch (BridgeHttpException | JenkinsDataException e) {
@@ -156,8 +156,8 @@ public class JenkinsPipelineGraphController extends BaseController {
   }
 
   /** The display name of a graph node, from the persisted graph — used to name-match parallel branches. */
-  private String nodeNameFromGraph(BuildMirror mirror, String nodeId) {
-    JenkinsPipelineGraph graph = mirror.getPipelineGraph();
+  private String nodeNameFromGraph(BuildResultMetadata metadata, String nodeId) {
+    JenkinsPipelineGraph graph = metadata.getPipelineGraph();
     if (graph != null) {
       for (JenkinsPipelineGraphNode node : graph.getNodes()) {
         if (node.getId().equals(nodeId)) {

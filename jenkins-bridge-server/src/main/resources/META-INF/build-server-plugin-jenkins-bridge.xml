@@ -66,8 +66,8 @@
   <bean id="buildMirrorStore"
         class="com.jetbrains.teamcity.jenkinsbridge.persistence.BuildMirrorStore"/>
 
-  <bean id="buildMirrorResolver"
-        class="com.jetbrains.teamcity.jenkinsbridge.persistence.BuildMirrorResolver"/>
+  <bean id="buildResultMetadataResolver"
+        class="com.jetbrains.teamcity.jenkinsbridge.persistence.BuildResultMetadataResolver"/>
 
   <bean id="buildResultMetadataCleanup"
         class="com.jetbrains.teamcity.jenkinsbridge.persistence.BuildResultMetadataCleanup"

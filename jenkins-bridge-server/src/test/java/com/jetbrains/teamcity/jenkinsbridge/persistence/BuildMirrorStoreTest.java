@@ -104,8 +104,8 @@ public class BuildMirrorStoreTest {
 
     BuildMirrorStore reloaded = new BuildMirrorStore(null, providerWithTempStateFile(), projectManager);
     assertEquals("2026-08-24T12:00:00Z", reloaded.getLastPruned("buildType::job"));
-    assertNotNull(reloaded.findMirror(BuildMirrorStore.buildKey("job", 2)));
-    assertNotNull(reloaded.findMirrorByTcBuildId(42L));
+    assertNull(reloaded.findMirror(BuildMirrorStore.buildKey("job", 2)));
+    assertNotNull(reloaded.findResultMetadataByTeamCityBuildId(42L));
   }
 
   @Test

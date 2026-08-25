@@ -4,7 +4,11 @@ import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsPipelineGraph;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-/** Durable build-results data retained after transient mirror state is pruned. */
+/**
+ * Durable Jenkins result-page data retained after transient {@link BuildMirror} synchronization state
+ * is pruned. It is not an active mirror and must never be used by polling to rediscover a build.
+ * TeamCity cleanup removes this record with its corresponding build.
+ */
 public class BuildResultMetadata {
   private String jenkinsBuildKey;
   private String jenkinsJob;
@@ -30,12 +34,6 @@ public class BuildResultMetadata {
     metadata.teamCityBuildTypeId = mirror.getTeamCityBuildTypeId();
     metadata.pipelineGraph = mirror.getPipelineGraph();
     return metadata;
-  }
-
-  @NotNull
-  public BuildMirror toMirror() {
-    return BuildMirror.fromResultMetadata(jenkinsBuildKey, jenkinsJob, jenkinsBuildNumber,
-        jenkinsBuildTimestamp, jenkinsBuildUrl, teamCityBuildId, teamCityBuildTypeId, pipelineGraph);
   }
 
   @Nullable public String getJenkinsBuildKey() { return jenkinsBuildKey; }

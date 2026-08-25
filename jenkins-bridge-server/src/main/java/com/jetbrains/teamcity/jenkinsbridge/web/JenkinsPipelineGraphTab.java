@@ -1,8 +1,8 @@
 package com.jetbrains.teamcity.jenkinsbridge.web;
 
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsPipelineGraph;
-import com.jetbrains.teamcity.jenkinsbridge.persistence.BuildMirror;
-import com.jetbrains.teamcity.jenkinsbridge.persistence.BuildMirrorResolver;
+import com.jetbrains.teamcity.jenkinsbridge.persistence.BuildResultMetadata;
+import com.jetbrains.teamcity.jenkinsbridge.persistence.BuildResultMetadataResolver;
 import jetbrains.buildServer.serverSide.SBuild;
 import jetbrains.buildServer.serverSide.SBuildServer;
 import jetbrains.buildServer.web.openapi.PagePlaces;
@@ -20,17 +20,17 @@ import java.util.Map;
  */
 public class JenkinsPipelineGraphTab extends ViewLogTab {
   private final PluginDescriptor pluginDescriptor;
-  private final BuildMirrorResolver mirrorResolver;
+  private final BuildResultMetadataResolver resultMetadataResolver;
 
   public JenkinsPipelineGraphTab(
       PagePlaces pagePlaces,
       SBuildServer server,
       PluginDescriptor pluginDescriptor,
-      BuildMirrorResolver mirrorResolver
+      BuildResultMetadataResolver resultMetadataResolver
   ) {
     super("Pipeline Graph", "jenkinsBridgePipelineGraph", pagePlaces, server);
     this.pluginDescriptor = pluginDescriptor;
-    this.mirrorResolver = mirrorResolver;
+    this.resultMetadataResolver = resultMetadataResolver;
     setPluginName(pluginDescriptor.getPluginName());
     setIncludeUrl(pluginDescriptor.getPluginResourcesPath("jenkinsBridgePipelineGraph.jsp"));
     register();
@@ -50,8 +50,8 @@ public class JenkinsPipelineGraphTab extends ViewLogTab {
 
   private boolean hasPipelineGraph(SBuild build) {
     try {
-      BuildMirror mirror = mirrorResolver.resolve(build);
-      JenkinsPipelineGraph graph = mirror == null ? null : mirror.getPipelineGraph();
+      BuildResultMetadata metadata = resultMetadataResolver.resolve(build);
+      JenkinsPipelineGraph graph = metadata == null ? null : metadata.getPipelineGraph();
       return graph != null && graph.isPipeline() && !graph.getNodes().isEmpty();
     } catch (IOException e) {
       // Never let a tab-availability check break the build results page.
