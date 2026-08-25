@@ -52,7 +52,7 @@ public class JenkinsBridgePollingServiceTest {
     org.mockito.Mockito.when(node.isMainNode()).thenReturn(false);
 
     JenkinsBridgePollingService service = new JenkinsBridgePollingService(
-        null, null, null, null, null, null, null, null, nodes, null, null);
+        null, null, null, null, null, null, null, null, null, nodes, null, null);
 
     assertFalse(service.mayPollOnCurrentNode());
   }
@@ -467,6 +467,7 @@ public class JenkinsBridgePollingServiceTest {
   ) {
     return new JenkinsBridgePollingService(
         provider,
+        null,
         null,
         null,
         mirrorService,

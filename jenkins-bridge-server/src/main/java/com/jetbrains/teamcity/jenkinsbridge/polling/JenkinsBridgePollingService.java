@@ -8,6 +8,7 @@ import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClientFactory;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsDataException;
 import com.jetbrains.teamcity.jenkinsbridge.persistence.BuildMirror;
 import com.jetbrains.teamcity.jenkinsbridge.persistence.BuildMirrorStore;
+import com.jetbrains.teamcity.jenkinsbridge.persistence.BuildResultMetadataCleanup;
 import com.jetbrains.teamcity.jenkinsbridge.persistence.PendingTrigger;
 import com.jetbrains.teamcity.jenkinsbridge.persistence.SyncState;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsBuildInfo;
@@ -58,11 +59,14 @@ import java.io.IOException;
 import org.jetbrains.annotations.Nullable;
 
 public class JenkinsBridgePollingService {
+  private static final int FINISHED_MIRROR_PRUNING_THRESHOLD = 1000;
+  private static final int ORPHAN_METADATA_RECONCILIATION_POLL_CYCLES = 100;
   private static final Logger LOG = Logger.getInstance(JenkinsBridgePollingService.class.getName());
 
   private final JenkinsBridgeSettingsProvider settingsProvider;
   private final JenkinsClientFactory jenkinsClientFactory;
   private final ProjectManager projectManager;
+  private final BuildResultMetadataCleanup resultMetadataCleanup;
   private final TeamCityBuildMirrorService mirrorService;
   private final BuildMirrorStore mirrorStore;
   private final MirroredJobProvider mirroredJobProvider;
@@ -80,6 +84,7 @@ public class JenkinsBridgePollingService {
       JenkinsBridgeSettingsProvider settingsProvider,
       JenkinsClientFactory jenkinsClientFactory,
       ProjectManager projectManager,
+      BuildResultMetadataCleanup resultMetadataCleanup,
       TeamCityBuildMirrorService mirrorService,
       BuildMirrorStore mirrorStore,
       MirroredJobProvider mirroredJobProvider,
@@ -92,6 +97,7 @@ public class JenkinsBridgePollingService {
     this.settingsProvider = settingsProvider;
     this.jenkinsClientFactory = jenkinsClientFactory;
     this.projectManager = projectManager;
+    this.resultMetadataCleanup = resultMetadataCleanup;
     this.mirrorService = mirrorService;
     this.mirrorStore = mirrorStore;
     this.mirroredJobProvider = mirroredJobProvider;
@@ -186,6 +192,7 @@ public class JenkinsBridgePollingService {
     boolean refreshParametersRequired = shouldRefreshParameters(
         settings.getParameterRefreshPollCycles());
     List<MirroredJob> mirroredJobs = mirroredJobProvider.discoverMirroredJobs();
+    Set<String> successfullyPolledMappings = new HashSet<String>();
     if (systemProblemReporter != null) {
       systemProblemReporter.reconcile(mirroredJobs);
     }
@@ -202,7 +209,7 @@ public class JenkinsBridgePollingService {
         if (refreshParametersRequired) {
           refreshParameters(mirroredJob);
         }
-        pollPipeline(mirroredJob);
+        successfullyPolledMappings.addAll(pollPipeline(mirroredJob));
       } catch (BridgeHttpException e) {
         reportAuthoritativePollingFailure(mirroredJob, e);
         LOG.warn("Jenkins Bridge: failed to poll " + mirroredJob.describeForLog(), e);
@@ -214,6 +221,48 @@ public class JenkinsBridgePollingService {
         LOG.error("Jenkins Bridge: failed to poll " + mirroredJob.describeForLog(), e);
       }
     }
+    checkIfWeNeedPruning(successfullyPolledMappings);
+    reconcileOrphanedMetadataIfDue();
+  }
+
+  private void reconcileOrphanedMetadataIfDue() {
+    // This is deliberately infrequent: orphaned metadata is exceptional, and regular deletion
+    // events already remove metadata for normal TeamCity cleanup.
+    if (pollCycle % ORPHAN_METADATA_RECONCILIATION_POLL_CYCLES != 0) {
+      return;
+    }
+    try {
+      if (resultMetadataCleanup != null) {
+        resultMetadataCleanup.reconcileOrphanedMetadata();
+      }
+    } catch (RuntimeException e) {
+      LOG.error("Could not schedule orphaned Jenkins Bridge result metadata reconciliation", e);
+    }
+  }
+
+  /**
+   * Checks whether pruning is needed and prunes finished active mirrors when it is. A total mirror
+   * count of 1,000 or fewer returns without scanning. Above 1,000, the second scan finds finished
+   * mirrors belonging to mappings successfully polled in this cycle; an empty result also returns
+   * without pruning.
+   */
+  private void checkIfWeNeedPruning(Set<String> successfullyPolledMappings) throws IOException {
+    if (mirrorStore.getMirrorCount() <= FINISHED_MIRROR_PRUNING_THRESHOLD
+        || successfullyPolledMappings.isEmpty()) {
+      return;
+    }
+    Set<String> mappingsWithFinishedMirrors =
+        mirrorStore.getFinishedMirrorMappings(successfullyPolledMappings);
+    if (mappingsWithFinishedMirrors.isEmpty()) {
+      return;
+    }
+    String pruneTime = Instant.now().toString();
+    for (String mapping : mappingsWithFinishedMirrors) {
+      mirrorStore.setLastPruned(mapping, pruneTime);
+    }
+    mirrorStore.pruneFinishedMirrors(mappingsWithFinishedMirrors);
+    LOG.info("Jenkins Bridge pruned finished mirrors for "
+        + mappingsWithFinishedMirrors.size() + " mapping(s)");
   }
 
   private boolean shouldRefreshParameters(int refreshIntervalCycles) {
@@ -423,11 +472,11 @@ public class JenkinsBridgePollingService {
   /**
    * Calls {@code pollJob} once for regular pipelines, and once for each branch in the case of a multibranch pipeline.
    */
-  private void pollPipeline(MirroredJob mirroredJob)
+  private Set<String> pollPipeline(MirroredJob mirroredJob)
       throws BridgeHttpException, JenkinsDataException, IOException {
     if (!mirroredJob.hasMinimumConfiguration()) {
       LOG.warn(mirroredJob.describeMinimumConfigurationProblem());
-      return;
+      return Collections.emptySet();
     }
 
     JenkinsClient jenkinsClient = jenkinsClientFor(mirroredJob);
@@ -447,12 +496,17 @@ public class JenkinsBridgePollingService {
         outcome.merge(pollJob(jenkinsClient, branchJob, entry.getValue(), recentBuildLimit));
       }
       updateSystemProblem(mirroredJob, outcome);
-      return;
+      Set<String> mappings = new HashSet<String>();
+      for (String branch : branchBuilds.keySet()) {
+        mappings.add(mirroredJob.teamCityBuildTypeExternalId() + "::" + branch);
+      }
+      return mappings;
     }
 
     JobPollOutcome outcome = pollJob(
         jenkinsClient, mirroredJob, jenkinsClient.getBuilds(mirroredJob.jenkinsJob()), recentBuildLimit);
     updateSystemProblem(mirroredJob, outcome);
+    return Collections.singleton(mirroredJob.getMirrorKeyPrefix());
   }
 
   void reportAuthoritativePollingFailure(MirroredJob mirroredJob, BridgeHttpException failure) {
@@ -518,6 +572,7 @@ public class JenkinsBridgePollingService {
     int latest = maxBuildNumber(builds);
     int oldest = minBuildNumber(builds);
     int lastSeen = mirrorStore.getLastSeenBuildNumber(keyPrefix);
+    String lastPruned = mirrorStore.getLastPruned(keyPrefix);
     int coldStartAfter = lastSeen;
     boolean coldStart = lastSeen == 0;
     boolean resetDetected = false;
@@ -550,7 +605,8 @@ public class JenkinsBridgePollingService {
 
     List<JenkinsBuildInfo> toProcess = new ArrayList<JenkinsBuildInfo>();
     for (JenkinsBuildInfo build : builds) {
-      if (shouldProcessDiscoveredBuild(jenkinsClient, build, keyPrefix, lastSeen, coldStartAfter, coldStart, resetDetected)) {
+      if (shouldProcessDiscoveredBuild(jenkinsClient, build, keyPrefix, lastSeen, coldStartAfter,
+          coldStart, resetDetected, lastPruned)) {
         toProcess.add(build);
       }
     }
@@ -602,7 +658,8 @@ public class JenkinsBridgePollingService {
       int lastSeen,
       int coldStartAfter,
       boolean coldStart,
-      boolean resetDetected
+      boolean resetDetected,
+      @Nullable String lastPruned
   ) throws IOException {
     // A newly triggered run must be considered even when the numeric watermark has already moved
     // past it (for example after a coalesced Jenkins submission). Queue ID ownership outranks the
@@ -617,6 +674,10 @@ public class JenkinsBridgePollingService {
       return current.getSyncState() != SyncState.TEAMCITY_FINISHED;
     }
 
+    if (isBeforePruneBoundary(build.getTimestamp(), lastPruned, keyPrefix)) {
+      return false;
+    }
+
     if (coldStart) {
       return build.getNumber() > coldStartAfter;
     }
@@ -629,8 +690,23 @@ public class JenkinsBridgePollingService {
       return false;
     }
 
+    // New keys include the Jenkins timestamp so reused build numbers can coexist. Keep this lookup
+    // for state written before timestamped keys were introduced; otherwise an existing mirror could
+    // be rediscovered under its new key after an upgrade.
     BuildMirror legacy = mirrorStore.findMirror(BuildMirrorStore.buildKey(keyPrefix, build.getNumber()));
     return legacy == null;
+  }
+
+  private boolean isBeforePruneBoundary(long buildTimestamp, @Nullable String lastPruned, String keyPrefix) {
+    if (lastPruned == null || buildTimestamp <= 0L) {
+      return false;
+    }
+    try {
+      return buildTimestamp <= Instant.parse(lastPruned).toEpochMilli();
+    } catch (DateTimeParseException e) {
+      LOG.error("Invalid Jenkins Bridge prune boundary for " + keyPrefix + ": " + lastPruned, e);
+      return false;
+    }
   }
 
   /**
