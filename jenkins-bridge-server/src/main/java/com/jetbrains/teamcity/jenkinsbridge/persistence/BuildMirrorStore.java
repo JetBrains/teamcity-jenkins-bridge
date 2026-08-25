@@ -106,7 +106,9 @@ public class BuildMirrorStore {
     return findPendingTriggerInternal(controller, queueId);
   }
 
-  public synchronized PendingTrigger findPendingTriggerByCause(String controller, String job, String cause)
+  @Nullable
+  public synchronized PendingTrigger findPendingTriggerByCause(
+      @NotNull String controller, @NotNull String job, @Nullable String cause)
       throws IOException {
     ensureStateIsLoaded();
     if (cause == null || cause.trim().isEmpty()) return null;

@@ -1134,11 +1134,7 @@ public class JenkinsClient {
       throws BridgeHttpException, JenkinsDataException {
     boolean parameterized = parameters != null && !parameters.isEmpty();
 
-    String url = myConnection.getUrl()
-        + jenkinsJobPath(jobName)
-        + "/"
-        + (parameterized ? "buildWithParameters" : "build")
-        + (cause == null || cause.trim().isEmpty() ? "" : "?cause=" + encodeQueryValue(cause));
+    String url = buildTriggerUrl(jobName, parameterized, cause);
 
     String body = parameterized ? encodeForm(parameters) : "";
 
@@ -1156,6 +1152,15 @@ public class JenkinsClient {
     String normalizedLocation = normalizeQueueItemUrl(location, myConnection.getUrl());
     long queueId = parseQueueId(normalizedLocation);
     return new JenkinsTriggerResponse(normalizedLocation, queueId);
+  }
+
+  @NotNull
+  private String buildTriggerUrl(@NotNull String jobName, boolean parameterized, @Nullable String cause) {
+    String endpoint = parameterized ? "buildWithParameters" : "build";
+    String causeParameter = cause == null || cause.trim().isEmpty()
+        ? ""
+        : "?cause=" + encodeQueryValue(cause);
+    return myConnection.getUrl() + jenkinsJobPath(jobName) + "/" + endpoint + causeParameter;
   }
 
   /** Returns the numeric queue id in a Jenkins queue-item URL, or -1 for an invalid URL. */

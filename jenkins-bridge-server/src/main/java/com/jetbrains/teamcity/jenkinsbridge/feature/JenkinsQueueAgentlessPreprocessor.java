@@ -46,7 +46,7 @@ public class JenkinsQueueAgentlessPreprocessor implements AddToQueuePreprocessor
     }
     for (BuildPromotion promotion : promotions.keySet()) {
       try {
-        markAgentlessIfBridge(promotion, triggeredBy);
+        addBridgeParametersIfNeeded(promotion, triggeredBy);
       } catch (RuntimeException e) {
         // Never break queueing for a bug in the bridge; the build just stays non-agentless and the
         // existing post-queue listener + poller still mirror it (only the live-in-queue view suffers).
@@ -58,7 +58,7 @@ public class JenkinsQueueAgentlessPreprocessor implements AddToQueuePreprocessor
     return promotions;
   }
 
-  private void markAgentlessIfBridge(BuildPromotion promotion, String triggeredBy) {
+  private void addBridgeParametersIfNeeded(BuildPromotion promotion, String triggeredBy) {
     SBuildType buildType = promotion.getBuildType();
     if (buildType == null || !hasBridgeFeature(buildType)) {
       return;
@@ -78,9 +78,9 @@ public class JenkinsQueueAgentlessPreprocessor implements AddToQueuePreprocessor
     if (!parameters.containsKey(TeamCityBuildParameters.TRIGGER_CORRELATION)) {
       TeamCityNode node = teamCityNodes == null ? null : teamCityNodes.getCurrentNode();
       String nodeId = node == null ? "unknown" : node.getId();
-      parameters.put(TeamCityBuildParameters.TRIGGER_CORRELATION,
-          JenkinsTriggerCorrelation.encode(promotion.getId(), nodeId, triggeredBy,
-              java.time.Instant.now().toString()));
+      String triggerCorrelation = JenkinsTriggerCorrelation.encode(
+          promotion.getId(), nodeId, triggeredBy, java.time.Instant.now().toString());
+      parameters.put(TeamCityBuildParameters.TRIGGER_CORRELATION, triggerCorrelation);
     }
     ex.setCustomParameters(parameters);
     LOG.info("Jenkins Bridge: marked TeamCity promotion " + promotion.getId()

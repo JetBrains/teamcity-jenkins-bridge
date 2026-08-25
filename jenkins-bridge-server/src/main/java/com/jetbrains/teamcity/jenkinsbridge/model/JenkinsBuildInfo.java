@@ -32,21 +32,27 @@ public class JenkinsBuildInfo {
     info.timestamp = getLong(json, "timestamp", 0L);
     info.duration = getLong(json, "duration", 0L);
     info.estimatedDuration = getLong(json, "estimatedDuration", 0L);
-    JsonElement actions = json.get("actions");
-    if (actions != null && actions.isJsonArray()) {
-      List<String> parsed = new ArrayList<String>();
-      for (JsonElement action : actions.getAsJsonArray()) {
-        if (action == null || !action.isJsonObject()) continue;
-        JsonElement causeList = action.getAsJsonObject().get("causes");
-        if (causeList == null || !causeList.isJsonArray()) continue;
-        for (JsonElement cause : causeList.getAsJsonArray()) {
-          if (cause != null && cause.isJsonObject() && cause.getAsJsonObject().has("shortDescription"))
-            parsed.add(cause.getAsJsonObject().get("shortDescription").getAsString());
+    info.causes = parseCauses(json.get("actions"));
+    return info;
+  }
+
+  @NotNull
+  private static List<String> parseCauses(@Nullable JsonElement actions) {
+    if (actions == null || !actions.isJsonArray()) {
+      return Collections.emptyList();
+    }
+    List<String> causes = new ArrayList<String>();
+    for (JsonElement action : actions.getAsJsonArray()) {
+      if (action == null || !action.isJsonObject()) continue;
+      JsonElement causeList = action.getAsJsonObject().get("causes");
+      if (causeList == null || !causeList.isJsonArray()) continue;
+      for (JsonElement cause : causeList.getAsJsonArray()) {
+        if (cause != null && cause.isJsonObject() && cause.getAsJsonObject().has("shortDescription")) {
+          causes.add(cause.getAsJsonObject().get("shortDescription").getAsString());
         }
       }
-      info.causes = parsed;
     }
-    return info;
+    return causes;
   }
 
   public int getNumber() {
