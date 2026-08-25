@@ -8,6 +8,7 @@ import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClientFactory;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsDataException;
 import com.jetbrains.teamcity.jenkinsbridge.persistence.BuildMirror;
 import com.jetbrains.teamcity.jenkinsbridge.persistence.BuildMirrorStore;
+import com.jetbrains.teamcity.jenkinsbridge.persistence.BuildResultMetadataCleanup;
 import com.jetbrains.teamcity.jenkinsbridge.persistence.PendingTrigger;
 import com.jetbrains.teamcity.jenkinsbridge.persistence.SyncState;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsBuildInfo;
@@ -32,7 +33,6 @@ import com.jetbrains.teamcity.jenkinsbridge.util.TeamCityNodeLog;
 import com.jetbrains.teamcity.jenkinsbridge.util.Utilities;
 
 import jetbrains.buildServer.serverSide.ProjectManager;
-import jetbrains.buildServer.serverSide.BuildsManager;
 import jetbrains.buildServer.serverSide.SBuildType;
 import jetbrains.buildServer.serverSide.TeamCityNode;
 import jetbrains.buildServer.serverSide.TeamCityNodes;
@@ -66,7 +66,7 @@ public class JenkinsBridgePollingService {
   private final JenkinsBridgeSettingsProvider settingsProvider;
   private final JenkinsClientFactory jenkinsClientFactory;
   private final ProjectManager projectManager;
-  private final BuildsManager buildsManager;
+  private final BuildResultMetadataCleanup resultMetadataCleanup;
   private final TeamCityBuildMirrorService mirrorService;
   private final BuildMirrorStore mirrorStore;
   private final MirroredJobProvider mirroredJobProvider;
@@ -84,7 +84,7 @@ public class JenkinsBridgePollingService {
       JenkinsBridgeSettingsProvider settingsProvider,
       JenkinsClientFactory jenkinsClientFactory,
       ProjectManager projectManager,
-      BuildsManager buildsManager,
+      BuildResultMetadataCleanup resultMetadataCleanup,
       TeamCityBuildMirrorService mirrorService,
       BuildMirrorStore mirrorStore,
       MirroredJobProvider mirroredJobProvider,
@@ -97,7 +97,7 @@ public class JenkinsBridgePollingService {
     this.settingsProvider = settingsProvider;
     this.jenkinsClientFactory = jenkinsClientFactory;
     this.projectManager = projectManager;
-    this.buildsManager = buildsManager;
+    this.resultMetadataCleanup = resultMetadataCleanup;
     this.mirrorService = mirrorService;
     this.mirrorStore = mirrorStore;
     this.mirroredJobProvider = mirroredJobProvider;
@@ -232,13 +232,11 @@ public class JenkinsBridgePollingService {
       return;
     }
     try {
-      int removed = mirrorStore.removeOrphanedResultMetadata(buildsManager);
-      if (removed > 0) {
-        LOG.info("Jenkins Bridge removed " + removed + " orphaned result metadata record(s)");
+      if (resultMetadataCleanup != null) {
+        resultMetadataCleanup.reconcileOrphanedMetadata();
       }
-    } catch (IOException | RuntimeException e) {
-      // Orphan reconciliation is best effort and must not fail the Jenkins poll cycle.
-      LOG.error("Could not reconcile orphaned Jenkins Bridge result metadata", e);
+    } catch (RuntimeException e) {
+      LOG.error("Could not schedule orphaned Jenkins Bridge result metadata reconciliation", e);
     }
   }
 
