@@ -23,17 +23,20 @@ public class BuildResultMetadataResolver {
     String key = build.getParametersProvider().get(
         com.jetbrains.teamcity.jenkinsbridge.feature.BridgeBuildFeatureConstants.JENKINS_BUILD_KEY_PARAM);
     if (key != null && !key.trim().isEmpty()) {
-      BuildResultMetadata metadata = mirrorStore.findResultMetadataByJenkinsBuildKey(key);
-      if (metadata != null) {
-        return metadata;
+      BuildResultMetadata resultMetadata = mirrorStore.findResultMetadataByJenkinsBuildKey(key);
+      if (resultMetadata != null) {
+        return resultMetadata;
       }
     }
-    BuildResultMetadata metadata = mirrorStore.findResultMetadataByTeamCityBuildId(
-        build.getBuildPromotion().getId());
-    if (metadata != null) {
-      return metadata;
+    long promotionId = build.getBuildPromotion().getId();
+    BuildResultMetadata resultMetadata = mirrorStore.findResultMetadataByTeamCityBuildId(promotionId);
+    if (resultMetadata != null) {
+      return resultMetadata;
     }
-    return build.getBuildId() == build.getBuildPromotion().getId()
-        ? null : mirrorStore.findResultMetadataByTeamCityBuildId(build.getBuildId());
+    long buildId = build.getBuildId();
+    if (buildId == promotionId) {
+      return null;
+    }
+    return mirrorStore.findResultMetadataByTeamCityBuildId(buildId);
   }
 }

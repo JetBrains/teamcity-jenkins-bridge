@@ -154,7 +154,8 @@ public class BuildMirrorStore {
   /**
    * Returns the mirror for the given key, or {@code null} if none exists. Does not create one.
    */
-  public synchronized BuildMirror findMirror(String key) throws IOException {
+  @Nullable
+  public synchronized BuildMirror findMirror(@NotNull String key) throws IOException {
     ensureStateIsLoaded();
     return state.getBuilds().get(key);
   }
@@ -165,6 +166,7 @@ public class BuildMirrorStore {
    * builds, which never carry that parameter). {@code null} and the deferred sentinel (-1) never
    * match a real build/promotion id.
    */
+  @Nullable
   public synchronized BuildMirror findMirrorByTcBuildId(long tcBuildId) throws IOException {
     ensureStateIsLoaded();
     for (BuildMirror mirror : state.getBuilds().values()) {

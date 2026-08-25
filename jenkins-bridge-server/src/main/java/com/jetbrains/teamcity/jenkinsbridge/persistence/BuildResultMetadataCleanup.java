@@ -77,6 +77,8 @@ public class BuildResultMetadataCleanup extends CleanupExtensionAdapter {
     try {
       mirrorStore.removeResultMetadata(ids);
     } catch (IOException e) {
+      // This listener cannot report a checked exception to TeamCity. The cleanup hook performs the
+      // authoritative retry/reconciliation on the next cleanup cycle.
       LOG.error("Could not remove Jenkins Bridge result metadata", e);
     }
   }
