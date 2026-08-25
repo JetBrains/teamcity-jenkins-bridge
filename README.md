@@ -225,6 +225,17 @@ sync state without removing the TeamCity build's historical result metadata.
 Metadata is removed when TeamCity deletes the corresponding build. The main-node
 poll cycle also reconciles orphaned metadata every 100 cycles as a fallback.
 
+Active sync state is temporary. When the total persisted mirror count exceeds
+1,000, the main-node poll cycle scans and prunes finished records. The bridge
+stores a per-mapping `lastPruned` UTC boundary and ignores Jenkins builds at or
+before that boundary, so pruning cannot cause old builds to be mirrored again
+after a restart.
+
+Pipeline Graph result data is stored separately from active sync state. It stays
+available while the TeamCity build exists and is removed when TeamCity cleanup
+or build deletion removes that build. This keeps finished result pages usable
+without retaining live log offsets and retry bookkeeping indefinitely.
+
 The build feature's "No. of builds to import on first sync" setting controls only
 defaults to 1 (only the newest Jenkins build). After the
 first poll, discovery is incremental, and every new Jenkins build after the
