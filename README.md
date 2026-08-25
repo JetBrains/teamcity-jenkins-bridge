@@ -194,20 +194,32 @@ server restart to take effect.
 | `jenkins.bridge.parameterRefreshPollCycles`   | `100`                 |
 | `jenkins.bridge.pendingTriggerTimeoutMinutes` | `1440`                |
 
-## State and recovery
+## Storage, persistence, and pruning
 
-By default, the mirror state is stored in TeamCity's internal database.
+Live bridge state is stored in TeamCity's root-project `CustomDataStorage`, backed
+by the TeamCity database. Records are JSON values under separate storage-key
+prefixes:
 
-Active sync records are pruned only when the total persisted mirror count is
-over 1,000. The main node scans finished records after a poll cycle and keeps
-pruning scoped to mappings that were polled successfully. A per-mapping
-`lastPruned` UTC boundary prevents old Jenkins builds from being mirrored again.
+| Data | Purpose |
+|---|---|
+| `BuildMirror` | Active Jenkins-to-TeamCity synchronization state, including the Jenkins build key and sync status. |
+| `BuildResultMetadata` | Historical result-page data, such as the Pipeline Graph. Keyed by TeamCity build ID and not used for polling. |
+| `PendingTrigger` | TeamCity-first triggers waiting to be correlated with a Jenkins build. |
+| `lastSeenBuildNumber` | Per-job Jenkins discovery watermark. |
+| `lastPruned` | Per-mapping UTC boundary for builds removed by pruning. |
+| Poll status | Last successful poll time and the last poll error. |
 
-Pipeline Graph result metadata is stored separately and remains available while
-the TeamCity build exists. It is historical result-page data, not active
-synchronization state, and is never used by polling. TeamCity cleanup or build
-deletion removes matching metadata immediately. The main-node poll cycle also
-reconciles orphaned metadata every 100 cycles as a fallback.
+Pruning removes only finished `BuildMirror` records. On the main node, after a
+successful poll, pruning checks the total mirror count. At 1,000 or fewer it
+does nothing; above 1,000 it scans finished mirrors for mappings successfully
+polled in that cycle. For selected mappings it persists `lastPruned`, copies
+each mirror's result data to `BuildResultMetadata`, and removes the active mirror.
+
+The `lastPruned` boundary prevents Jenkins builds at or before that timestamp
+from being discovered again after a restart. Pruning therefore removes active
+sync state without removing the TeamCity build's historical result metadata.
+Metadata is removed when TeamCity deletes the corresponding build. The main-node
+poll cycle also reconciles orphaned metadata every 100 cycles as a fallback.
 
 The build feature's "No. of builds to import on first sync" setting controls only
 defaults to 1 (only the newest Jenkins build). After the
