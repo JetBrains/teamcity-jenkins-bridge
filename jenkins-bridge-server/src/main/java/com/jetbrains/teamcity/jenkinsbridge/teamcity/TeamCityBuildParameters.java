@@ -16,6 +16,7 @@ public class TeamCityBuildParameters {
   public static final String AGENTLESS_BUILD_PROPERTY = "teamcity.build.agentLess";
   /** Prefix reserved for bridge-internal parameters; never expose Jenkins values under it. */
   public static final String BRIDGE_PARAMETER_PREFIX = "jenkins.bridge.";
+  public static final String TRIGGER_CORRELATION = BRIDGE_PARAMETER_PREFIX + "trigger.correlation";
 
   public static final String PULL_REQUEST_AUTHOR = "teamcity.pullRequest.author";
   public static final String PULL_REQUEST_BRANCH = "teamcity.pullRequest.branch.pullrequests";

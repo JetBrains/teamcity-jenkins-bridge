@@ -106,6 +106,18 @@ public class BuildMirrorStore {
     return findPendingTriggerInternal(controller, queueId);
   }
 
+  public synchronized PendingTrigger findPendingTriggerByCause(String controller, String job, String cause)
+      throws IOException {
+    ensureStateIsLoaded();
+    if (cause == null || cause.trim().isEmpty()) return null;
+    for (PendingTrigger pending : state.getPendingTriggers().values()) {
+      if (cause.equals(pending.getTriggerCause())
+          && nullToEmpty(controller).equals(nullToEmpty(pending.getJenkinsController()))
+          && nullToEmpty(job).equals(nullToEmpty(pending.getJenkinsJob()))) return pending;
+    }
+    return null;
+  }
+
   private PendingTrigger findPendingTriggerInternal(String controller, long queueId)
       throws BridgeStateCorruptionException {
     if (queueId < 0) {

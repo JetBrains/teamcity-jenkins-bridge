@@ -2,7 +2,8 @@ package com.jetbrains.teamcity.jenkinsbridge.persistence;
 
 /**
  * A TeamCity-first run that has triggered Jenkins, but has not yet been assigned a Jenkins build
- * number. The Jenkins queue id is the authoritative correlation handle.
+ * number. The Jenkins queue id is the primary correlation handle; the cause marker is the
+ * recovery handle when Jenkins does not return queue metadata.
  */
 public class PendingTrigger {
   private long teamCityPromotionId;
@@ -12,6 +13,8 @@ public class PendingTrigger {
   private long jenkinsQueueId = -1L;
   private String jenkinsController;
   private String createdAt;
+  private String triggerCause;
+  private String originatingNode;
 
   public PendingTrigger() {
   }
@@ -23,7 +26,7 @@ public class PendingTrigger {
       String queueItemUrl,
       String createdAt
   ) {
-    this(teamCityPromotionId, jenkinsJob, teamCityBuildTypeExternalId, queueItemUrl, -1L, "", createdAt);
+    this(teamCityPromotionId, jenkinsJob, teamCityBuildTypeExternalId, queueItemUrl, -1L, "", createdAt, "", "");
   }
 
   public PendingTrigger(
@@ -35,6 +38,13 @@ public class PendingTrigger {
       String jenkinsController,
       String createdAt
   ) {
+    this(teamCityPromotionId, jenkinsJob, teamCityBuildTypeExternalId, queueItemUrl, jenkinsQueueId,
+        jenkinsController, createdAt, "", "");
+  }
+
+  public PendingTrigger(long teamCityPromotionId, String jenkinsJob, String teamCityBuildTypeExternalId,
+                        String queueItemUrl, long jenkinsQueueId, String jenkinsController,
+                        String createdAt, String triggerCause, String originatingNode) {
     this.teamCityPromotionId = teamCityPromotionId;
     this.jenkinsJob = jenkinsJob;
     this.teamCityBuildTypeExternalId = teamCityBuildTypeExternalId;
@@ -42,6 +52,8 @@ public class PendingTrigger {
     this.jenkinsQueueId = jenkinsQueueId;
     this.jenkinsController = jenkinsController;
     this.createdAt = createdAt;
+    this.triggerCause = triggerCause;
+    this.originatingNode = originatingNode;
   }
 
   public long getTeamCityPromotionId() {
@@ -75,4 +87,7 @@ public class PendingTrigger {
   public String getCreatedAt() {
     return createdAt;
   }
+
+  public String getTriggerCause() { return triggerCause; }
+  public String getOriginatingNode() { return originatingNode; }
 }

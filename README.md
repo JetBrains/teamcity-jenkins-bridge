@@ -73,7 +73,9 @@ parameters.
 1. **TeamCity creates a promotion.** The user queues the generated build
    configuration. TeamCity creates a normal queued promotion. The bridge's
    queue preprocessor marks this bridge-controlled build agentless before it is
-   inserted into the queue. It does not call Jenkins or write trigger state.
+   inserted into the queue. It records a versioned internal correlation payload containing the
+   promotion ID, originating TeamCity node, request identity, timestamp, and Jenkins cause. It
+   does not call Jenkins or write bridge state.
 
 2. **The main node claims the trigger callback.** Every TeamCity node may
    observe the queue callback, but only the current TeamCity main node proceeds.
@@ -89,7 +91,7 @@ parameters.
 4. **A provisional trigger record is persisted.** Before making the external
    Jenkins request, the listener stores a `PendingTrigger` containing the
    TeamCity promotion ID, TeamCity build type, Jenkins job, and Jenkins
-   controller. At this point the queue URL is empty and the queue ID is `-1`.
+   controller and cause marker. At this point the queue URL is empty and the queue ID is `-1`.
    This record marks the request boundary and protects the operation across a
    TeamCity restart or an ambiguous failure.
 
@@ -120,8 +122,10 @@ parameters.
 7. **Jenkins is triggered once.** The bridge sends a POST to Jenkins
    `buildWithParameters` when the payload is non-empty, or to `build` when the
    job has no parameters. Jenkins authentication and CSRF crumb handling are
-   performed by the configured Jenkins client. Jenkins must return both a queue
-   item URL and a numeric queue ID for safe correlation.
+   performed by the configured Jenkins client. The cause is sent as Jenkins' `cause` query
+   parameter, while build parameters remain in the form body. A queue item URL and numeric queue
+   ID are preferred, but are not required because the same cause is also read from Jenkins build
+   metadata.
 
 8. **The pending record is resolved.** After a valid response, the provisional
    record is replaced with the returned Jenkins queue URL and queue ID. The

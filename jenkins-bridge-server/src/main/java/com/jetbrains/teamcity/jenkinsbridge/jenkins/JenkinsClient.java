@@ -143,7 +143,7 @@ public class JenkinsClient {
 
   private List<JenkinsBuildInfo> fetchBuildInfos(String jobName, String collection)
       throws BridgeHttpException, JenkinsDataException {
-    String tree = collection + "[number,timestamp,url,queueId]";
+    String tree = collection + "[number,timestamp,url,queueId,actions[causes[shortDescription]]]";
     String url = myConnection.getUrl()
         + jenkinsJobPath(jobName)
         + "/api/json?tree="
@@ -168,7 +168,7 @@ public class JenkinsClient {
 
   public JenkinsBuildInfo getBuildInfo(String jobName, int buildNumber)
       throws BridgeHttpException, JenkinsDataException {
-    String tree = "number,queueId,building,result,timestamp,duration,estimatedDuration,url";
+    String tree = "number,queueId,building,result,timestamp,duration,estimatedDuration,url,actions[causes[shortDescription]]";
     String url = myConnection.getUrl()
         + jenkinsJobPath(jobName)
         + "/"
@@ -1126,12 +1126,19 @@ public class JenkinsClient {
    */
   public JenkinsTriggerResponse triggerBuildWithQueueId(String jobName, Map<String, String> parameters)
       throws BridgeHttpException, JenkinsDataException {
+    return triggerBuildWithQueueId(jobName, parameters, null);
+  }
+
+  public JenkinsTriggerResponse triggerBuildWithQueueId(String jobName, Map<String, String> parameters,
+                                                        String cause)
+      throws BridgeHttpException, JenkinsDataException {
     boolean parameterized = parameters != null && !parameters.isEmpty();
 
     String url = myConnection.getUrl()
         + jenkinsJobPath(jobName)
         + "/"
-        + (parameterized ? "buildWithParameters" : "build");
+        + (parameterized ? "buildWithParameters" : "build")
+        + (cause == null || cause.trim().isEmpty() ? "" : "?cause=" + encodeQueryValue(cause));
 
     String body = parameterized ? encodeForm(parameters) : "";
 

@@ -4,6 +4,9 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 
 public class JenkinsBuildInfo {
   public static final long UNKNOWN_QUEUE_ID = -1L;
@@ -16,6 +19,7 @@ public class JenkinsBuildInfo {
   private long timestamp;
   private long duration;
   private long estimatedDuration;
+  @NotNull private List<String> causes = Collections.emptyList();
 
   @NotNull
   public static JenkinsBuildInfo fromJson(@NotNull JsonObject json) {
@@ -28,6 +32,20 @@ public class JenkinsBuildInfo {
     info.timestamp = getLong(json, "timestamp", 0L);
     info.duration = getLong(json, "duration", 0L);
     info.estimatedDuration = getLong(json, "estimatedDuration", 0L);
+    JsonElement actions = json.get("actions");
+    if (actions != null && actions.isJsonArray()) {
+      List<String> parsed = new ArrayList<String>();
+      for (JsonElement action : actions.getAsJsonArray()) {
+        if (action == null || !action.isJsonObject()) continue;
+        JsonElement causeList = action.getAsJsonObject().get("causes");
+        if (causeList == null || !causeList.isJsonArray()) continue;
+        for (JsonElement cause : causeList.getAsJsonArray()) {
+          if (cause != null && cause.isJsonObject() && cause.getAsJsonObject().has("shortDescription"))
+            parsed.add(cause.getAsJsonObject().get("shortDescription").getAsString());
+        }
+      }
+      info.causes = parsed;
+    }
     return info;
   }
 
@@ -65,6 +83,8 @@ public class JenkinsBuildInfo {
   public long getEstimatedDuration() {
     return estimatedDuration;
   }
+
+  @NotNull public List<String> getCauses() { return causes; }
 
   @NotNull
   private static String getString(
