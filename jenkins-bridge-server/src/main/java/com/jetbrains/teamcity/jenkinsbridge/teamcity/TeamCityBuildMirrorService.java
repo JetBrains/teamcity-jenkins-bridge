@@ -37,6 +37,7 @@ import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.jetbrains.annotations.Nullable;
 import java.util.Set;
 import java.util.TimeZone;
 import com.intellij.openapi.diagnostic.Logger;
@@ -397,6 +398,18 @@ public class TeamCityBuildMirrorService {
    */
   public void syncStages(BuildMirror mirror, long teamCityBuildId, JenkinsStages stages, JenkinsClient jenkinsClient)
       throws BridgeHttpException, JenkinsDataException, IOException, TeamCityRunningBuildNotFoundException {
+    syncStagesInternal(mirror, teamCityBuildId, stages, jenkinsClient);
+  }
+
+  /** Synchronizes Pipeline stage structure/status without duplicating stage text in the main log. */
+  public void syncStages(BuildMirror mirror, long teamCityBuildId, JenkinsStages stages)
+      throws BridgeHttpException, JenkinsDataException, IOException, TeamCityRunningBuildNotFoundException {
+    syncStagesInternal(mirror, teamCityBuildId, stages, null);
+  }
+
+  private void syncStagesInternal(BuildMirror mirror, long teamCityBuildId, JenkinsStages stages,
+                                  @Nullable JenkinsClient jenkinsClient)
+      throws BridgeHttpException, JenkinsDataException, IOException, TeamCityRunningBuildNotFoundException {
     Map<String, StageMirror> state = copyStageMirrors(mirror.getStages());
     List<BuildMessage1> messages = new ArrayList<BuildMessage1>();
 
@@ -427,13 +440,15 @@ public class TeamCityBuildMirrorService {
       boolean open = !sm.isBlockOpened();
 
       String append = "";
-      JenkinsStageLog log = jenkinsClient.getStageLog(
-          mirror.getJenkinsJob(), mirror.getJenkinsBuildNumber(), stage.getId());
-      String full = log.getText();
-      long offset = sm.getLogOffset();
-      if (offset < full.length()) {
-        append = full.substring((int) offset);
-        sm.setLogOffset(full.length());
+      if (jenkinsClient != null) {
+        JenkinsStageLog log = jenkinsClient.getStageLog(
+            mirror.getJenkinsJob(), mirror.getJenkinsBuildNumber(), stage.getId());
+        String full = log.getText();
+        long offset = sm.getLogOffset();
+        if (offset < full.length()) {
+          append = full.substring((int) offset);
+          sm.setLogOffset(full.length());
+        }
       }
 
       boolean close = stage.isTerminal() && !sm.isBlockClosed();

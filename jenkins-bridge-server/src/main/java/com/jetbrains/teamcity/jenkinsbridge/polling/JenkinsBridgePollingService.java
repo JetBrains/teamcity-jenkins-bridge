@@ -915,17 +915,16 @@ public class JenkinsBridgePollingService {
       if (graph != null) {
         mirrorService.syncPipelineGraph(mirror, teamCityBuildId, graph);
       }
+      // The top-level Jenkins console is the authoritative source for build-wide output,
+      // including compilation/startup/finalization errors that do not belong to a stage. Pipeline
+      // stage data is synchronized separately as structure/status metadata; its text is exposed by
+      // the Pipeline Graph UI and is deliberately not copied into the main TeamCity log again.
+      syncTopLevelConsole(jenkinsClient, mirror, teamCityBuildId);
       LOG.debug(TeamCityNodeLog.currentNode(teamCityNodes) + " [Jenkins Bridge DEBUG] Syncing " + stages.getStages().size()
           + " Pipeline stage(s) for " + mirror.getJenkinsBuildKey());
-      mirrorService.syncStages(mirror, teamCityBuildId, stages, jenkinsClient);
+      mirrorService.syncStages(mirror, teamCityBuildId, stages);
     } else {
-      long start = Math.max(0L, mirror.getLastLogOffset());
-      JenkinsLogChunk logChunk = jenkinsClient.getProgressiveLog(
-          mirror.getJenkinsJob(), mirror.getJenkinsBuildNumber(), start);
-      LOG.debug(TeamCityNodeLog.currentNode(teamCityNodes) + " [Jenkins Bridge DEBUG] Fetched " + logChunk.getText().length()
-          + " new console character(s) for " + mirror.getJenkinsBuildKey()
-          + " from byte offset " + start + " (nextStart=" + logChunk.getNextStart() + ")");
-      mirrorService.syncLogs(mirror, teamCityBuildId, logChunk);
+      syncTopLevelConsole(jenkinsClient, mirror, teamCityBuildId);
     }
 
     if (buildInfo.isBuilding()) {
@@ -948,6 +947,17 @@ public class JenkinsBridgePollingService {
     }
     mirrorService.finishBuildIfNeeded(mirror, teamCityBuildId, buildInfo);
     mirrorService.ensureRetrospectivePipelineChain(mirror, teamCityBuildId, graph);
+  }
+
+  private void syncTopLevelConsole(JenkinsClient jenkinsClient, BuildMirror mirror, long teamCityBuildId)
+      throws BridgeHttpException, IOException {
+    long start = Math.max(0L, mirror.getLastLogOffset());
+    JenkinsLogChunk logChunk = jenkinsClient.getProgressiveLog(
+        mirror.getJenkinsJob(), mirror.getJenkinsBuildNumber(), start);
+    LOG.debug(TeamCityNodeLog.currentNode(teamCityNodes) + " [Jenkins Bridge DEBUG] Fetched " + logChunk.getText().length()
+        + " new top-level console character(s) for " + mirror.getJenkinsBuildKey()
+        + " from byte offset " + start + " (nextStart=" + logChunk.getNextStart() + ")");
+    mirrorService.syncLogs(mirror, teamCityBuildId, logChunk);
   }
 
   @Nullable
