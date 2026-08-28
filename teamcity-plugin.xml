@@ -12,5 +12,5 @@
   </info>
   <deployment use-separate-classloader="true"
               allow-runtime-reload="true"
-              node-responsibilities-aware="true"/> <!-- TODO: Remove runtime reload in production -->
+              node-responsibilities-aware="true"/>
 </teamcity-plugin>

@@ -12,7 +12,7 @@
       <maven.build.timestamp.format>yyyyMMddHHmmss</maven.build.timestamp.format>
       <teamcity.jenkins-bridge.plugin.version>snapshot-${maven.build.timestamp}</teamcity.jenkins-bridge.plugin.version>
       <teamcity.jenkins-bridge.plugin.vendorName>JetBrains</teamcity.jenkins-bridge.plugin.vendorName>
-      <teamcity.jenkins-bridge.plugin.vendorUrl>https://www.jetbrains.com/teamcity/</teamcity.jenkins-bridge.plugin.vendorUrl>
+      <teamcity.jenkins-bridge.plugin.vendorUrl>https://www.jetbrains.com</teamcity.jenkins-bridge.plugin.vendorUrl>
   </properties>
   <dependencies>
       <dependency>
