@@ -96,14 +96,6 @@
       <scope>test</scope>
     </dependency>
 
-    <dependency>
-      <groupId>org.jetbrains.teamcity</groupId>
-      <artifactId>license-protected</artifactId>
-      <!-- The public 2026.3 EAP repository omits this proprietary module, but server-core still
-           loads its ReleaseDateHolder interface while bootstrapping the test fixture. -->
-      <version>${teamcity-license-version}</version>
-      <scope>test</scope>
-    </dependency>
 
     <!-- server-test-core's legacy commons-httpclient otherwise wins Maven conflict resolution with
          commons-codec 1.2, which lacks Hex.encodeHexString used by current TeamCity core. -->
