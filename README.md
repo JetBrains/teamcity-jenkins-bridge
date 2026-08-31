@@ -88,11 +88,30 @@ promotion. Jenkins remains the execution source of truth.
 
 Find the result in the generated TeamCity build configuration's build list:
 
-- The build overview shows the Jenkins result, parameters, tests, artifacts,
-  changes, and summary data that Jenkins exposes.
-- The **Build Log** contains the mirrored console output. Pipeline builds also
-  expose stage data and the Pipeline Graph view when the required Jenkins
-  endpoints are available.
+- **Tests:** Open the **Tests** tab to see the JUnit-style tests reported by
+  Jenkins, including their status, name, duration, and failure details when
+  Jenkins provides them. Tests are mirrored at run level on the top TeamCity
+  build, not per Pipeline stage.
+
+  ![Mirrored Jenkins tests](docs/images/jenkins-bridge-tests.png)
+
+- **Build logs:** Open **Build Log** for the Jenkins console output and the
+  bridge's synchronization summary. Pipeline builds also expose stage data and
+  the **Pipeline Graph** view when the required Jenkins endpoints are available.
+  A useful screenshot should show the Jenkins build URL, result, duration, and
+  bridge summary entries.
+
+- **Artifacts:** Open the **Artifacts** tab to browse and download artifacts
+  published by Jenkins. The bridge uses Jenkins as the artifact source; it does
+  not copy the artifact bytes into TeamCity.
+
+  ![Mirrored Jenkins artifacts](docs/images/jenkins-bridge-artifacts.png)
+
+- **VCS changes:** Open the **Changes** tab to see the commits Jenkins exposes
+  for the mirrored run. The bridge can register or reuse the required VCS root
+  and detect changes automatically. VCS changes are run-level data and are
+  shown on the top TeamCity build.
+
 - Trigger, polling, binding, and synchronization diagnostics are in
   TeamCity's `teamcity-server.log`; search for `Jenkins Bridge` on the main
   node. For failed or ambiguous triggers, check Jenkins before retrying because
@@ -105,6 +124,9 @@ Questions, suggestions, and other feedback can be shared in the
 [TeamCity Slack channel](https://teamcity.com/Slack).
 
 ## Limitations
+
+The following are technical details about the current implementation. They are
+useful when diagnosing behavior but are not required for the normal user flow.
 
 - Normal Jenkins polling monitors running and finished builds. It does not
   import or mirror arbitrary Jenkins queue items. A Jenkins queue item is used
