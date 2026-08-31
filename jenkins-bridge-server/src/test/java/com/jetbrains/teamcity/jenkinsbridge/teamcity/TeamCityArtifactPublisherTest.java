@@ -1,10 +1,10 @@
 package com.jetbrains.teamcity.jenkinsbridge.teamcity;
 
-import com.jetbrains.teamcity.jenkinsbridge.artifactstorage.JenkinsStorageAutomaticActivator;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsArtifact;
 import jetbrains.buildServer.ArtifactsConstants;
 import jetbrains.buildServer.artifacts.util.ArtifactListUtil;
 import jetbrains.buildServer.artifacts.util.SerializableArtifactListData;
+import jetbrains.buildServer.serverSide.BuildAttributes;
 import jetbrains.buildServer.serverSide.BuildPromotionEx;
 import jetbrains.buildServer.serverSide.RunningBuildEx;
 import org.junit.Test;
@@ -26,18 +26,17 @@ import static org.mockito.Mockito.when;
 
 public class TeamCityArtifactPublisherTest {
   @Test
-  public void publishArtifactListWritesSerializedArtifactsWhenStorageActivated() throws Exception {
+  public void publishArtifactListWritesSerializedArtifactsWhenPromotionHasStorageReference() throws Exception {
     RunningBuildEx runningBuild = mock(RunningBuildEx.class);
     when(runningBuild.getProjectExternalId()).thenReturn("Project1");
     BuildPromotionEx promotion = mock(BuildPromotionEx.class);
     when(promotion.getParameterValue("jenkins.job")).thenReturn("job");
     when(promotion.getParameterValue("jenkins.build.number")).thenReturn("7");
     when(promotion.getParameterValue("jenkins.connection.id")).thenReturn("conn1");
+    when(promotion.getAttribute(BuildAttributes.STORAGE_SETTINGS_REFERENCE)).thenReturn("STORAGE-1");
     when(runningBuild.getBuildPromotion()).thenReturn(promotion);
-    JenkinsStorageAutomaticActivator activator = mock(JenkinsStorageAutomaticActivator.class);
-    when(activator.activateJenkinsStorage("Project1")).thenReturn("STORAGE-1");
     TeamCityArtifactPublisher publisher =
-        new TeamCityArtifactPublisher(new FixedLocator(runningBuild), activator);
+        new TeamCityArtifactPublisher(new FixedLocator(runningBuild));
 
     List<JenkinsArtifact> artifacts = Arrays.asList(
         new JenkinsArtifact("app.jar", "target/app.jar", 100),
@@ -64,24 +63,8 @@ public class TeamCityArtifactPublisherTest {
   public void publishArtifactListSkipsWhenProjectExternalIdIsMissing() throws Exception {
     RunningBuildEx runningBuild = mock(RunningBuildEx.class);
     when(runningBuild.getProjectExternalId()).thenReturn(null);
-    JenkinsStorageAutomaticActivator activator = mock(JenkinsStorageAutomaticActivator.class);
     TeamCityArtifactPublisher publisher =
-        new TeamCityArtifactPublisher(new FixedLocator(runningBuild), activator);
-
-    publisher.publishArtifactList(42L, Arrays.asList(new JenkinsArtifact("a.txt", "a.txt", 1)));
-
-    verify(activator, never()).activateJenkinsStorage(anyString());
-    verify(runningBuild, never()).publishArtifact(anyString(), any(byte[].class));
-  }
-
-  @Test
-  public void publishArtifactListSkipsWhenStorageCouldNotBeActivated() throws Exception {
-    RunningBuildEx runningBuild = mock(RunningBuildEx.class);
-    when(runningBuild.getProjectExternalId()).thenReturn("Project1");
-    JenkinsStorageAutomaticActivator activator = mock(JenkinsStorageAutomaticActivator.class);
-    when(activator.activateJenkinsStorage("Project1")).thenReturn(null);
-    TeamCityArtifactPublisher publisher =
-        new TeamCityArtifactPublisher(new FixedLocator(runningBuild), activator);
+        new TeamCityArtifactPublisher(new FixedLocator(runningBuild));
 
     publisher.publishArtifactList(42L, Arrays.asList(new JenkinsArtifact("a.txt", "a.txt", 1)));
 
@@ -89,24 +72,33 @@ public class TeamCityArtifactPublisherTest {
   }
 
   @Test
-  public void publishArtifactListDoesNothingForEmptyArtifactListEvenAfterActivation() throws Exception {
+  public void publishArtifactListSkipsWhenPromotionHasNoStorageReference() throws Exception {
     RunningBuildEx runningBuild = mock(RunningBuildEx.class);
     when(runningBuild.getProjectExternalId()).thenReturn("Project1");
-    JenkinsStorageAutomaticActivator activator = mock(JenkinsStorageAutomaticActivator.class);
-    when(activator.activateJenkinsStorage("Project1")).thenReturn("STORAGE-1");
     TeamCityArtifactPublisher publisher =
-        new TeamCityArtifactPublisher(new FixedLocator(runningBuild), activator);
+        new TeamCityArtifactPublisher(new FixedLocator(runningBuild));
+
+    publisher.publishArtifactList(42L, Arrays.asList(new JenkinsArtifact("a.txt", "a.txt", 1)));
+
+    verify(runningBuild, never()).publishArtifact(anyString(), any(byte[].class));
+  }
+
+  @Test
+  public void publishArtifactListDoesNotNeedStorageForEmptyArtifactList() throws Exception {
+    RunningBuildEx runningBuild = mock(RunningBuildEx.class);
+    when(runningBuild.getProjectExternalId()).thenReturn("Project1");
+    TeamCityArtifactPublisher publisher =
+        new TeamCityArtifactPublisher(new FixedLocator(runningBuild));
 
     publisher.publishArtifactList(42L, Collections.<JenkinsArtifact>emptyList());
 
-    verify(activator).activateJenkinsStorage("Project1");
     verify(runningBuild, never()).publishArtifact(anyString(), any(byte[].class));
   }
 
   @Test(expected = java.io.IOException.class)
   public void publishArtifactListFailsWhenBuildIsNoLongerRunning() throws Exception {
     TeamCityArtifactPublisher publisher =
-        new TeamCityArtifactPublisher(new FixedLocator(null), mock(JenkinsStorageAutomaticActivator.class));
+        new TeamCityArtifactPublisher(new FixedLocator(null));
 
     publisher.publishArtifactList(42L, Arrays.asList(new JenkinsArtifact("a.txt", "a.txt", 1)));
   }

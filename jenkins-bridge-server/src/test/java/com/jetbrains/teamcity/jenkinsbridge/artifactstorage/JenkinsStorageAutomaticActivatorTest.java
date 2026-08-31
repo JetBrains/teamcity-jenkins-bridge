@@ -31,48 +31,41 @@ public class JenkinsStorageAutomaticActivatorTest {
       new JenkinsStorageAutomaticActivator(settingsManager, jenkinsStorageType, projectManager);
 
   @Test
-  public void activateJenkinsStorageAlreadyActiveDoesNotReactivate() {
+  public void ensureJenkinsStorageAlreadyExistsDoesNotActivateProjectStorage() {
     SProject project = projectWithExternalId("Project1");
     jenkinsFeature(project, "JENKINS-STORAGE");
-    when(settingsManager.findEffectiveSettings(project)).thenReturn("JENKINS-STORAGE");
-
-    String result = activator.activateJenkinsStorage("Project1");
+    String result = activator.ensureJenkinsStorage("Project1");
 
     assertEquals("JENKINS-STORAGE", result);
-    verify(settingsManager, never()).activateSettings(any(), any());
     verify(settingsManager, never()).addSettings(any(), any(), any(), anyBoolean(), anyMap());
   }
 
   @Test
-  public void activateJenkinsStorageActivatesExistingInactiveStorage() {
+  public void ensureJenkinsStorageReusesExistingInactiveStorage() {
     SProject project = projectWithExternalId("Project2");
     jenkinsFeature(project, "JENKINS-STORAGE");
-    when(settingsManager.findEffectiveSettings(project)).thenReturn("OTHER-STORAGE");
-
-    String result = activator.activateJenkinsStorage("Project2");
+    String result = activator.ensureJenkinsStorage("Project2");
 
     assertEquals("JENKINS-STORAGE", result);
-    verify(settingsManager).activateSettings(project, "JENKINS-STORAGE");
+    verify(settingsManager, never()).activateSettings(any(), any());
   }
 
   @Test
-  public void activateJenkinsStorageCreatesSettingsWhenNoneExist() {
+  public void ensureJenkinsStorageCreatesSettingsWhenNoneExist() {
     SProject project = projectWithExternalId("Project3");
     SProjectFeatureDescriptor created = mock(SProjectFeatureDescriptor.class);
     when(created.getId()).thenReturn("STORAGE-NEW");
-    when(settingsManager.addSettings(eq(project), any(), eq(jenkinsStorageType), eq(true), anyMap()))
+    when(settingsManager.addSettings(eq(project), any(), eq(jenkinsStorageType), eq(false), anyMap()))
         .thenReturn(created);
-    when(settingsManager.findEffectiveSettings(project)).thenReturn(null);
-
-    String result = activator.activateJenkinsStorage("Project3");
+    String result = activator.ensureJenkinsStorage("Project3");
 
     assertEquals("STORAGE-NEW", result);
   }
 
   @Test
-  public void activateJenkinsStorageReturnsNullWhenProjectNotFound() {
+  public void ensureJenkinsStorageReturnsNullWhenProjectNotFound() {
     when(projectManager.findProjectByExternalId("MissingProject")).thenReturn(null);
-    String result = activator.activateJenkinsStorage("MissingProject");
+    String result = activator.ensureJenkinsStorage("MissingProject");
     assertNull(result);
   }
 

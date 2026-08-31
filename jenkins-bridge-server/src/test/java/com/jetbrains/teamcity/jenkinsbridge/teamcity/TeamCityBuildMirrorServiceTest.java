@@ -339,7 +339,7 @@ public class TeamCityBuildMirrorServiceTest {
     boolean throwNullPointer;
 
     CapturingArtifactListPublisher() {
-      super(null, null);
+      super(null);
     }
 
     @Override

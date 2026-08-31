@@ -1,5 +1,6 @@
 package com.jetbrains.teamcity.jenkinsbridge.teamcity;
 
+import com.jetbrains.teamcity.jenkinsbridge.artifactstorage.JenkinsStorageAutomaticActivator;
 import com.google.gson.JsonParser;
 import com.jetbrains.teamcity.jenkinsbridge.feature.BridgeBuildFeatureConstants;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClient;
@@ -37,11 +38,17 @@ public class TeamCityBuildQueuerTest {
   private final BuildCustomizerEx customizer = mock(BuildCustomizerEx.class);
 
   private final BuildPromotionEx promotion = mock(BuildPromotionEx.class);
-  private final TeamCityBuildQueuer queuer = new TeamCityBuildQueuer(projectManager, customizerFactory, jenkinsClientFactory);
+  private final JenkinsStorageAutomaticActivator storageActivator = mock(JenkinsStorageAutomaticActivator.class);
+  private final SProject project = mock(SProject.class);
+  private final TeamCityBuildQueuer queuer = new TeamCityBuildQueuer(
+      projectManager, customizerFactory, jenkinsClientFactory, storageActivator);
 
   @Before
   public void setUp() {
     when(projectManager.findBuildTypeByExternalId(BUILD_TYPE_ID)).thenReturn(buildType);
+    when(buildType.getProject()).thenReturn(project);
+    when(project.getExternalId()).thenReturn("Project1");
+    when(storageActivator.ensureJenkinsStorage("Project1")).thenReturn("STORAGE-1");
     when(jenkinsClientFactory.forBuildType(buildType)).thenReturn(jenkinsClient);
     ParametersProvider parametersProvider = mock(ParametersProvider.class);
     when(parametersProvider.getAll()).thenReturn(Collections.emptyMap());
@@ -54,6 +61,14 @@ public class TeamCityBuildQueuerTest {
     when(queued.getBuildPromotion()).thenReturn(promotion);
     when(customizer.createPromotion()).thenReturn(promotion);
     when(promotion.addToQueue(anyString())).thenReturn(queued);
+  }
+
+  @Test
+  public void queueAgentlessBuildAttachesJenkinsStorageToPromotionBeforeQueueing() throws Exception {
+    queuer.queueAgentlessBuild(BUILD_TYPE_ID, properties(), Collections.emptyMap(), null);
+
+    verify(promotion).setAttribute(BuildAttributes.STORAGE_SETTINGS_REFERENCE, "STORAGE-1");
+    verify(promotion).addToQueue(anyString());
   }
 
   @Test

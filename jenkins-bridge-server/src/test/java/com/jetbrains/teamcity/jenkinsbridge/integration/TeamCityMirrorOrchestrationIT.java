@@ -1,6 +1,5 @@
 package com.jetbrains.teamcity.jenkinsbridge.integration;
 
-import com.jetbrains.teamcity.jenkinsbridge.artifactstorage.JenkinsStorageAutomaticActivator;
 import com.jetbrains.teamcity.jenkinsbridge.http.BridgeHttpException;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsDataException;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsBuildInfo;
@@ -236,14 +235,4 @@ public class TeamCityMirrorOrchestrationIT extends TeamCityIntegrationTestBase {
     }
   }
 
-  private static final class FixedStorageActivator extends JenkinsStorageAutomaticActivator {
-    private FixedStorageActivator() {
-      super(null, null, null);
-    }
-
-    @Override
-    public String activateJenkinsStorage(String externalProjectId) {
-      return "IT-JENKINS-STORAGE";
-    }
-  }
 }

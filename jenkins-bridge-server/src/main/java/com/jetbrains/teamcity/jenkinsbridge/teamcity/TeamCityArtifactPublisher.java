@@ -1,7 +1,6 @@
 package com.jetbrains.teamcity.jenkinsbridge.teamcity;
 
 import com.intellij.openapi.diagnostic.Logger;
-import com.jetbrains.teamcity.jenkinsbridge.artifactstorage.JenkinsStorageAutomaticActivator;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsArtifact;
 import jetbrains.buildServer.ArtifactsConstants;
 import jetbrains.buildServer.artifacts.ArtifactData;
@@ -9,6 +8,8 @@ import jetbrains.buildServer.artifacts.ArtifactDataInstance;
 import jetbrains.buildServer.artifacts.util.ArtifactListUtil;
 import jetbrains.buildServer.artifacts.util.SerializableArtifactListData;
 import jetbrains.buildServer.serverSide.RunningBuildEx;
+import jetbrains.buildServer.serverSide.BuildAttributes;
+import jetbrains.buildServer.serverSide.BuildPromotionEx;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
@@ -29,14 +30,9 @@ public class TeamCityArtifactPublisher {
   private static final Charset OUR_CHARSET = StandardCharsets.UTF_8;
 
   private final TeamCityRunningBuildLocator myBuildLocator;
-  private final JenkinsStorageAutomaticActivator myStorageActivator;
 
-  public TeamCityArtifactPublisher(
-      TeamCityRunningBuildLocator buildLocator,
-      JenkinsStorageAutomaticActivator storageActivator
-  ) {
+  public TeamCityArtifactPublisher(TeamCityRunningBuildLocator buildLocator) {
     myBuildLocator = buildLocator;
-    myStorageActivator = storageActivator;
   }
 
   /**
@@ -49,16 +45,22 @@ public class TeamCityArtifactPublisher {
       throw new IOException("TeamCity build " + buildId + " is already finished");
     }
 
-    String msg = "'Jenkins' artifact storage could not be configured as the active storage for TeamCity project " + runningBuild.getProjectExternalId() + ". Skipping artifact registration.";
-
-    String projectExternalId = runningBuild.getProjectExternalId();
-    if (projectExternalId == null) {
-      LOG.warn(msg);
+    if (artifacts == null || artifacts.isEmpty()) {
       return;
     }
-    String storageFeatureId = myStorageActivator.activateJenkinsStorage(projectExternalId);
-    if (storageFeatureId == null) {
-      LOG.warn(msg);
+
+    BuildPromotionEx promotion = runningBuild.getBuildPromotion();
+    if (promotion == null) {
+      LOG.warn("Jenkins artifact storage is not configured for TeamCity build "
+          + buildId + ": build promotion is unavailable");
+      return;
+    }
+    Object storageSettingReference = promotion.getAttribute(BuildAttributes.STORAGE_SETTINGS_REFERENCE);
+    String storageFeatureId = storageSettingReference instanceof String
+        ? (String) storageSettingReference : null;
+    if (storageFeatureId == null || storageFeatureId.isEmpty()) {
+      LOG.warn("'Jenkins' artifact storage is not configured for TeamCity build "
+          + buildId + ". Skipping artifact registration.");
       return;
     }
 
