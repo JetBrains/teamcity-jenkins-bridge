@@ -96,7 +96,6 @@
       <scope>test</scope>
     </dependency>
 
-
     <!-- server-test-core's legacy commons-httpclient otherwise wins Maven conflict resolution with
          commons-codec 1.2, which lacks Hex.encodeHexString used by current TeamCity core. -->
     <dependency>
