@@ -20,13 +20,105 @@ is presented as a stable demo feature.
 
 ## Contents
 
+- [Quickstart](#quickstart)
+- [Limitations](#limitations)
 - [Connecting to Jenkins](#connecting-to-jenkins)
 - [Triggering Jenkins builds](#triggering-jenkins-builds)
 - [Server settings](#server-settings)
-- [State and recovery](#state-and-recovery)
+- [Storage, persistence, and pruning](#storage-persistence-and-pruning)
 - [Multi-node TeamCity support](#multi-node-teamcity-support)
 - [Build and verification](#build-and-verification)
 - [Install](#install)
+
+## Quickstart
+
+This is the shortest path from a TeamCity project with Jenkins Bridge installed
+to a mirrored Jenkins build. Plugin installation and upgrades are administrator
+tasks; users only need access to the TeamCity project and Jenkins connection.
+
+### Before you start
+
+- Ask your TeamCity administrator to install a Jenkins Bridge version supported
+  by your TeamCity server. The current development target is TeamCity
+  `2026.3-SNAPSHOT`.
+- Jenkins must be reachable over HTTP(S). Create a Jenkins user API token and
+  grant that user permission to read the job/build data and console output, and
+  to start builds if TeamCity will trigger Jenkins.
+- Pipeline stage and graph mirroring requires the Jenkins Pipeline APIs used by
+  the bridge, including Blue Ocean for the graph. If those endpoints are not
+  available, the bridge falls back to the single-build console mirror where
+  possible.
+
+### 1. Configure the connection and project
+
+1. In the TeamCity project, open **Project Settings > Integrations >
+   Connections > Add Connection > Jenkins**.
+2. Enter a connection name, the Jenkins base URL, the Jenkins username, and
+   that user's API token. Use **Test connection** to check access.
+3. Open the project's **Jenkins Jobs Sync** tab and import the Jenkins job.
+   The bridge creates a TeamCity build configuration with the **Jenkins
+   Bridge** build feature and the selected Jenkins connection/job.
+
+The connection dialog looks like this:
+
+![Jenkins connection settings](docs/images/jenkins-bridge-connection.png)
+
+The **Jenkins Jobs Sync** page shows jobs already mapped and jobs available from
+the selected Jenkins connection:
+
+![Jenkins Jobs Sync page](docs/images/jenkins-jobs-sync-user.png)
+
+The first-sync count is an optional advanced setting. It is not configured on
+the Jobs Sync page. If you have permission to edit the generated build
+configuration, open **Settings > Build Features > Jenkins Bridge > Edit** and
+set **No. of builds to import on first sync**. If the field is omitted, the
+default is 1 (the newest existing Jenkins build); later polling is incremental.
+
+The generated configuration is read-only by default. This is expected: use
+TeamCity's **Run Custom Build** action to provide parameters and start it.
+
+### 2. Run the first mirrored build
+
+Open the generated build configuration, choose **Run Custom Build**, review
+the synchronized parameters, and queue the build. The main TeamCity node
+triggers Jenkins, follows the resulting run, and binds it to the TeamCity
+promotion. Jenkins remains the execution source of truth.
+
+![Run Custom Build](docs/images/jenkins-bridge-run-custom-build.png)
+
+Find the result in the generated TeamCity build configuration's build list:
+
+- The build overview shows the Jenkins result, parameters, tests, artifacts,
+  changes, and summary data that Jenkins exposes.
+- The **Build Log** contains the mirrored console output. Pipeline builds also
+  expose stage data and the Pipeline Graph view when the required Jenkins
+  endpoints are available.
+- Trigger, polling, binding, and synchronization diagnostics are in
+  TeamCity's `teamcity-server.log`; search for `Jenkins Bridge` on the main
+  node. For failed or ambiguous triggers, check Jenkins before retrying because
+  Jenkins may have accepted the request.
+- For retention and restart behavior, see [Storage, persistence, and
+  pruning](#storage-persistence-and-pruning). For parameter refresh failures,
+  see [Failure and recovery behavior](#failure-and-recovery-behavior).
+
+Questions, suggestions, and other feedback can be shared in the
+[TeamCity Slack channel](https://teamcity.com/Slack).
+
+## Limitations
+
+- Normal Jenkins polling monitors running and finished builds. It does not
+  import or mirror arbitrary Jenkins queue items. A Jenkins queue item is used
+  only internally to correlate a build started from TeamCity; it is not shown
+  as a separate mirrored build while it remains queued.
+- Jenkins remains the source of truth. A TeamCity build is a shallow,
+  agentless representation and cannot execute the Jenkins job itself.
+- Pipeline topology and stage data depend on the Jenkins APIs available to the
+  connected server. Without usable Pipeline endpoints, the bridge degrades to
+  the flat console mirror where possible.
+- Stage-level tests and artifacts are not created because Jenkins exposes those
+  at run level. They appear on the top/summary TeamCity build instead.
+- Native TeamCity build-chain mirroring is experimental and should be
+  runtime-validated before relying on it for production workflows.
 
 ## Connecting to Jenkins
 
