@@ -20,8 +20,13 @@ is presented as a stable demo feature.
 
 ## Contents
 
+### User guide
+
 - [Quickstart](#quickstart)
 - [Limitations](#limitations)
+
+### Technical details
+
 - [Connecting to Jenkins](#connecting-to-jenkins)
 - [Triggering Jenkins builds](#triggering-jenkins-builds)
 - [Server settings](#server-settings)
