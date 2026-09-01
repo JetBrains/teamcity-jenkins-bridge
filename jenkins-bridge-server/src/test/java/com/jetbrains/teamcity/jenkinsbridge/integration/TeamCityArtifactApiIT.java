@@ -9,7 +9,6 @@ import jetbrains.buildServer.ArtifactsConstants;
 import org.testng.annotations.Test;
 import jetbrains.buildServer.serverSide.BuildAttributes;
 import jetbrains.buildServer.serverSide.BuildPromotionEx;
-import jetbrains.buildServer.serverSide.MultiNodeLocks;
 
 import java.util.Arrays;
 import java.util.Collections;
@@ -21,11 +20,10 @@ public class TeamCityArtifactApiIT extends TeamCityIntegrationTestBase {
   public void secureArtifactSigningSecretIsSharedBySignerInstances() throws Exception {
     TeamCityBuildFixture build = queueAndStartBuild(
         Collections.singletonMap("jenkins.build.key", "artifact-signing-secret"), Collections.emptyMap());
-    MultiNodeLocks locks = myFixture.getSingletonService(MultiNodeLocks.class);
     TeamCitySecureArtifactSigningSecretProvider firstProvider =
-        new TeamCitySecureArtifactSigningSecretProvider(locks);
+        new TeamCitySecureArtifactSigningSecretProvider();
     TeamCitySecureArtifactSigningSecretProvider secondProvider =
-        new TeamCitySecureArtifactSigningSecretProvider(locks);
+        new TeamCitySecureArtifactSigningSecretProvider();
     JenkinsArtifactDownloadSigner firstSigner = new JenkinsArtifactDownloadSigner(firstProvider);
     JenkinsArtifactDownloadSigner secondSigner = new JenkinsArtifactDownloadSigner(secondProvider);
 

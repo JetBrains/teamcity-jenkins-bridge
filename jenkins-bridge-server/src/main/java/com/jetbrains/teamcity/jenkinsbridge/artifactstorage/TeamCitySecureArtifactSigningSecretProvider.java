@@ -4,7 +4,6 @@ import com.intellij.openapi.diagnostic.Logger;
 import jetbrains.buildServer.serverSide.BuildPromotion;
 import jetbrains.buildServer.serverSide.BuildTypeEx;
 import jetbrains.buildServer.serverSide.CustomDataStorage;
-import jetbrains.buildServer.serverSide.MultiNodeLocks;
 import jetbrains.buildServer.serverSide.SBuildType;
 import jetbrains.buildServer.serverSide.BuildTypeSettingsEx;
 import jetbrains.buildServer.serverSide.impl.SecureDataStorage;
@@ -12,12 +11,17 @@ import org.jetbrains.annotations.NotNull;
 
 import java.security.SecureRandom;
 import java.util.Base64;
+import java.util.Collections;
 
 /**
  * Stores an encrypted artifact-signing secret in shared build-type data.
  *
  * <p>{@link SecureDataStorage} performs the TeamCity encryption. The encrypted token is persisted
  * separately because SecureDataStorage is an encryption facade, not a general-purpose store.</p>
+ *
+ * <p>Initialization uses {@link CustomDataStorage.ConflictResolution#IGNORE_OURS}: if multiple
+ * nodes initialize the storage concurrently, the first persisted token wins and every node reads
+ * that token after refreshing its local storage.</p>
  *
  * <p>This class is the only bridge boundary that depends on TeamCity's internal secure-storage
  * API. Keep that dependency here and verify it with a real TeamCity integration test.</p>
@@ -26,15 +30,11 @@ public class TeamCitySecureArtifactSigningSecretProvider implements JenkinsArtif
   private static final Logger LOG = Logger.getInstance(TeamCitySecureArtifactSigningSecretProvider.class.getName());
   private static final String STORAGE_NAME = "jenkinsBridgeArtifactSigning";
   private static final String SECRET_TOKEN_KEY = "hmac-secret-v1";
-  private static final String LOCK_TYPE = "jenkinsBridgeArtifactSigningSecret";
-  private static final long LOCK_TIMEOUT_MILLIS = 5_000L;
   private static final String CONTEXT = "Jenkins Bridge artifact download signing key";
 
-  private final MultiNodeLocks myMultiNodeLocks;
   private final SecureRandom mySecureRandom;
 
-  public TeamCitySecureArtifactSigningSecretProvider(@NotNull MultiNodeLocks multiNodeLocks) {
-    myMultiNodeLocks = multiNodeLocks;
+  public TeamCitySecureArtifactSigningSecretProvider() {
     mySecureRandom = new SecureRandom();
   }
 
@@ -57,32 +57,20 @@ public class TeamCitySecureArtifactSigningSecretProvider implements JenkinsArtif
       return decrypt(secureDataStorage, token);
     }
 
-    MultiNodeLocks.Lock lock;
-    try {
-      lock = myMultiNodeLocks.tryLock(LOCK_TYPE, lockId(buildType), LOCK_TIMEOUT_MILLIS);
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-      throw new IllegalStateException("Interrupted while initializing artifact signing secret", e);
-    }
-    if (lock == null) {
-      throw new IllegalStateException("Could not acquire lock while initializing artifact signing secret");
-    }
+    String candidateToken = secureDataStorage.getOrCreateToken(newSecret(), CONTEXT);
+    storage.putValuesAndFlush(
+        Collections.singletonMap(SECRET_TOKEN_KEY, candidateToken),
+        CustomDataStorage.ConflictResolution.IGNORE_OURS);
 
-    try {
-      storage.refresh();
-      token = storage.getValue(SECRET_TOKEN_KEY);
-      if (token == null || token.isEmpty()) {
-        String secret = newSecret();
-        token = secureDataStorage.getOrCreateToken(secret, CONTEXT);
-        storage.putValue(SECRET_TOKEN_KEY, token);
-        storage.flush();
-        LOG.info("Jenkins Bridge initialized the shared artifact signing secret for build type "
-            + buildType.getExternalId());
-      }
-      return decrypt(secureDataStorage, token);
-    } finally {
-      lock.close();
+    // Let a concurrent writer win, then read the persisted token rather than using our candidate.
+    storage.refresh();
+    token = storage.getValue(SECRET_TOKEN_KEY);
+    if (token == null || token.isEmpty()) {
+      throw new IllegalStateException("TeamCity artifact signing secret was not persisted");
     }
+    LOG.info("Jenkins Bridge initialized or reused the shared artifact signing secret for build type "
+        + buildType.getExternalId());
+    return decrypt(secureDataStorage, token);
   }
 
   @NotNull
@@ -101,7 +89,4 @@ public class TeamCitySecureArtifactSigningSecretProvider implements JenkinsArtif
     return Base64.getEncoder().encodeToString(bytes);
   }
 
-  private static long lockId(@NotNull SBuildType buildType) {
-    return Integer.toUnsignedLong(buildType.getExternalId().hashCode());
-  }
 }
