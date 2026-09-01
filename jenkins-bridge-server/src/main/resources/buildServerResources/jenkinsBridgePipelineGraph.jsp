@@ -45,7 +45,8 @@
     var selectedName = '';
 
     function esc(s) {
-      return (s == null ? '' : String(s)).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      return (s == null ? '' : String(s)).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     }
     function enc(s) { return encodeURIComponent(s == null ? '' : s); }
     function parse(t) { try { return JSON.parse(t.responseText); } catch (e) { return null; } }
@@ -181,6 +182,16 @@
       return m + 'm ' + Math.round(s % 60) + 's';
     }
 
+    // Jenkins Pipeline Graph View uses WFAPI's parameterDescription, which is the Pipeline node's
+    // stored ArgumentsAction, as the step text. It does not infer a title from console output. The
+    // generic labels for echo and sh are suppressed when that argument text is available.
+    function stepPresentation(step) {
+      var argumentsText = step.parameterDescription || '';
+      if (!argumentsText) return { text: step.name || '(step)', title: '' };
+      var showKind = step.name !== 'Print Message' && step.name !== 'Shell Script';
+      return { text: argumentsText, title: showKind ? step.name : '' };
+    }
+
     // G3b: per-step breakdown for the selected stage. Each step is a clickable row that expands its log.
     function loadStageSteps(id, name) {
       detailEl.innerHTML = note('Loading steps for ' + esc(name) + '&hellip;');
@@ -200,10 +211,13 @@
             var col = color(s.status);
             var dur = s.durationMillis > 0 ? fmtDur(s.durationMillis) : '';
             var logId = 'jbgStep_' + i;
+            var presentation = stepPresentation(s);
+            var stepMeta = dur;
             html += '<div style="border:1px solid #e0e0e0; border-left:4px solid ' + col[1] + '; margin:4px 0; border-radius:4px;">'
               + '<div class="jbgStepHdr" data-log="' + logId + '" style="cursor:pointer; padding:6px 10px; display:flex; justify-content:space-between; align-items:center;">'
-              + '<span><span style="color:' + col[1] + ';">&#9679;</span> ' + esc(s.name || '(step)') + '</span>'
-              + '<span class="grayNote" style="font-size:11px;">' + esc(s.status) + (dur ? ' &middot; ' + esc(dur) : '') + '</span>'
+              + '<span style="min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="' + esc(presentation.text) + '"><span style="color:' + col[1] + ';">&#9679;</span> '
+              + (presentation.title ? '<span class="grayNote">' + esc(presentation.title) + '</span> ' : '') + esc(presentation.text) + '</span>'
+              + '<span class="grayNote" style="font-size:11px;">' + esc(stepMeta) + '</span>'
               + '</div>'
               + '<pre id="' + logId + '" style="display:none; max-height:360px; overflow:auto; background:#f8f9fa; '
               + 'border-top:1px solid #e0e0e0; padding:8px; margin:0; white-space:pre-wrap; word-break:break-word;">'

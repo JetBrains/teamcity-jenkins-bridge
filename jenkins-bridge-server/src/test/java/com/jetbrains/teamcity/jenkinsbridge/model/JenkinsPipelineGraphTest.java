@@ -157,7 +157,7 @@ public class JenkinsPipelineGraphTest {
   }
 
   private JenkinsWfapiNode raw(String id, String name, List<String> parents) {
-    return new JenkinsWfapiNode(id, name, "SUCCESS", 1000, 10, parents, false);
+    return new JenkinsWfapiNode(id, name, "", "SUCCESS", 1000, 10, parents, false);
   }
 
   private List<String> parents(String... ids) {

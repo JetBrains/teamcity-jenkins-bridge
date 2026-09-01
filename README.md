@@ -20,9 +20,7 @@ is presented as a stable demo feature.
 
 ## TeamCity compatibility
 
-The plugin is compatible with TeamCity **2026.1 and later**. The development
-build currently compiles against the TeamCity `2026.3-SNAPSHOT` server APIs;
-the plugin uses server APIs available in the 2026.1 line.
+The plugin is compatible with TeamCity **2026.1 and later**.
 
 ## Contents
 
@@ -51,8 +49,7 @@ tasks; users only need access to the TeamCity project and Jenkins connection.
 ### Before you start
 
 - Ask your TeamCity administrator to install a Jenkins Bridge version supported
-  by your TeamCity server. The current development target is TeamCity
-  `2026.3-SNAPSHOT`.
+  by your TeamCity server. The current supported baseline is TeamCity `2026.1`.
 - Jenkins must be reachable over HTTP(S). Create a Jenkins user API token and
   grant that user permission to read the job/build data and console output, and
   to start builds if TeamCity will trigger Jenkins.
@@ -110,8 +107,12 @@ Find the result in the generated TeamCity build configuration's build list:
 - **Build logs:** Open **Build Log** for the Jenkins console output and the
   bridge's synchronization summary. Pipeline builds also expose stage data and
   the **Pipeline Graph** view when the required Jenkins endpoints are available.
-  A useful screenshot should show the Jenkins build URL, result, duration, and
-  bridge summary entries.
+  The graph presents the Jenkins pipeline stages, and selecting a stage shows
+  its stage-level steps and console logs. This keeps the TeamCity view aligned
+  with the corresponding stage view in Jenkins while preserving the complete
+  step output in expandable log entries.
+
+  ![Mirrored Jenkins Pipeline Graph](docs/images/jenkins-bridge-pipeline-graph.png)
 
 - **Artifacts:** Open the **Artifacts** tab to browse and download artifacts
   published by Jenkins. The bridge uses Jenkins as the artifact source; it does
@@ -422,7 +423,7 @@ fixture tests require Java 21 because the current TeamCity test server still use
 the legacy Security Manager; the Maven profile enables the required Java 21 flag
 automatically.
 
-The default TeamCity API version is `2026.3-SNAPSHOT`, and Maven looks for its
+The default TeamCity API version is `2026.1`, and Maven looks for its
 artifacts under `${user.home}/.m2/repository/TeamCity`. Both values are
 configurable, so plugin developers can build against a published TeamCity
 version or a local TeamCity source build.
@@ -431,7 +432,7 @@ For a local TeamCity source build, point Maven at its `local-repo` directory:
 
 ```bash
 mvn package \
-  -Dteamcity-version=2026.3-SNAPSHOT \
+  -Dteamcity-version=2026.1 \
   -Dteamcity-repository-url=file:///path/to/TeamCity/local-repo
 ```
 
@@ -456,9 +457,9 @@ the repository path is machine-specific:
     <profile>
       <id>teamcity-local</id>
       <properties>
-        <teamcity-version>2026.3-SNAPSHOT</teamcity-version>
+        <teamcity-version>2026.1</teamcity-version>
         <teamcity-repository-url>file:///path/to/TeamCity/local-repo</teamcity-repository-url>
-        <teamcity-license-version>2026.3-SNAPSHOT</teamcity-license-version>
+        <teamcity-license-version>2026.1</teamcity-license-version>
       </properties>
     </profile>
   </profiles>

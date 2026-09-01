@@ -915,10 +915,6 @@ public class JenkinsBridgePollingService {
       if (graph != null) {
         mirrorService.syncPipelineGraph(mirror, teamCityBuildId, graph);
       }
-      // The top-level Jenkins console is the authoritative source for build-wide output,
-      // including compilation/startup/finalization errors that do not belong to a stage. Pipeline
-      // stage data is synchronized separately as structure/status metadata; its text is exposed by
-      // the Pipeline Graph UI and is deliberately not copied into the main TeamCity log again.
       syncTopLevelConsole(jenkinsClient, mirror, teamCityBuildId);
       LOG.debug(TeamCityNodeLog.currentNode(teamCityNodes) + " [Jenkins Bridge DEBUG] Syncing " + stages.getStages().size()
           + " Pipeline stage(s) for " + mirror.getJenkinsBuildKey());

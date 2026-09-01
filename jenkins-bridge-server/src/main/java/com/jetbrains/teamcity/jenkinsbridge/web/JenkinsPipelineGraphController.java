@@ -249,7 +249,7 @@ public class JenkinsPipelineGraphController extends BaseController {
     }
   }
 
-  /** JSON shape for a stage's per-step breakdown (G3b): steps with name/status/duration/log. */
+  /** JSON shape for a stage's per-step breakdown (G3b), including Jenkins' stored step arguments. */
   @SuppressWarnings("unused")
   static final class StageStepsView {
     final String nodeId;
@@ -265,6 +265,7 @@ public class JenkinsPipelineGraphController extends BaseController {
   static final class StepView {
     final String id;
     final String name;
+    final String parameterDescription;
     final String status;
     final long durationMillis;
     final String log;
@@ -272,6 +273,7 @@ public class JenkinsPipelineGraphController extends BaseController {
     StepView(JenkinsStageStep step) {
       this.id = step.getId();
       this.name = step.getName();
+      this.parameterDescription = step.getParameterDescription();
       this.status = step.getStatus();
       this.durationMillis = step.getDurationMillis();
       this.log = step.getLog();
