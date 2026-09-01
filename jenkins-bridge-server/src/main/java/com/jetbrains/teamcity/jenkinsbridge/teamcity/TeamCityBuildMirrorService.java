@@ -202,7 +202,7 @@ public class TeamCityBuildMirrorService {
       return;
     }
 
-    String text = "Monitoring Jenkins job " + mirror.getJenkinsJob()
+    String text = "[Jenkins Bridge] Monitoring Jenkins job " + mirror.getJenkinsJob()
         + " build #" + mirror.getJenkinsBuildNumber();
 
     teamCityBuildStarter.markBuildAsRunning(teamCityBuildId, text);
@@ -224,7 +224,7 @@ public class TeamCityBuildMirrorService {
         + "Jenkins build URL: " + nullToEmpty(mirror.getJenkinsBuildUrl()) + "\n"
         + "\n";
 
-    teamCityBuildLogger.addBuildLog(teamCityBuildId, text);
+    teamCityBuildLogger.addBridgeLog(teamCityBuildId, text);
 
     mirror.setMetadataLogSent(true);
     mirror.setSyncState(SyncState.LOG_SYNCING);
@@ -308,7 +308,7 @@ public class TeamCityBuildMirrorService {
     if (key.equals(mirror.getPipelineChainMessageKey())) {
       return;
     }
-    teamCityBuildLogger.addBuildLog(teamCityBuildId, text);
+    teamCityBuildLogger.addBridgeLog(teamCityBuildId, text);
     mirror.setPipelineChainMessageKey(key);
   }
 
@@ -431,7 +431,7 @@ public class TeamCityBuildMirrorService {
     }
 
     try {
-      teamCityBuildLogger.addBuildLog(teamCityBuildId, message);
+      teamCityBuildLogger.addBridgeLog(teamCityBuildId, message);
     } catch (TeamCityRunningBuildNotFoundException e) {
       LOG.warn("Jenkins Bridge: failed to write artifact summary for "
           + mirror.getJenkinsBuildKey(), e);
@@ -522,7 +522,7 @@ public class TeamCityBuildMirrorService {
           + "Jenkins result: " + finalResult + "\n"
           + "Jenkins duration: " + jenkinsInfo.getDuration() + " ms\n";
 
-      teamCityBuildLogger.addBuildLog(teamCityBuildId, summary);
+      teamCityBuildLogger.addBridgeLog(teamCityBuildId, summary);
 
       mirror.setSummaryLogSent(true);
       mirror.setJenkinsResult(finalResult);

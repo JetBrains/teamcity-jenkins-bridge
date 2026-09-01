@@ -917,9 +917,11 @@ public class JenkinsBridgePollingService {
       }
       LOG.debug(TeamCityNodeLog.currentNode(teamCityNodes) + " [Jenkins Bridge DEBUG] Syncing " + stages.getStages().size()
           + " Pipeline stage(s) for " + mirror.getJenkinsBuildKey());
-    } else {
-      syncNonPipelineConsole(jenkinsClient, mirror, teamCityBuildId);
     }
+
+    // The progressive Jenkins console is the build-wide log for both Pipeline and non-Pipeline
+    // builds. Pipeline stage logs are additionally available in the Pipeline Graph view.
+    syncBuildConsole(jenkinsClient, mirror, teamCityBuildId);
 
     if (buildInfo.isBuilding()) {
       return;
@@ -943,19 +945,14 @@ public class JenkinsBridgePollingService {
     mirrorService.ensureRetrospectivePipelineChain(mirror, teamCityBuildId, graph);
   }
 
-  /**
-   * Synchronizes the flat Jenkins progressive console for a non-Pipeline build.
-   *
-   * <p>Pipeline stage logs are fetched separately by the Pipeline Graph view from WFAPI and are
-   * intentionally not copied into the top-level TeamCity build log.
-   */
-  private void syncNonPipelineConsole(JenkinsClient jenkinsClient, BuildMirror mirror, long teamCityBuildId)
+  /** Synchronizes the flat Jenkins progressive console for the mirrored build. */
+  private void syncBuildConsole(JenkinsClient jenkinsClient, BuildMirror mirror, long teamCityBuildId)
       throws BridgeHttpException, IOException {
     long start = Math.max(0L, mirror.getLastLogOffset());
     JenkinsLogChunk logChunk = jenkinsClient.getProgressiveLog(
         mirror.getJenkinsJob(), mirror.getJenkinsBuildNumber(), start);
     LOG.debug(TeamCityNodeLog.currentNode(teamCityNodes) + " [Jenkins Bridge DEBUG] Fetched " + logChunk.getText().length()
-        + " new non-Pipeline console character(s) for " + mirror.getJenkinsBuildKey()
+        + " new console character(s) for " + mirror.getJenkinsBuildKey()
         + " from byte offset " + start + " (nextStart=" + logChunk.getNextStart() + ")");
     mirrorService.syncLogs(mirror, teamCityBuildId, logChunk);
   }

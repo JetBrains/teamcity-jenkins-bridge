@@ -11,7 +11,7 @@ import java.util.Collections;
 import java.util.Date;
 
 public class TeamCityBuildFinisher {
-  private static final String FINISH_REQUEST_MESSAGE = "Build finish request received via Jenkins Bridge";
+  private static final String FINISH_REQUEST_MESSAGE = "[Jenkins Bridge] Build finish request received";
   // Build problem type shared by all Jenkins-result problems; the per-result identity is appended below.
   private static final String JENKINS_RESULT_PROBLEM_TYPE = "jenkinsBuildResult";
 
