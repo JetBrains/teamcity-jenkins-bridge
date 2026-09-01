@@ -915,12 +915,10 @@ public class JenkinsBridgePollingService {
       if (graph != null) {
         mirrorService.syncPipelineGraph(mirror, teamCityBuildId, graph);
       }
-      syncTopLevelConsole(jenkinsClient, mirror, teamCityBuildId);
       LOG.debug(TeamCityNodeLog.currentNode(teamCityNodes) + " [Jenkins Bridge DEBUG] Syncing " + stages.getStages().size()
           + " Pipeline stage(s) for " + mirror.getJenkinsBuildKey());
-      mirrorService.syncStages(mirror, teamCityBuildId, stages);
     } else {
-      syncTopLevelConsole(jenkinsClient, mirror, teamCityBuildId);
+      syncNonPipelineConsole(jenkinsClient, mirror, teamCityBuildId);
     }
 
     if (buildInfo.isBuilding()) {
@@ -945,13 +943,19 @@ public class JenkinsBridgePollingService {
     mirrorService.ensureRetrospectivePipelineChain(mirror, teamCityBuildId, graph);
   }
 
-  private void syncTopLevelConsole(JenkinsClient jenkinsClient, BuildMirror mirror, long teamCityBuildId)
+  /**
+   * Synchronizes the flat Jenkins progressive console for a non-Pipeline build.
+   *
+   * <p>Pipeline stage logs are fetched separately by the Pipeline Graph view from WFAPI and are
+   * intentionally not copied into the top-level TeamCity build log.
+   */
+  private void syncNonPipelineConsole(JenkinsClient jenkinsClient, BuildMirror mirror, long teamCityBuildId)
       throws BridgeHttpException, IOException {
     long start = Math.max(0L, mirror.getLastLogOffset());
     JenkinsLogChunk logChunk = jenkinsClient.getProgressiveLog(
         mirror.getJenkinsJob(), mirror.getJenkinsBuildNumber(), start);
     LOG.debug(TeamCityNodeLog.currentNode(teamCityNodes) + " [Jenkins Bridge DEBUG] Fetched " + logChunk.getText().length()
-        + " new top-level console character(s) for " + mirror.getJenkinsBuildKey()
+        + " new non-Pipeline console character(s) for " + mirror.getJenkinsBuildKey()
         + " from byte offset " + start + " (nextStart=" + logChunk.getNextStart() + ")");
     mirrorService.syncLogs(mirror, teamCityBuildId, logChunk);
   }

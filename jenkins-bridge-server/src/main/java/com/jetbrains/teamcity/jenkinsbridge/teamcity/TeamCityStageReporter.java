@@ -10,9 +10,10 @@ import java.util.Date;
 import java.util.List;
 
 /**
- * Emits Jenkins Pipeline stages into a TeamCity build as build-step blocks. The stateful decision
- * of which stages to open/append/close lives in {@link TeamCityBuildMirrorService#syncStages}; this
- * class only turns those decisions into {@link BuildMessage1}s and submits them, mirroring
+ * Emits explicit stage updates into a TeamCity build as build-step blocks. The polling service no
+ * longer mirrors Pipeline stage logs into the main build log; this low-level reporter remains
+ * available to direct integrations and tests. It turns stage decisions into {@link BuildMessage1}s
+ * and submits them, mirroring
  * {@link TeamCityTestReporter}.
  */
 public class TeamCityStageReporter {

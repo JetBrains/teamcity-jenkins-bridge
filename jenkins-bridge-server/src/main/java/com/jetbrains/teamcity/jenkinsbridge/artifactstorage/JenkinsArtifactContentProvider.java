@@ -67,5 +67,4 @@ public class JenkinsArtifactContentProvider implements ArtifactContentProvider {
           }
         });
   }
-
 }

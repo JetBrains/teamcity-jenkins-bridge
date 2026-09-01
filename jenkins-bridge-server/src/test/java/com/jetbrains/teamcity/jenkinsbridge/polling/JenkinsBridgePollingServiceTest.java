@@ -620,7 +620,7 @@ public class JenkinsBridgePollingServiceTest {
     int vcsFetchFailureCalls;
 
     CapturingMirrorService() {
-      super(null, null, null, null, null, null, null, null, null, null, null, null, null);
+      super(null, null, null, null, null, null, null, null, null, null, null, null);
     }
 
     @Override
