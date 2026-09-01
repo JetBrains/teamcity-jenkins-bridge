@@ -18,6 +18,12 @@ Pipeline support is also available for stage/log mirroring. Native TeamCity
 build-chain mirroring is experimental and should be runtime-validated before it
 is presented as a stable demo feature.
 
+## TeamCity compatibility
+
+The plugin is compatible with TeamCity **2026.1 and later**. The development
+build currently compiles against the TeamCity `2026.3-SNAPSHOT` server APIs;
+the plugin uses server APIs available in the 2026.1 line.
+
 ## Contents
 
 ### User guide
@@ -28,6 +34,7 @@ is presented as a stable demo feature.
 ### Technical details
 
 - [Connecting to Jenkins](#connecting-to-jenkins)
+- [TeamCity compatibility](#teamcity-compatibility)
 - [Triggering Jenkins builds](#triggering-jenkins-builds)
 - [Server settings](#server-settings)
 - [Storage, persistence, and pruning](#storage-persistence-and-pruning)
