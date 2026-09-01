@@ -1,7 +1,10 @@
 package com.jetbrains.teamcity.jenkinsbridge.artifactstorage;
 
+import com.jetbrains.teamcity.jenkinsbridge.feature.BridgeBuildFeatureConstants;
 import jetbrains.buildServer.artifacts.ArtifactStorageSettings;
 import jetbrains.buildServer.serverSide.ProjectManager;
+import jetbrains.buildServer.serverSide.BuildAttributes;
+import jetbrains.buildServer.serverSide.BuildPromotionEx;
 import jetbrains.buildServer.serverSide.SProject;
 import jetbrains.buildServer.serverSide.SProjectFeatureDescriptor;
 import jetbrains.buildServer.serverSide.artifacts.ArtifactStorageTypeRegistry;
@@ -17,6 +20,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -31,49 +35,64 @@ public class JenkinsStorageAutomaticActivatorTest {
       new JenkinsStorageAutomaticActivator(settingsManager, jenkinsStorageType, projectManager);
 
   @Test
-  public void activateJenkinsStorageAlreadyActiveDoesNotReactivate() {
+  public void ensureJenkinsStorageAlreadyExistsDoesNotActivateProjectStorage() {
     SProject project = projectWithExternalId("Project1");
     jenkinsFeature(project, "JENKINS-STORAGE");
-    when(settingsManager.findEffectiveSettings(project)).thenReturn("JENKINS-STORAGE");
-
-    String result = activator.activateJenkinsStorage("Project1");
+    String result = activator.ensureJenkinsStorage("Project1");
 
     assertEquals("JENKINS-STORAGE", result);
-    verify(settingsManager, never()).activateSettings(any(), any());
     verify(settingsManager, never()).addSettings(any(), any(), any(), anyBoolean(), anyMap());
   }
 
   @Test
-  public void activateJenkinsStorageActivatesExistingInactiveStorage() {
+  public void ensureJenkinsStorageReusesExistingInactiveStorage() {
     SProject project = projectWithExternalId("Project2");
     jenkinsFeature(project, "JENKINS-STORAGE");
-    when(settingsManager.findEffectiveSettings(project)).thenReturn("OTHER-STORAGE");
-
-    String result = activator.activateJenkinsStorage("Project2");
+    String result = activator.ensureJenkinsStorage("Project2");
 
     assertEquals("JENKINS-STORAGE", result);
-    verify(settingsManager).activateSettings(project, "JENKINS-STORAGE");
+    verify(settingsManager, never()).activateSettings(any(), any());
   }
 
   @Test
-  public void activateJenkinsStorageCreatesSettingsWhenNoneExist() {
+  public void ensureJenkinsStorageCreatesSettingsWhenNoneExist() {
     SProject project = projectWithExternalId("Project3");
     SProjectFeatureDescriptor created = mock(SProjectFeatureDescriptor.class);
     when(created.getId()).thenReturn("STORAGE-NEW");
-    when(settingsManager.addSettings(eq(project), any(), eq(jenkinsStorageType), eq(true), anyMap()))
+    when(settingsManager.addSettings(eq(project), any(), eq(jenkinsStorageType), eq(false), anyMap()))
         .thenReturn(created);
-    when(settingsManager.findEffectiveSettings(project)).thenReturn(null);
-
-    String result = activator.activateJenkinsStorage("Project3");
+    String result = activator.ensureJenkinsStorage("Project3");
 
     assertEquals("STORAGE-NEW", result);
   }
 
   @Test
-  public void activateJenkinsStorageReturnsNullWhenProjectNotFound() {
+  public void ensureJenkinsStorageReturnsNullWhenProjectNotFound() {
     when(projectManager.findProjectByExternalId("MissingProject")).thenReturn(null);
-    String result = activator.activateJenkinsStorage("MissingProject");
+    String result = activator.ensureJenkinsStorage("MissingProject");
     assertNull(result);
+  }
+
+  @Test
+  public void configurePromotionStorageAttachesStorageReference() {
+    SProject project = projectWithExternalId("Project4");
+    jenkinsFeature(project, "JENKINS-STORAGE");
+    BuildPromotionEx promotion = mock(BuildPromotionEx.class);
+
+    activator.configurePromotionStorage(promotion, "Project4");
+
+    verify(promotion).setAttribute(BuildAttributes.STORAGE_SETTINGS_REFERENCE, "JENKINS-STORAGE");
+  }
+
+  @Test
+  public void configurePromotionStorageRecordsWarningWhenStorageIsUnavailable() {
+    BuildPromotionEx promotion = mock(BuildPromotionEx.class);
+    when(promotion.getId()).thenReturn(42L);
+
+    activator.configurePromotionStorage(promotion, "MissingProject");
+
+    verify(promotion).setAttribute(
+        eq(BridgeBuildFeatureConstants.JENKINS_STORAGE_WARNING_ATTRIBUTE), anyString());
   }
 
   private SProject projectWithExternalId(String externalId) {

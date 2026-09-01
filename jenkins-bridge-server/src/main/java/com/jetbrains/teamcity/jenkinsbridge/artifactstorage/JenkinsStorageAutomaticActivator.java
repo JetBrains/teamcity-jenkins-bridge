@@ -1,7 +1,11 @@
 package com.jetbrains.teamcity.jenkinsbridge.artifactstorage;
 
 import com.intellij.openapi.diagnostic.Logger;
+import com.jetbrains.teamcity.jenkinsbridge.feature.BridgeBuildFeatureConstants;
 import jetbrains.buildServer.artifacts.ArtifactStorageSettings;
+import jetbrains.buildServer.serverSide.BuildAttributes;
+import jetbrains.buildServer.serverSide.BuildPromotion;
+import jetbrains.buildServer.serverSide.BuildPromotionEx;
 import jetbrains.buildServer.serverSide.ProjectManager;
 import jetbrains.buildServer.serverSide.SProject;
 import jetbrains.buildServer.serverSide.SProjectFeatureDescriptor;
@@ -31,14 +35,18 @@ public class JenkinsStorageAutomaticActivator {
   }
 
   /**
-   * Sets up the Jenkins artifact storage method if it doesn't exist for the given project and activates it if it's inactive.
+   * Ensures that the Jenkins artifact storage definition exists for the given project.
+   *
+   * <p>This deliberately does not activate the storage. Activation is project-wide; callers must
+   * attach the returned id to the individual build promotion instead.
    *
    * @param externalProjectId The external id of the project containing the mirrored Jenkins build configuration.
-   * @return The id of the activated Jenkins artifact storage.
+   * @return The id of the Jenkins artifact storage definition.
    */
   @Nullable
-  public String activateJenkinsStorage(@NotNull String externalProjectId) {
+  public String ensureJenkinsStorage(@NotNull String externalProjectId) {
     String jenkinsType = myJenkinsStorageType.getType();
+    LOG.debug("Jenkins Bridge: looking up Jenkins artifact storage for project " + externalProjectId);
     SProject project = myProjectManager.findProjectByExternalId(externalProjectId);
     if (project == null) {
       LOG.warn("Project with id " + externalProjectId + " not found");
@@ -51,18 +59,61 @@ public class JenkinsStorageAutomaticActivator {
         .findFirst();
 
     String settingsId = existing
-        .map(SProjectFeatureDescriptor::getId)
+        .map(descriptor -> {
+          LOG.debug("Jenkins Bridge: reusing Jenkins artifact storage " + descriptor.getId()
+              + " for project " + externalProjectId);
+          return descriptor.getId();
+        })
         .orElseGet(() -> {
           String uuid = UUID.randomUUID().toString();
-          SProjectFeatureDescriptor ptd = mySettingsManager.addSettings(project, "JENKINS-STORAGE-" + uuid, myJenkinsStorageType, true, Collections.emptyMap());
+          SProjectFeatureDescriptor ptd = mySettingsManager.addSettings(project, "JENKINS-STORAGE-" + uuid, myJenkinsStorageType, false, Collections.emptyMap());
+          LOG.debug("Jenkins Bridge: created Jenkins artifact storage " + ptd.getId()
+              + " for project " + externalProjectId);
           return ptd.getId();
         });
 
-    String activeId = mySettingsManager.findEffectiveSettings(project);
-    if (!settingsId.equals(activeId)) {
-      mySettingsManager.activateSettings(project, settingsId);
-    }
-
     return settingsId;
   }
+
+  /**
+   * Best-effort selection of Jenkins storage for one mirrored promotion.
+   *
+   * <p>Storage is intentionally not activated at project level; the promotion-specific reference
+   * keeps unrelated builds safe. If setup fails, the promotion remains queueable and receives an
+   * internal warning attribute so the mirror can report the problem in the TeamCity build log.
+   *
+   * @param promotion the Jenkins Bridge promotion to configure
+   * @param externalProjectId the external ID of the promotion's TeamCity project
+   */
+  public void configurePromotionStorage(
+      @NotNull BuildPromotion promotion,
+      @NotNull String externalProjectId
+  ) {
+    LOG.debug("Jenkins Bridge: configuring artifact storage for promotion " + promotion.getId()
+        + " in project " + externalProjectId);
+    if (!(promotion instanceof BuildPromotionEx)) {
+      LOG.error("Jenkins Bridge: promotion " + promotion.getId()
+          + " does not support artifact-storage attributes");
+      return;
+    }
+
+    BuildPromotionEx promotionEx = (BuildPromotionEx) promotion;
+    try {
+      String storageId = ensureJenkinsStorage(externalProjectId);
+      if (storageId == null || storageId.isEmpty()) {
+        throw new IllegalStateException("Could not create Jenkins artifact storage definition");
+      }
+      promotionEx.setAttribute(BuildAttributes.STORAGE_SETTINGS_REFERENCE, storageId);
+      LOG.debug("Jenkins Bridge: attached Jenkins artifact storage " + storageId
+          + " to promotion " + promotion.getId());
+    } catch (RuntimeException e) {
+      String message = "Could not configure Jenkins artifact storage for promotion "
+          + promotion.getId() + ": "
+          + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
+      LOG.error("Jenkins Bridge: " + message, e);
+      promotionEx.setAttribute(
+          BridgeBuildFeatureConstants.JENKINS_STORAGE_WARNING_ATTRIBUTE, message);
+    }
+  }
+
 }

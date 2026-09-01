@@ -1,10 +1,11 @@
 package com.jetbrains.teamcity.jenkinsbridge.integration;
 
-import com.jetbrains.teamcity.jenkinsbridge.artifactstorage.JenkinsStorageAutomaticActivator;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsArtifact;
 import com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityArtifactPublisher;
 import jetbrains.buildServer.ArtifactsConstants;
 import org.testng.annotations.Test;
+import jetbrains.buildServer.serverSide.BuildAttributes;
+import jetbrains.buildServer.serverSide.BuildPromotionEx;
 
 import java.util.Arrays;
 import java.util.Collections;
@@ -20,8 +21,9 @@ public class TeamCityArtifactApiIT extends TeamCityIntegrationTestBase {
     bridgeParameters.put("jenkins.build.number", "17");
     bridgeParameters.put("jenkins.connection.id", "local");
     TeamCityBuildFixture build = queueAndStartBuild(bridgeParameters, Collections.emptyMap());
-    TeamCityArtifactPublisher publisher = new TeamCityArtifactPublisher(
-        build.getLocator(), new FixedStorageActivator());
+    ((BuildPromotionEx) build.getRunningBuild().getBuildPromotion()).setAttribute(
+        BuildAttributes.STORAGE_SETTINGS_REFERENCE, "IT-JENKINS-STORAGE");
+    TeamCityArtifactPublisher publisher = new TeamCityArtifactPublisher(build.getLocator());
 
     publisher.publishArtifactList(build.getPromotionId(), Arrays.asList(
         new JenkinsArtifact("app.jar", "target/app.jar", 100),
@@ -50,19 +52,9 @@ public class TeamCityArtifactApiIT extends TeamCityIntegrationTestBase {
     TeamCityBuildFixture build = queueAndStartBuild(
         Collections.singletonMap("jenkins.build.key", "artifact-api-finished"), Collections.emptyMap());
     build.finish("SUCCESS", new java.util.Date());
-    new TeamCityArtifactPublisher(build.getLocator(), new FixedStorageActivator())
+    new TeamCityArtifactPublisher(build.getLocator())
         .publishArtifactList(build.getPromotionId(),
             Collections.singletonList(new JenkinsArtifact("late.txt", "late.txt", 1)));
   }
 
-  private static final class FixedStorageActivator extends JenkinsStorageAutomaticActivator {
-    private FixedStorageActivator() {
-      super(null, null, null);
-    }
-
-    @Override
-    public String activateJenkinsStorage(String externalProjectId) {
-      return "IT-JENKINS-STORAGE";
-    }
-  }
 }

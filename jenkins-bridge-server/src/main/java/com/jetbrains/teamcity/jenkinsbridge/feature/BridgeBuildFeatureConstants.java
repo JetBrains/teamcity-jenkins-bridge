@@ -45,6 +45,10 @@ public final class BridgeBuildFeatureConstants {
    */
   public static final String JENKINS_BUILD_KEY_PARAM = "jenkins.build.key";
 
+  /** Internal promotion attribute used to surface non-fatal artifact-storage setup warnings. */
+  public static final String JENKINS_STORAGE_WARNING_ATTRIBUTE =
+      "teamcity.internal.jenkinsBridge.jenkinsStorageWarning";
+
   private BridgeBuildFeatureConstants() {
   }
 }

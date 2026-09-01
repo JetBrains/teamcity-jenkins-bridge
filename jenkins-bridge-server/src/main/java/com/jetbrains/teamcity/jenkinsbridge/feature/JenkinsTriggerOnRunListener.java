@@ -1,6 +1,7 @@
 package com.jetbrains.teamcity.jenkinsbridge.feature;
 
 import com.intellij.openapi.diagnostic.Logger;
+import com.jetbrains.teamcity.jenkinsbridge.artifactstorage.JenkinsStorageAutomaticActivator;
 import com.jetbrains.teamcity.jenkinsbridge.http.BridgeHttpException;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClient;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClientFactory;
@@ -43,6 +44,7 @@ public class JenkinsTriggerOnRunListener {
   private final TeamCityQueuedBuildFailureService failureService;
   private final TeamCityNodes teamCityNodes;
   private final JenkinsParameterSynchronizer parameterSynchronizer;
+  private final JenkinsStorageAutomaticActivator storageActivator;
   private final BuildServerListener listener = new BuildServerAdapter() {
     @Override
     public void buildTypeAddedToQueue(SQueuedBuild queued) {
@@ -64,7 +66,8 @@ public class JenkinsTriggerOnRunListener {
       @NotNull BuildMirrorStore mirrorStore,
       @NotNull TeamCityQueuedBuildFailureService failureService,
       @NotNull TeamCityNodes teamCityNodes,
-      @NotNull JenkinsParameterSynchronizer parameterSynchronizer
+      @NotNull JenkinsParameterSynchronizer parameterSynchronizer,
+      @NotNull JenkinsStorageAutomaticActivator storageActivator
   ) {
     this.eventDispatcher = eventDispatcher;
     this.jenkinsClientFactory = jenkinsClientFactory;
@@ -72,6 +75,7 @@ public class JenkinsTriggerOnRunListener {
     this.failureService = failureService;
     this.teamCityNodes = teamCityNodes;
     this.parameterSynchronizer = parameterSynchronizer;
+    this.storageActivator = storageActivator;
     this.eventDispatcher.addListener(listener);
   }
 
@@ -147,6 +151,9 @@ public class JenkinsTriggerOnRunListener {
     if (job == null || job.trim().isEmpty()) {
       return;
     }
+
+    storageActivator.configurePromotionStorage(
+        promotion, buildType.getProject().getExternalId());
 
     // The Jenkins server is whichever connection this build configuration mirrors from.
     attempt.markCleanupEligible();

@@ -1,6 +1,7 @@
 package com.jetbrains.teamcity.jenkinsbridge.teamcity;
 
 import com.jetbrains.teamcity.jenkinsbridge.feature.BridgeBuildFeatureConstants;
+import com.jetbrains.teamcity.jenkinsbridge.artifactstorage.JenkinsStorageAutomaticActivator;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClientFactory;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsVcsInfo;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsVcsRepository;
@@ -22,15 +23,18 @@ public class TeamCityBuildQueuer {
   private final ProjectManager projectManager;
   private final BuildCustomizerFactory buildCustomizerFactory;
   private final JenkinsClientFactory jenkinsClientFactory;
+  private final JenkinsStorageAutomaticActivator storageActivator;
 
   public TeamCityBuildQueuer(
       ProjectManager projectManager,
       BuildCustomizerFactory buildCustomizerFactory,
-      JenkinsClientFactory jenkinsClientFactory
+      JenkinsClientFactory jenkinsClientFactory,
+      JenkinsStorageAutomaticActivator storageActivator
   ) {
     this.projectManager = projectManager;
     this.buildCustomizerFactory = buildCustomizerFactory;
     this.jenkinsClientFactory = jenkinsClientFactory;
+    this.storageActivator = storageActivator;
   }
 
   public long queueAgentlessBuild(
@@ -66,6 +70,10 @@ public class TeamCityBuildQueuer {
     }
 
     BuildPromotion promotion = customizer.createPromotion();
+    if (storageActivator != null) {
+      storageActivator.configurePromotionStorage(
+          promotion, buildType.getProject().getExternalId());
+    }
     SQueuedBuild queuedBuild = promotion.addToQueue(TRIGGERED_BY);
     if (queuedBuild == null) {
       throw new TeamCityBuildQueueException(

@@ -339,7 +339,7 @@ public class TeamCityBuildMirrorServiceTest {
     boolean throwNullPointer;
 
     CapturingArtifactListPublisher() {
-      super(null, null);
+      super(null);
     }
 
     @Override
@@ -466,7 +466,7 @@ public class TeamCityBuildMirrorServiceTest {
     Map<String, String> jenkinsParameters;
 
     CapturingQueuer() {
-      super(null, null, null);
+      super(null, null, null, null);
     }
 
     @Override

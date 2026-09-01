@@ -22,7 +22,8 @@ import static org.mockito.Mockito.when;
  */
 public class JenkinsQueueAgentlessPreprocessorTest {
 
-  private final JenkinsQueueAgentlessPreprocessor preprocessor = new JenkinsQueueAgentlessPreprocessor();
+  private final JenkinsQueueAgentlessPreprocessor preprocessor =
+      new JenkinsQueueAgentlessPreprocessor(null);
 
   @Test
   public void returnsSameMapAndToleratesEmpty() {

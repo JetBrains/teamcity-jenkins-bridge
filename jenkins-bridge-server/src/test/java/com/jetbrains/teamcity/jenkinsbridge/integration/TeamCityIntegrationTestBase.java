@@ -35,6 +35,7 @@ public abstract class TeamCityIntegrationTestBase extends BaseServerTestCase {
     TeamCityBuildQueuer queuer = new TeamCityBuildQueuer(
         myProjectManager,
         myFixture.getSingletonService(BuildCustomizerFactory.class),
+        null,
         null);
     long promotionId = queuer.queueAgentlessBuild(
         myBuildType.getExternalId(),

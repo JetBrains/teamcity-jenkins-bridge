@@ -25,8 +25,8 @@ import java.util.Map;
  * <p>Scope is deliberately narrow: this only sets {@code teamcity.build.agentLess}. It performs no
  * Jenkins I/O — triggering Jenkins and recording the {@link com.jetbrains.teamcity.jenkinsbridge.persistence.PendingTrigger}
  * stay in {@link JenkinsTriggerOnRunListener}, off this latency-sensitive path. Non-bridge builds
- * pass through untouched after a cheap feature check, and any failure is swallowed so queueing is
- * never broken.
+ * pass through untouched after a cheap feature check. Artifact-storage setup is performed later
+ * by the main-node Jenkins trigger listener, so secondary nodes do not mutate project storage.
  *
  * <p>Registered as a Spring bean; TeamCity auto-discovers {@code ServerExtension} beans.
  */
@@ -87,10 +87,6 @@ public class JenkinsQueueAgentlessPreprocessor implements AddToQueuePreprocessor
         + " agentless before queueing");
   }
 
-  public JenkinsQueueAgentlessPreprocessor() {
-    this(null);
-  }
-
   private boolean hasBridgeFeature(SBuildType buildType) {
     return !buildType.getBuildFeaturesOfType(BridgeBuildFeatureConstants.TYPE).isEmpty();
   }
@@ -102,4 +98,5 @@ public class JenkinsQueueAgentlessPreprocessor implements AddToQueuePreprocessor
       return "<unknown>";
     }
   }
+
 }

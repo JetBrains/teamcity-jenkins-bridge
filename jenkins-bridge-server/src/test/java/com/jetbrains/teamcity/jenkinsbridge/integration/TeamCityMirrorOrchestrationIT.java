@@ -1,6 +1,5 @@
 package com.jetbrains.teamcity.jenkinsbridge.integration;
 
-import com.jetbrains.teamcity.jenkinsbridge.artifactstorage.JenkinsStorageAutomaticActivator;
 import com.jetbrains.teamcity.jenkinsbridge.http.BridgeHttpException;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsDataException;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsBuildInfo;
@@ -143,7 +142,7 @@ public class TeamCityMirrorOrchestrationIT extends TeamCityIntegrationTestBase {
     TeamCityRunningBuildLocator locator = new TeamCityRunningBuildLocator(
         myFixture.getBuildsManager(), myFixture.getBuildPromotionManager(), myProjectManager);
     TeamCityBuildQueuer queuer = new TeamCityBuildQueuer(
-        myProjectManager, myFixture.getSingletonService(BuildCustomizerFactory.class), null);
+        myProjectManager, myFixture.getSingletonService(BuildCustomizerFactory.class), null, null);
     BuildMirrorStore mirrorStore = new BuildMirrorStore(myProjectManager) {
       private int saves;
 
@@ -161,7 +160,7 @@ public class TeamCityMirrorOrchestrationIT extends TeamCityIntegrationTestBase {
         new TeamCityBuildStarter(myFixture.getBuildsManager(), locator),
         new TeamCityBuildLogger(locator, myFixture.getBuildAgentMessagesQueue()),
         new TeamCityTestReporter(locator, myFixture.getBuildAgentMessagesQueue()),
-        new TeamCityArtifactPublisher(locator, new FixedStorageActivator()),
+        new TeamCityArtifactPublisher(locator),
         null,
         new TeamCityBuildNumberPublisher(locator),
         new TeamCityBuildFinisher(locator, myFixture.getBuildAgentMessagesQueue()),
@@ -236,14 +235,4 @@ public class TeamCityMirrorOrchestrationIT extends TeamCityIntegrationTestBase {
     }
   }
 
-  private static final class FixedStorageActivator extends JenkinsStorageAutomaticActivator {
-    private FixedStorageActivator() {
-      super(null, null, null);
-    }
-
-    @Override
-    public String activateJenkinsStorage(String externalProjectId) {
-      return "IT-JENKINS-STORAGE";
-    }
-  }
 }
