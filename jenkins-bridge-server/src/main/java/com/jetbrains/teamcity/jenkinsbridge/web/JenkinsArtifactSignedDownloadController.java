@@ -69,13 +69,13 @@ public class JenkinsArtifactSignedDownloadController extends BaseController {
       return error(response, 400, "Malformed build number, build id or expiry");
     }
 
-    if (!mySigner.isValid(teamCityBuildId, job, buildNumber, relativePath, expiry, signature)) {
-      return error(response, 403, "Invalid or expired download token");
-    }
-
     BuildPromotion promotion = myBuildPromotionManager.findPromotionOrReplacement(teamCityBuildId);
     if (promotion == null) {
       return error(response, 404, "TeamCity build " + teamCityBuildId + " was not found");
+    }
+
+    if (!mySigner.isValid(promotion, teamCityBuildId, job, buildNumber, relativePath, expiry, signature)) {
+      return error(response, 403, "Invalid or expired download token");
     }
 
     JenkinsClient jenkinsClient;

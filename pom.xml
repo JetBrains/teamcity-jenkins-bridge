@@ -8,7 +8,8 @@
   <properties>
       <teamcity-version>2026.1</teamcity-version>
       <teamcity-repository-url>file://${user.home}/.m2/repository/TeamCity</teamcity-repository-url>
-      <teamcity-license-version>${teamcity-version}</teamcity-license-version>
+      <!-- The published fixture artifacts need the compatible 2026.2 license module. -->
+      <teamcity-license-version>2026.2-SNAPSHOT</teamcity-license-version>
       <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
   </properties>
   <repositories>

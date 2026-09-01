@@ -36,7 +36,8 @@ public class JenkinsArtifactSignedDownloadControllerTest {
   private static final Charset OUR_CHARSET = StandardCharsets.UTF_8;
   private static final long BUILD_ID = 4242L;
 
-  private final JenkinsArtifactDownloadSigner signer = new JenkinsArtifactDownloadSigner();
+  private final JenkinsArtifactDownloadSigner signer = new JenkinsArtifactDownloadSigner(p -> "test-secret");
+  private final BuildPromotion promotion = mock(BuildPromotion.class);
   private final JenkinsClientFactory jenkinsClientFactory = mock(JenkinsClientFactory.class);
   private final BuildPromotionManager buildPromotionManager = mock(BuildPromotionManager.class);
 
@@ -44,7 +45,7 @@ public class JenkinsArtifactSignedDownloadControllerTest {
   public void streamsTheArtifactWhenTheSignatureIsValid() throws Exception {
     JenkinsArtifactSignedDownloadController controller = controller("artifact bytes");
 
-    ExpiringSignature signed = signer.sign(BUILD_ID, "job", 7, "target/app.jar");
+    ExpiringSignature signed = signer.sign(promotion, BUILD_ID, "job", 7, "target/app.jar");
     HttpServletRequest request = requestWith("job", "7", "target/app.jar", signed.expiry(), signed.signature());
     HttpServletResponse response = mock(HttpServletResponse.class);
     FakeOutputStream out = new FakeOutputStream();
@@ -61,7 +62,7 @@ public class JenkinsArtifactSignedDownloadControllerTest {
   public void rejectsAnInvalidSignatureWith403() throws Exception {
     JenkinsArtifactSignedDownloadController controller = controller("artifact bytes");
 
-    long expiry = signer.sign(BUILD_ID, "job", 7, "target/app.jar").expiry();
+    long expiry = signer.sign(promotion, BUILD_ID, "job", 7, "target/app.jar").expiry();
     HttpServletRequest request = requestWith("job", "7", "target/app.jar", expiry, "not-the-real-signature");
     HttpServletResponse response = responseCollectingBody();
 
@@ -74,7 +75,7 @@ public class JenkinsArtifactSignedDownloadControllerTest {
   public void rejectsAnExpiredSignatureWith403() throws Exception {
     JenkinsArtifactSignedDownloadController controller = controller("artifact bytes");
 
-    ExpiringSignature signed = signer.sign(BUILD_ID, "job", 7, "target/app.jar");
+    ExpiringSignature signed = signer.sign(promotion, BUILD_ID, "job", 7, "target/app.jar");
     HttpServletRequest request = requestWith("job", "7", "target/app.jar", 0L, signed.signature());
     HttpServletResponse response = responseCollectingBody();
 
@@ -87,7 +88,7 @@ public class JenkinsArtifactSignedDownloadControllerTest {
   public void rejectsASignatureIssuedForAnotherBuildWith403() throws Exception {
     JenkinsArtifactSignedDownloadController controller = controller("artifact bytes");
 
-    ExpiringSignature signed = signer.sign(BUILD_ID + 1, "job", 7, "target/app.jar");
+    ExpiringSignature signed = signer.sign(promotion, BUILD_ID + 1, "job", 7, "target/app.jar");
     HttpServletRequest request = requestWith("job", "7", "target/app.jar", signed.expiry(), signed.signature());
     HttpServletResponse response = responseCollectingBody();
 

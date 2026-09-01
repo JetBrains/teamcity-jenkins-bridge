@@ -134,6 +134,9 @@
   <bean id="jenkinsArtifactDownloadProcessor"
         class="com.jetbrains.teamcity.jenkinsbridge.artifactstorage.JenkinsArtifactDownloadProcessor"/>
 
+  <bean id="jenkinsArtifactSigningSecretProvider"
+        class="com.jetbrains.teamcity.jenkinsbridge.artifactstorage.TeamCitySecureArtifactSigningSecretProvider"/>
+
   <bean id="jenkinsArtifactDownloadSigner"
         class="com.jetbrains.teamcity.jenkinsbridge.artifactstorage.JenkinsArtifactDownloadSigner"/>
 
