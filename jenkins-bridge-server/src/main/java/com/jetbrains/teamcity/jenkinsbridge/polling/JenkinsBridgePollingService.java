@@ -919,8 +919,6 @@ public class JenkinsBridgePollingService {
           + " Pipeline stage(s) for " + mirror.getJenkinsBuildKey());
     }
 
-    // The progressive Jenkins console is the build-wide log for both Pipeline and non-Pipeline
-    // builds. Pipeline stage logs are additionally available in the Pipeline Graph view.
     syncBuildConsole(jenkinsClient, mirror, teamCityBuildId);
 
     if (buildInfo.isBuilding()) {
