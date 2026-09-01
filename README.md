@@ -450,7 +450,7 @@ If the selected TeamCity repository does not contain `license-protected` at the
 same version, override that test-only dependency separately:
 
 ```bash
-mvn test \
+mvn -Pteamcity-integration-tests verify \
   -Dteamcity-version=2026.3-DSL-eap1-SNAPSHOT \
   -Dteamcity-license-version=2026.2-SNAPSHOT
 ```
