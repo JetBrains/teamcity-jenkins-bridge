@@ -46,6 +46,7 @@ public class JenkinsStorageAutomaticActivator {
   @Nullable
   public String ensureJenkinsStorage(@NotNull String externalProjectId) {
     String jenkinsType = myJenkinsStorageType.getType();
+    LOG.debug("Jenkins Bridge: looking up Jenkins artifact storage for project " + externalProjectId);
     SProject project = myProjectManager.findProjectByExternalId(externalProjectId);
     if (project == null) {
       LOG.warn("Project with id " + externalProjectId + " not found");
@@ -58,10 +59,16 @@ public class JenkinsStorageAutomaticActivator {
         .findFirst();
 
     String settingsId = existing
-        .map(SProjectFeatureDescriptor::getId)
+        .map(descriptor -> {
+          LOG.debug("Jenkins Bridge: reusing Jenkins artifact storage " + descriptor.getId()
+              + " for project " + externalProjectId);
+          return descriptor.getId();
+        })
         .orElseGet(() -> {
           String uuid = UUID.randomUUID().toString();
           SProjectFeatureDescriptor ptd = mySettingsManager.addSettings(project, "JENKINS-STORAGE-" + uuid, myJenkinsStorageType, false, Collections.emptyMap());
+          LOG.debug("Jenkins Bridge: created Jenkins artifact storage " + ptd.getId()
+              + " for project " + externalProjectId);
           return ptd.getId();
         });
 
@@ -82,6 +89,8 @@ public class JenkinsStorageAutomaticActivator {
       @NotNull BuildPromotion promotion,
       @NotNull String externalProjectId
   ) {
+    LOG.debug("Jenkins Bridge: configuring artifact storage for promotion " + promotion.getId()
+        + " in project " + externalProjectId);
     if (!(promotion instanceof BuildPromotionEx)) {
       LOG.error("Jenkins Bridge: promotion " + promotion.getId()
           + " does not support artifact-storage attributes");
@@ -95,6 +104,8 @@ public class JenkinsStorageAutomaticActivator {
         throw new IllegalStateException("Could not create Jenkins artifact storage definition");
       }
       promotionEx.setAttribute(BuildAttributes.STORAGE_SETTINGS_REFERENCE, storageId);
+      LOG.debug("Jenkins Bridge: attached Jenkins artifact storage " + storageId
+          + " to promotion " + promotion.getId());
     } catch (RuntimeException e) {
       String message = "Could not configure Jenkins artifact storage for promotion "
           + promotion.getId() + ": "

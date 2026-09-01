@@ -160,7 +160,7 @@ public class TeamCityMirrorOrchestrationIT extends TeamCityIntegrationTestBase {
         new TeamCityBuildStarter(myFixture.getBuildsManager(), locator),
         new TeamCityBuildLogger(locator, myFixture.getBuildAgentMessagesQueue()),
         new TeamCityTestReporter(locator, myFixture.getBuildAgentMessagesQueue()),
-        new TeamCityArtifactPublisher(locator, new FixedStorageActivator()),
+        new TeamCityArtifactPublisher(locator),
         null,
         new TeamCityBuildNumberPublisher(locator),
         new TeamCityBuildFinisher(locator, myFixture.getBuildAgentMessagesQueue()),
