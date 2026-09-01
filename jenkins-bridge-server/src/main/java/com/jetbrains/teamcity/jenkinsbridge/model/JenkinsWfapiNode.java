@@ -16,6 +16,7 @@ import static com.jetbrains.teamcity.jenkinsbridge.util.Utilities.nullToEmpty;
 public class JenkinsWfapiNode {
   private final String id;
   private final String name;
+  private final String parameterDescription;
   private final String status;
   private final long startTimeMillis;
   private final long durationMillis;
@@ -25,6 +26,7 @@ public class JenkinsWfapiNode {
   public JenkinsWfapiNode(
       String id,
       String name,
+      String parameterDescription,
       String status,
       long startTimeMillis,
       long durationMillis,
@@ -33,6 +35,7 @@ public class JenkinsWfapiNode {
   ) {
     this.id = nullToEmpty(id);
     this.name = nullToEmpty(name);
+    this.parameterDescription = nullToEmpty(parameterDescription);
     this.status = nullToEmpty(status);
     this.startTimeMillis = startTimeMillis;
     this.durationMillis = durationMillis;
@@ -44,6 +47,7 @@ public class JenkinsWfapiNode {
     return new JenkinsWfapiNode(
         stage.getId(),
         stage.getName(),
+        "",
         stage.getStatus(),
         stage.getStartTimeMillis(),
         stage.getDurationMillis(),
@@ -55,6 +59,7 @@ public class JenkinsWfapiNode {
     return new JenkinsWfapiNode(
         getString(json, "id", ""),
         firstNonBlankString(getString(json, "name", ""), getString(json, "displayName", "")),
+        getString(json, "parameterDescription", ""),
         getString(json, "status", ""),
         getLong(json, "startTimeMillis"),
         getLong(json, "durationMillis"),
@@ -89,6 +94,7 @@ public class JenkinsWfapiNode {
     return new JenkinsWfapiNode(
         firstNonBlankString(other.getId(), getId()),
         firstNonBlankString(other.getName(), getName()),
+        firstNonBlankString(other.getParameterDescription(), getParameterDescription()),
         firstNonBlankString(other.getStatus(), getStatus()),
         other.getStartTimeMillis() > 0 ? other.getStartTimeMillis() : getStartTimeMillis(),
         other.getDurationMillis() > 0 ? other.getDurationMillis() : getDurationMillis(),
@@ -106,6 +112,14 @@ public class JenkinsWfapiNode {
 
   public String getName() {
     return name;
+  }
+
+  /**
+   * The Pipeline step arguments supplied by WFAPI. Its value is produced by Jenkins from the
+   * node's {@code ArgumentsAction}, rather than inferred from the console log.
+   */
+  public String getParameterDescription() {
+    return parameterDescription;
   }
 
   public String getStatus() {

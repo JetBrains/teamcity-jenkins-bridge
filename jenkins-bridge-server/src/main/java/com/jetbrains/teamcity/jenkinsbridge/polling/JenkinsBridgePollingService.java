@@ -917,16 +917,9 @@ public class JenkinsBridgePollingService {
       }
       LOG.debug(TeamCityNodeLog.currentNode(teamCityNodes) + " [Jenkins Bridge DEBUG] Syncing " + stages.getStages().size()
           + " Pipeline stage(s) for " + mirror.getJenkinsBuildKey());
-      mirrorService.syncStages(mirror, teamCityBuildId, stages, jenkinsClient);
-    } else {
-      long start = Math.max(0L, mirror.getLastLogOffset());
-      JenkinsLogChunk logChunk = jenkinsClient.getProgressiveLog(
-          mirror.getJenkinsJob(), mirror.getJenkinsBuildNumber(), start);
-      LOG.debug(TeamCityNodeLog.currentNode(teamCityNodes) + " [Jenkins Bridge DEBUG] Fetched " + logChunk.getText().length()
-          + " new console character(s) for " + mirror.getJenkinsBuildKey()
-          + " from byte offset " + start + " (nextStart=" + logChunk.getNextStart() + ")");
-      mirrorService.syncLogs(mirror, teamCityBuildId, logChunk);
     }
+
+    syncBuildConsole(jenkinsClient, mirror, teamCityBuildId);
 
     if (buildInfo.isBuilding()) {
       return;
@@ -948,6 +941,18 @@ public class JenkinsBridgePollingService {
     }
     mirrorService.finishBuildIfNeeded(mirror, teamCityBuildId, buildInfo);
     mirrorService.ensureRetrospectivePipelineChain(mirror, teamCityBuildId, graph);
+  }
+
+  /** Synchronizes the flat Jenkins progressive console for the mirrored build. */
+  private void syncBuildConsole(JenkinsClient jenkinsClient, BuildMirror mirror, long teamCityBuildId)
+      throws BridgeHttpException, IOException {
+    long start = Math.max(0L, mirror.getLastLogOffset());
+    JenkinsLogChunk logChunk = jenkinsClient.getProgressiveLog(
+        mirror.getJenkinsJob(), mirror.getJenkinsBuildNumber(), start);
+    LOG.debug(TeamCityNodeLog.currentNode(teamCityNodes) + " [Jenkins Bridge DEBUG] Fetched " + logChunk.getText().length()
+        + " new console character(s) for " + mirror.getJenkinsBuildKey()
+        + " from byte offset " + start + " (nextStart=" + logChunk.getNextStart() + ")");
+    mirrorService.syncLogs(mirror, teamCityBuildId, logChunk);
   }
 
   @Nullable

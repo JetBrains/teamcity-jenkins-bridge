@@ -42,9 +42,6 @@
   <bean id="teamCityTestReporter"
         class="com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityTestReporter"/>
 
-  <bean id="teamCityStageReporter"
-        class="com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityStageReporter"/>
-
   <bean id="teamCityArtifactPublisher"
         class="com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityArtifactPublisher"/>
 

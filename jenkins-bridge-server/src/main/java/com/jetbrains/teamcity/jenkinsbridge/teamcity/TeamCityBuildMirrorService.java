@@ -10,21 +10,16 @@ import com.jetbrains.teamcity.jenkinsbridge.persistence.BuildMirror;
 import com.jetbrains.teamcity.jenkinsbridge.persistence.PipelineChainMirror;
 import com.jetbrains.teamcity.jenkinsbridge.persistence.PipelineChainNodeMirror;
 import com.jetbrains.teamcity.jenkinsbridge.persistence.BuildMirrorStore;
-import com.jetbrains.teamcity.jenkinsbridge.persistence.StageMirror;
 import com.jetbrains.teamcity.jenkinsbridge.persistence.SyncState;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsBuildInfo;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsLogChunk;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsPipelineGraph;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsPipelineGraphNode;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsPipelineNodeStatus;
-import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsStage;
-import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsStageLog;
-import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsStages;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsTestReport;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsVcsInfo;
 import com.jetbrains.teamcity.jenkinsbridge.settings.JenkinsBridgeSettingsProvider;
 import com.jetbrains.teamcity.jenkinsbridge.vcs.VcsSyncResult;
-import jetbrains.buildServer.messages.BuildMessage1;
 import jetbrains.buildServer.serverSide.BuildPromotion;
 import jetbrains.buildServer.serverSide.BuildPromotionEx;
 
@@ -59,7 +54,6 @@ public class TeamCityBuildMirrorService {
   private final TeamCityBuildStarter teamCityBuildStarter;
   private final TeamCityBuildLogger teamCityBuildLogger;
   private final TeamCityTestReporter teamCityTestReporter;
-  private final TeamCityStageReporter teamCityStageReporter;
   private final TeamCityArtifactPublisher teamCityArtifactPublisher;
   private final TeamCityVcsPublisher teamCityVcsPublisher;
   private final TeamCityBuildNumberPublisher teamCityBuildNumberPublisher;
@@ -74,7 +68,6 @@ public class TeamCityBuildMirrorService {
       TeamCityBuildStarter teamCityBuildStarter,
       TeamCityBuildLogger teamCityBuildLogger,
       TeamCityTestReporter teamCityTestReporter,
-      TeamCityStageReporter teamCityStageReporter,
       TeamCityArtifactPublisher teamCityArtifactPublisher,
       TeamCityVcsPublisher teamCityVcsPublisher,
       TeamCityBuildNumberPublisher teamCityBuildNumberPublisher,
@@ -88,7 +81,6 @@ public class TeamCityBuildMirrorService {
     this.teamCityBuildStarter = teamCityBuildStarter;
     this.teamCityBuildLogger = teamCityBuildLogger;
     this.teamCityTestReporter = teamCityTestReporter;
-    this.teamCityStageReporter = teamCityStageReporter;
     this.teamCityArtifactPublisher = teamCityArtifactPublisher;
     this.teamCityVcsPublisher = teamCityVcsPublisher;
     this.teamCityBuildNumberPublisher = teamCityBuildNumberPublisher;
@@ -210,7 +202,7 @@ public class TeamCityBuildMirrorService {
       return;
     }
 
-    String text = "Monitoring Jenkins job " + mirror.getJenkinsJob()
+    String text = "[Jenkins Bridge] Monitoring Jenkins job " + mirror.getJenkinsJob()
         + " build #" + mirror.getJenkinsBuildNumber();
 
     teamCityBuildStarter.markBuildAsRunning(teamCityBuildId, text);
@@ -232,7 +224,7 @@ public class TeamCityBuildMirrorService {
         + "Jenkins build URL: " + nullToEmpty(mirror.getJenkinsBuildUrl()) + "\n"
         + "\n";
 
-    teamCityBuildLogger.addBuildLog(teamCityBuildId, text);
+    teamCityBuildLogger.addBridgeLog(teamCityBuildId, text);
 
     mirror.setMetadataLogSent(true);
     mirror.setSyncState(SyncState.LOG_SYNCING);
@@ -316,7 +308,7 @@ public class TeamCityBuildMirrorService {
     if (key.equals(mirror.getPipelineChainMessageKey())) {
       return;
     }
-    teamCityBuildLogger.addBuildLog(teamCityBuildId, text);
+    teamCityBuildLogger.addBridgeLog(teamCityBuildId, text);
     mirror.setPipelineChainMessageKey(key);
   }
 
@@ -385,138 +377,6 @@ public class TeamCityBuildMirrorService {
     return new Date(start + duration);
   }
 
-  /**
-   * Mirrors Jenkins Pipeline stages as TeamCity build-step blocks, live and idempotently. Stages are
-   * processed in {@code describe} order; for each stage we open its block once, append only the
-   * console text produced since the last poll, and close it once the stage reaches a terminal status.
-   * <p>
-   * To keep blocks well-formed (non-overlapping) in the linear TeamCity log, we never open the next
-   * stage's block until the current one is closed: a stage that is still running (or paused, or not
-   * yet started) stops this poll. Parallel stages are therefore serialized in describe order — a
-   * documented v1 limitation.
-   */
-  public void syncStages(BuildMirror mirror, long teamCityBuildId, JenkinsStages stages, JenkinsClient jenkinsClient)
-      throws BridgeHttpException, JenkinsDataException, IOException, TeamCityRunningBuildNotFoundException {
-    Map<String, StageMirror> state = copyStageMirrors(mirror.getStages());
-    List<BuildMessage1> messages = new ArrayList<BuildMessage1>();
-
-    for (JenkinsStage stage : stages.getStages()) {
-      StageMirror sm = state.get(stage.getId());
-      if (sm == null) {
-        sm = new StageMirror(stage.getName());
-        state.put(stage.getId(), sm);
-      }
-      sm.setStatus(stage.getStatus());
-
-      if (stage.isSkipped()) {
-        // Skipped stages have no node log; emit an empty, informative block and keep going.
-        if (!sm.isBlockClosed()) {
-          messages.addAll(teamCityStageReporter.messagesForStage(
-              stage.getName(), null, null, !sm.isBlockOpened(), "(stage skipped)", true));
-          sm.setBlockOpened(true);
-          sm.setBlockClosed(true);
-        }
-        continue;
-      }
-
-      if (stage.isNotStarted() && !sm.isBlockOpened()) {
-        // Queued but not running yet: nothing to show, and nothing after it can have started either.
-        break;
-      }
-
-      boolean open = !sm.isBlockOpened();
-
-      String append = "";
-      JenkinsStageLog log = jenkinsClient.getStageLog(
-          mirror.getJenkinsJob(), mirror.getJenkinsBuildNumber(), stage.getId());
-      String full = log.getText();
-      long offset = sm.getLogOffset();
-      if (offset < full.length()) {
-        append = full.substring((int) offset);
-        sm.setLogOffset(full.length());
-      }
-
-      boolean close = stage.isTerminal() && !sm.isBlockClosed();
-
-      // Block start/end carry no explicit Date: they default to the current time, so every message
-      // in the queue (block start, the now()-stamped console lines, block end) stays in monotonic
-      // timestamp order. A historical Jenkins timestamp on the boundaries would land the blockEnd
-      // before its own content and TeamCity would not render a foldable block.
-      messages.addAll(teamCityStageReporter.messagesForStage(stage.getName(), null, null, open, append, close));
-      if (open) {
-        sm.setBlockOpened(true);
-      }
-      if (close) {
-        sm.setBlockClosed(true);
-      }
-
-      // Do not open the next stage until this one is closed: keeps log blocks non-overlapping.
-      if (!sm.isBlockClosed()) {
-        break;
-      }
-    }
-
-    // Surface the current stage as the running build's status text ("Jenkins stage N/M: name") so a
-    // long build's position is visible at a glance. Deduped: only sent when it changes.
-    String progress = currentStageProgress(stages);
-    boolean progressChanged = progress != null && !progress.equals(mirror.getLastStageProgress());
-    if (progressChanged) {
-      messages.add(teamCityStageReporter.progressMessage(progress));
-    }
-
-    if (!messages.isEmpty()) {
-      teamCityStageReporter.report(teamCityBuildId, messages);
-    }
-
-    Map<String, StageMirror> persistedState = mirror.getStages();
-    persistedState.clear();
-    persistedState.putAll(state);
-    if (progressChanged) {
-      mirror.setLastStageProgress(progress);
-    }
-    mirror.setSyncState(SyncState.LOG_SYNCING);
-    mirror.setLastError(null);
-    mirrorStore.saveMirror(mirror);
-  }
-
-  private Map<String, StageMirror> copyStageMirrors(Map<String, StageMirror> source) {
-    Map<String, StageMirror> copy = new LinkedHashMap<String, StageMirror>();
-    for (Map.Entry<String, StageMirror> entry : source.entrySet()) {
-      StageMirror original = entry.getValue();
-      StageMirror stage = new StageMirror(original.getName());
-      stage.setStatus(original.getStatus());
-      stage.setBlockOpened(original.isBlockOpened());
-      stage.setLogOffset(original.getLogOffset());
-      stage.setBlockClosed(original.isBlockClosed());
-      copy.put(entry.getKey(), stage);
-    }
-    return copy;
-  }
-
-  /**
-   * "Jenkins stage N/M: name" for the first non-terminal stage (the one in progress), or a completion
-   * marker when all stages are terminal. Null when there are no stages. Describe order; parallel stages
-   * are serialized in v1, so N is an approximate position hint, not an exact parallel index.
-   */
-  private String currentStageProgress(JenkinsStages stages) {
-    List<JenkinsStage> list = stages.getStages();
-    int total = list.size();
-    if (total == 0) {
-      return null;
-    }
-    int currentIndex = -1;
-    for (int i = 0; i < total; i++) {
-      if (!list.get(i).isTerminal()) {
-        currentIndex = i;
-        break;
-      }
-    }
-    if (currentIndex < 0) {
-      return "Jenkins stages complete (" + total + "/" + total + ")";
-    }
-    return "Jenkins stage " + (currentIndex + 1) + "/" + total + ": " + list.get(currentIndex).getName();
-  }
-
   public void syncTestsIfNeeded(BuildMirror mirror, long teamCityBuildId, JenkinsTestReport testReport)
       throws IOException,TeamCityRunningBuildNotFoundException {
     if (mirror.isTestsSynced()) {
@@ -571,7 +431,7 @@ public class TeamCityBuildMirrorService {
     }
 
     try {
-      teamCityBuildLogger.addBuildLog(teamCityBuildId, message);
+      teamCityBuildLogger.addBridgeLog(teamCityBuildId, message);
     } catch (TeamCityRunningBuildNotFoundException e) {
       LOG.warn("Jenkins Bridge: failed to write artifact summary for "
           + mirror.getJenkinsBuildKey(), e);
@@ -662,7 +522,7 @@ public class TeamCityBuildMirrorService {
           + "Jenkins result: " + finalResult + "\n"
           + "Jenkins duration: " + jenkinsInfo.getDuration() + " ms\n";
 
-      teamCityBuildLogger.addBuildLog(teamCityBuildId, summary);
+      teamCityBuildLogger.addBridgeLog(teamCityBuildId, summary);
 
       mirror.setSummaryLogSent(true);
       mirror.setJenkinsResult(finalResult);

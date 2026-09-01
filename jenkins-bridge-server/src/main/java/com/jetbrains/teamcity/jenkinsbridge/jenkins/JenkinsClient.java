@@ -842,10 +842,12 @@ public class JenkinsClient {
   }
 
   /**
-   * Fetches the steps of a stage with per-step name/status/duration and console log (G3b). Descends the
-   * stage's {@code stageFlowNodes}; for each step that carries a log link, fetches its node log (Console
-   * annotations stripped). Steps without a log (e.g. structural nodes) are still returned with empty log
-   * so they show name/status/timing. A {@code 404} (stage not materialized) yields no steps.
+   * Fetches the steps of a stage with WFAPI's display name, stored argument description, status,
+   * duration, and console log (G3b). The argument description comes from Jenkins' ArgumentsAction;
+   * it is intentionally not derived from log text. Descends the stage's {@code stageFlowNodes}; for
+   * each step that carries a log link, fetches its node log (Console annotations stripped). Steps
+   * without a log (e.g. structural nodes) are still returned with empty log. A {@code 404} (stage not
+   * materialized) yields no steps.
    */
   public List<JenkinsStageStep> getStageSteps(String jobName, int buildNumber, String stageId)
       throws BridgeHttpException, JenkinsDataException {
@@ -856,7 +858,8 @@ public class JenkinsClient {
     List<JenkinsStageStep> steps = new ArrayList<JenkinsStageStep>();
     for (JenkinsWfapiNode node : JenkinsWfapiNode.stageFlowNodesFromJson(describe)) {
       String log = node.isLogNode() ? getNodeLog(jobName, buildNumber, node.getId()).getText() : "";
-      steps.add(new JenkinsStageStep(node.getId(), node.getName(), node.getStatus(), node.getDurationMillis(), log));
+      steps.add(new JenkinsStageStep(
+          node.getId(), node.getName(), node.getParameterDescription(), node.getStatus(), node.getDurationMillis(), log));
     }
     return steps;
   }
