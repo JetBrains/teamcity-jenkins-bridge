@@ -1,6 +1,7 @@
 package com.jetbrains.teamcity.jenkinsbridge.teamcity;
 
 import com.jetbrains.teamcity.jenkinsbridge.connection.JenkinsConnectionConstants;
+import com.jetbrains.teamcity.jenkinsbridge.feature.BridgeBuildFeatureConstants;
 import com.jetbrains.teamcity.jenkinsbridge.http.BridgeHttpException;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClient;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsDataException;
@@ -218,7 +219,9 @@ public class TeamCityBuildMirrorService {
       return;
     }
 
-    String text = "Monitoring Jenkins job: " + mirror.getJenkinsJob() + "\n"
+    String storageWarning = storageWarning(teamCityBuildId);
+    String text = (storageWarning == null ? "" : "[Jenkins Bridge] WARNING: " + storageWarning + "\n\n")
+        + "Monitoring Jenkins job: " + mirror.getJenkinsJob() + "\n"
         + "Jenkins build number: " + mirror.getJenkinsBuildNumber() + "\n"
         + "Jenkins build key: " + mirror.getJenkinsBuildKey() + "\n"
         + "Jenkins build URL: " + nullToEmpty(mirror.getJenkinsBuildUrl()) + "\n"
@@ -230,6 +233,18 @@ public class TeamCityBuildMirrorService {
     mirror.setSyncState(SyncState.LOG_SYNCING);
     mirror.setLastError(null);
     mirrorStore.saveMirror(mirror);
+  }
+
+  private String storageWarning(long teamCityBuildId) {
+    BuildPromotion promotion = teamCityBuildLocator.findPromotion(teamCityBuildId);
+    if (promotion == null) {
+      return null;
+    }
+    Object warning = promotion instanceof BuildPromotionEx
+        ? ((BuildPromotionEx) promotion).getAttribute(
+            BridgeBuildFeatureConstants.JENKINS_STORAGE_WARNING_ATTRIBUTE)
+        : null;
+    return warning instanceof String && !((String) warning).isEmpty() ? (String) warning : null;
   }
 
   public void syncLogs(BuildMirror mirror, long teamCityBuildId, JenkinsLogChunk logChunk)

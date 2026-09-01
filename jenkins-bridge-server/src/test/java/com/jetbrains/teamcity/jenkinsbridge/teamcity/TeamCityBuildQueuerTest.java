@@ -67,7 +67,7 @@ public class TeamCityBuildQueuerTest {
   public void queueAgentlessBuildAttachesJenkinsStorageToPromotionBeforeQueueing() throws Exception {
     queuer.queueAgentlessBuild(BUILD_TYPE_ID, properties(), Collections.emptyMap(), null);
 
-    verify(promotion).setAttribute(BuildAttributes.STORAGE_SETTINGS_REFERENCE, "STORAGE-1");
+    verify(storageActivator).configurePromotionStorage(promotion, "Project1");
     verify(promotion).addToQueue(anyString());
   }
 

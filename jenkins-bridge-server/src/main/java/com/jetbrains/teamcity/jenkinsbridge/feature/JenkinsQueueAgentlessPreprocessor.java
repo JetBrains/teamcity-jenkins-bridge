@@ -2,8 +2,6 @@ package com.jetbrains.teamcity.jenkinsbridge.feature;
 
 import com.intellij.openapi.diagnostic.Logger;
 import com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityBuildParameters;
-import com.jetbrains.teamcity.jenkinsbridge.artifactstorage.JenkinsStorageAutomaticActivator;
-import jetbrains.buildServer.serverSide.BuildAttributes;
 import jetbrains.buildServer.AgentRestrictor;
 import jetbrains.buildServer.serverSide.AddToQueuePreprocessor;
 import jetbrains.buildServer.serverSide.BuildPromotion;
@@ -27,20 +25,17 @@ import java.util.Map;
  * <p>Scope is deliberately narrow: this only sets {@code teamcity.build.agentLess}. It performs no
  * Jenkins I/O — triggering Jenkins and recording the {@link com.jetbrains.teamcity.jenkinsbridge.persistence.PendingTrigger}
  * stay in {@link JenkinsTriggerOnRunListener}, off this latency-sensitive path. Non-bridge builds
- * pass through untouched after a cheap feature check, and any failure is swallowed so queueing is
- * never broken.
+ * pass through untouched after a cheap feature check. Artifact-storage setup is performed later
+ * by the main-node Jenkins trigger listener, so secondary nodes do not mutate project storage.
  *
  * <p>Registered as a Spring bean; TeamCity auto-discovers {@code ServerExtension} beans.
  */
 public class JenkinsQueueAgentlessPreprocessor implements AddToQueuePreprocessor {
   private static final Logger LOG = Logger.getInstance(JenkinsQueueAgentlessPreprocessor.class.getName());
   private final TeamCityNodes teamCityNodes;
-  private final JenkinsStorageAutomaticActivator storageActivator;
 
-  public JenkinsQueueAgentlessPreprocessor(TeamCityNodes teamCityNodes,
-                                           JenkinsStorageAutomaticActivator storageActivator) {
+  public JenkinsQueueAgentlessPreprocessor(TeamCityNodes teamCityNodes) {
     this.teamCityNodes = teamCityNodes;
-    this.storageActivator = storageActivator;
   }
 
   @Override
@@ -88,21 +83,8 @@ public class JenkinsQueueAgentlessPreprocessor implements AddToQueuePreprocessor
       parameters.put(TeamCityBuildParameters.TRIGGER_CORRELATION, triggerCorrelation);
     }
     ex.setCustomParameters(parameters);
-    if (storageActivator != null) {
-      String storageId = storageActivator.ensureJenkinsStorage(buildType.getProject().getExternalId());
-      if (storageId != null && !storageId.isEmpty()) {
-        ex.setAttribute(BuildAttributes.STORAGE_SETTINGS_REFERENCE, storageId);
-      } else {
-        LOG.warn("Jenkins Bridge: could not create Jenkins artifact storage definition for promotion "
-            + safeId(promotion));
-      }
-    }
     LOG.info("Jenkins Bridge: marked TeamCity promotion " + promotion.getId()
         + " agentless before queueing");
-  }
-
-  public JenkinsQueueAgentlessPreprocessor() {
-    this(null, null);
   }
 
   private boolean hasBridgeFeature(SBuildType buildType) {
@@ -116,4 +98,5 @@ public class JenkinsQueueAgentlessPreprocessor implements AddToQueuePreprocessor
       return "<unknown>";
     }
   }
+
 }

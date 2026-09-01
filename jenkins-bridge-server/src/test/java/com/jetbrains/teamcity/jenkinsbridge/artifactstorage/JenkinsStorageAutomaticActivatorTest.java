@@ -1,7 +1,10 @@
 package com.jetbrains.teamcity.jenkinsbridge.artifactstorage;
 
+import com.jetbrains.teamcity.jenkinsbridge.feature.BridgeBuildFeatureConstants;
 import jetbrains.buildServer.artifacts.ArtifactStorageSettings;
 import jetbrains.buildServer.serverSide.ProjectManager;
+import jetbrains.buildServer.serverSide.BuildAttributes;
+import jetbrains.buildServer.serverSide.BuildPromotionEx;
 import jetbrains.buildServer.serverSide.SProject;
 import jetbrains.buildServer.serverSide.SProjectFeatureDescriptor;
 import jetbrains.buildServer.serverSide.artifacts.ArtifactStorageTypeRegistry;
@@ -17,6 +20,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -67,6 +71,28 @@ public class JenkinsStorageAutomaticActivatorTest {
     when(projectManager.findProjectByExternalId("MissingProject")).thenReturn(null);
     String result = activator.ensureJenkinsStorage("MissingProject");
     assertNull(result);
+  }
+
+  @Test
+  public void configurePromotionStorageAttachesStorageReference() {
+    SProject project = projectWithExternalId("Project4");
+    jenkinsFeature(project, "JENKINS-STORAGE");
+    BuildPromotionEx promotion = mock(BuildPromotionEx.class);
+
+    activator.configurePromotionStorage(promotion, "Project4");
+
+    verify(promotion).setAttribute(BuildAttributes.STORAGE_SETTINGS_REFERENCE, "JENKINS-STORAGE");
+  }
+
+  @Test
+  public void configurePromotionStorageRecordsWarningWhenStorageIsUnavailable() {
+    BuildPromotionEx promotion = mock(BuildPromotionEx.class);
+    when(promotion.getId()).thenReturn(42L);
+
+    activator.configurePromotionStorage(promotion, "MissingProject");
+
+    verify(promotion).setAttribute(
+        eq(BridgeBuildFeatureConstants.JENKINS_STORAGE_WARNING_ATTRIBUTE), anyString());
   }
 
   private SProject projectWithExternalId(String externalId) {

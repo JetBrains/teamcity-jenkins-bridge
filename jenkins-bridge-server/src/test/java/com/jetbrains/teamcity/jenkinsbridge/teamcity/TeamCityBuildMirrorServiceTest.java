@@ -466,7 +466,7 @@ public class TeamCityBuildMirrorServiceTest {
     Map<String, String> jenkinsParameters;
 
     CapturingQueuer() {
-      super(null, null, null);
+      super(null, null, null, null);
     }
 
     @Override

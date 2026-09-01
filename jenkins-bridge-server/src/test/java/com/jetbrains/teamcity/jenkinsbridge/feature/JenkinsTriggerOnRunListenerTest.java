@@ -1,5 +1,6 @@
 package com.jetbrains.teamcity.jenkinsbridge.feature;
 
+import com.jetbrains.teamcity.jenkinsbridge.artifactstorage.JenkinsStorageAutomaticActivator;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClient;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClientFactory;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsJobParameters;
@@ -15,6 +16,7 @@ import jetbrains.buildServer.serverSide.BuildServerListener;
 import jetbrains.buildServer.serverSide.SBuildFeatureDescriptor;
 import jetbrains.buildServer.serverSide.SBuildType;
 import jetbrains.buildServer.serverSide.SQueuedBuild;
+import jetbrains.buildServer.serverSide.SProject;
 import jetbrains.buildServer.serverSide.TeamCityNode;
 import jetbrains.buildServer.serverSide.TeamCityNodes;
 import jetbrains.buildServer.serverSide.parameters.ParameterFactory;
@@ -226,9 +228,11 @@ public class JenkinsTriggerOnRunListenerTest {
     final TeamCityQueuedBuildFailureService failureService = mock(TeamCityQueuedBuildFailureService.class);
     final TeamCityNodes teamCityNodes = mock(TeamCityNodes.class);
     final SBuildType buildType = mock(SBuildType.class);
+    final SProject project = mock(SProject.class);
     final ParametersProvider parametersProvider = mock(ParametersProvider.class);
     final ParameterFactory parameterFactory = mock(ParameterFactory.class);
     final PersistTask persistTask = mock(PersistTask.class);
+    final JenkinsStorageAutomaticActivator storageActivator = mock(JenkinsStorageAutomaticActivator.class);
 
     Fixture() throws Exception {
       this(42L, "job");
@@ -241,6 +245,8 @@ public class JenkinsTriggerOnRunListenerTest {
       when(queued.getBuildPromotion()).thenReturn(promotion);
       when(promotion.getId()).thenReturn(promotionId);
       when(promotion.getBuildType()).thenReturn(buildType);
+      when(buildType.getProject()).thenReturn(project);
+      when(project.getExternalId()).thenReturn("project");
       when(buildType.getParametersProvider()).thenReturn(parametersProvider);
       when(parametersProvider.get(any())).thenReturn("old");
       when(store.getImportedJenkinsParameterNames("buildType"))
@@ -269,7 +275,8 @@ public class JenkinsTriggerOnRunListenerTest {
 
       new JenkinsTriggerOnRunListener(
           dispatcher, clientFactory, store, failureService, teamCityNodes,
-          new JenkinsParameterSynchronizer(clientFactory, parameterFactory, store));
+          new JenkinsParameterSynchronizer(clientFactory, parameterFactory, store),
+          storageActivator);
     }
 
     BuildServerListener listener() {

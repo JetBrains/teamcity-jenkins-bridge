@@ -142,7 +142,7 @@ public class TeamCityMirrorOrchestrationIT extends TeamCityIntegrationTestBase {
     TeamCityRunningBuildLocator locator = new TeamCityRunningBuildLocator(
         myFixture.getBuildsManager(), myFixture.getBuildPromotionManager(), myProjectManager);
     TeamCityBuildQueuer queuer = new TeamCityBuildQueuer(
-        myProjectManager, myFixture.getSingletonService(BuildCustomizerFactory.class), null);
+        myProjectManager, myFixture.getSingletonService(BuildCustomizerFactory.class), null, null);
     BuildMirrorStore mirrorStore = new BuildMirrorStore(myProjectManager) {
       private int saves;
 

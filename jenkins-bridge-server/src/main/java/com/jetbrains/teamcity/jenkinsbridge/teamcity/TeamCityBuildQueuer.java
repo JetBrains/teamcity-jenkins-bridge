@@ -29,21 +29,12 @@ public class TeamCityBuildQueuer {
       ProjectManager projectManager,
       BuildCustomizerFactory buildCustomizerFactory,
       JenkinsClientFactory jenkinsClientFactory,
-      com.jetbrains.teamcity.jenkinsbridge.artifactstorage.JenkinsStorageAutomaticActivator storageActivator
+      JenkinsStorageAutomaticActivator storageActivator
   ) {
     this.projectManager = projectManager;
     this.buildCustomizerFactory = buildCustomizerFactory;
     this.jenkinsClientFactory = jenkinsClientFactory;
     this.storageActivator = storageActivator;
-  }
-
-  /** Retained for isolated tests that do not exercise artifact storage. */
-  public TeamCityBuildQueuer(
-      ProjectManager projectManager,
-      BuildCustomizerFactory buildCustomizerFactory,
-      JenkinsClientFactory jenkinsClientFactory
-  ) {
-    this(projectManager, buildCustomizerFactory, jenkinsClientFactory, null);
   }
 
   public long queueAgentlessBuild(
@@ -79,15 +70,9 @@ public class TeamCityBuildQueuer {
     }
 
     BuildPromotion promotion = customizer.createPromotion();
-    if (storageActivator != null && !(promotion instanceof BuildPromotionEx)) {
-      throw new TeamCityBuildQueueException("Jenkins mirror promotion does not support build attributes");
-    }
     if (storageActivator != null) {
-      String storageId = storageActivator.ensureJenkinsStorage(buildType.getProject().getExternalId());
-      if (storageId == null || storageId.isEmpty()) {
-        throw new TeamCityBuildQueueException("Could not create Jenkins artifact storage definition");
-      }
-      ((BuildPromotionEx) promotion).setAttribute(BuildAttributes.STORAGE_SETTINGS_REFERENCE, storageId);
+      storageActivator.configurePromotionStorage(
+          promotion, buildType.getProject().getExternalId());
     }
     SQueuedBuild queuedBuild = promotion.addToQueue(TRIGGERED_BY);
     if (queuedBuild == null) {
