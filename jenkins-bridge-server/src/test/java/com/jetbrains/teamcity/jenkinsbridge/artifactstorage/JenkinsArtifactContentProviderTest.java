@@ -8,6 +8,7 @@ import jetbrains.buildServer.artifacts.ArtifactData;
 import jetbrains.buildServer.serverSide.BuildPromotion;
 import jetbrains.buildServer.serverSide.artifacts.StoredBuildArtifactInfo;
 import org.junit.Test;
+import org.junit.After;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -28,6 +29,8 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 public class JenkinsArtifactContentProviderTest {
+  private static final String ARTIFACT_BUFFER_SIZE_PROPERTY =
+      "teamcity.internal.jenkinsBridge.artifact.bufferSize";
   private final JenkinsClient jenkinsClient = mock(JenkinsClient.class);
   private final JenkinsClientFactory jenkinsClientFactory = mock(JenkinsClientFactory.class);
   private final JenkinsArtifactContentProvider provider =
@@ -35,6 +38,11 @@ public class JenkinsArtifactContentProviderTest {
 
   public JenkinsArtifactContentProviderTest() {
     when(jenkinsClientFactory.forBuildPromotion(any(BuildPromotion.class))).thenReturn(jenkinsClient);
+  }
+
+  @After
+  public void clearProperties() {
+    System.clearProperty(ARTIFACT_BUFFER_SIZE_PROPERTY);
   }
 
   @Test
@@ -49,6 +57,48 @@ public class JenkinsArtifactContentProviderTest {
     InputStream content = provider.getContent(info);
 
     assertEquals("hello", readAll(content));
+  }
+
+  @Test
+  public void usesConfiguredArtifactBufferSize() throws Exception {
+    System.setProperty(ARTIFACT_BUFFER_SIZE_PROPERTY, "1234");
+    assertEquals(1234, requestedBufferLength());
+  }
+
+  @Test
+  public void usesDefaultBufferForNonPositiveProperty() throws Exception {
+    System.setProperty(ARTIFACT_BUFFER_SIZE_PROPERTY, "0");
+    assertEquals(64 * 1024, requestedBufferLength());
+  }
+
+  @Test
+  public void usesDefaultBufferForMalformedProperty() throws Exception {
+    System.setProperty(ARTIFACT_BUFFER_SIZE_PROPERTY, "not-a-number");
+    assertEquals(64 * 1024, requestedBufferLength());
+  }
+
+  private int requestedBufferLength() throws Exception {
+    ByteArrayInputStream source = new ByteArrayInputStream("hello".getBytes(StandardCharsets.UTF_8));
+    int[] requestedLength = {0};
+    doAnswer(invocation -> {
+      BridgeHttpClient.StreamHandler handler = invocation.getArgument(3);
+      handler.handle(new InputStream() {
+        @Override
+        public int read() {
+          return source.read();
+        }
+
+        @Override
+        public int read(byte[] bytes, int offset, int length) {
+          requestedLength[0] = length;
+          return source.read(bytes, offset, length);
+        }
+      });
+      return null;
+    }).when(jenkinsClient).streamArtifact(eq("job"), eq(1), eq("artifact.bin"), any());
+
+    provider.getContent(artifactInfo("job", "1", "artifact.bin"));
+    return requestedLength[0];
   }
 
   @Test
