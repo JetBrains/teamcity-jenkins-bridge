@@ -11,6 +11,15 @@
          <outputDirectory>/</outputDirectory>
      </file> 
   </files>
+  <fileSets>
+    <fileSet>
+      <directory>../jenkins-bridge-server/src/main/resources/kotlin-dsl</directory>
+      <outputDirectory>kotlin-dsl</outputDirectory>
+      <includes>
+        <include>*.xml</include>
+      </includes>
+    </fileSet>
+  </fileSets>
   <moduleSets>
     <moduleSet>
        <useAllReactorProjects>true</useAllReactorProjects>
