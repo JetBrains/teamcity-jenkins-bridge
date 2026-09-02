@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<dsl-extension kind="buildFeature" type="jenkinsBridge" generateDslJar="true">
+  <class name="JenkinsBridge"><description>Build feature that mirrors a Jenkins job into this TeamCity build configuration</description></class>
+  <function name="jenkinsBridge"><description>Adds Jenkins Bridge mirroring to the build configuration</description></function>
+  <params>
+    <param name="connectionId" mandatory="true"><description>ID of the Jenkins Bridge project connection</description></param>
+    <param name="jenkinsJob" dslName="jobPath" mandatory="true"><description>Jenkins job path, with folders separated by '/'</description></param>
+    <param name="recentBuildLimit" type="int"><description>Number of recent Jenkins builds to mirror on the first sync; defaults to 1</description></param>
+  </params>
+  <examples><example><description>Mirror a Jenkins job using a project connection.</description><code>
+    jenkinsBridge {
+      connectionId = "jenkins-prod"
+      jobPath = "team/my-pipeline"
+      recentBuildLimit = 1
+    }
+  </code></example></examples>
+</dsl-extension>
