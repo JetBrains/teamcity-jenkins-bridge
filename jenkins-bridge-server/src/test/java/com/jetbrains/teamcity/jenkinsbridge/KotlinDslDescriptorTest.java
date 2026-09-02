@@ -1,16 +1,42 @@
 package com.jetbrains.teamcity.jenkinsbridge;
 
+import jetbrains.buildServer.configs.dsl.extensions.PluginDslLogsProcessor;
+import jetbrains.buildServer.configs.dsl.extensions.parser.PluginDslExtensionParser;
+import jetbrains.buildServer.configs.dsl.extensions.parser.ServerDslResourcesProvider;
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.TemporaryFolder;
 import org.w3c.dom.Document;
 
 import javax.xml.parsers.DocumentBuilderFactory;
+import java.io.File;
 import java.io.InputStream;
+import java.nio.file.Files;
 import java.util.Set;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
+import static org.mockito.Mockito.mock;
 
 public class KotlinDslDescriptorTest {
+  @Rule public final TemporaryFolder temporaryFolder = new TemporaryFolder();
+
+  @Test
+  public void teamCityPluginParserDiscoversBothDescriptors() throws Exception {
+    File pluginDir = temporaryFolder.newFolder("jenkins-bridge");
+    File dslDir = new File(pluginDir, "kotlin-dsl");
+    assertTrue(dslDir.mkdir());
+    copyResource("kotlin-dsl/JenkinsConnection.xml", new File(dslDir, "JenkinsConnection.xml"));
+    copyResource("kotlin-dsl/JenkinsBridge.xml", new File(dslDir, "JenkinsBridge.xml"));
+
+    PluginDslLogsProcessor logs = mock(PluginDslLogsProcessor.class);
+    PluginDslExtensionParser parser =
+        new PluginDslExtensionParser(logs, new ServerDslResourcesProvider(logs));
+
+    assertEquals(2, parser.parse(pluginDir).getPluginExtensions().size());
+  }
+
   @Test
   public void describesJenkinsConnection() throws Exception {
     Document document = read("kotlin-dsl/JenkinsConnection.xml");
@@ -35,6 +61,13 @@ public class KotlinDslDescriptorTest {
     InputStream stream = KotlinDslDescriptorTest.class.getClassLoader().getResourceAsStream(path);
     assertNotNull(path, stream);
     return DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(stream);
+  }
+
+  private static void copyResource(String path, File target) throws Exception {
+    try (InputStream stream = KotlinDslDescriptorTest.class.getClassLoader().getResourceAsStream(path)) {
+      assertNotNull(path, stream);
+      Files.copy(stream, target.toPath());
+    }
   }
 
   private static Set<String> parameterNames(Document document) {
