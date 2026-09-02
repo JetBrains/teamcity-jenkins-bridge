@@ -13,7 +13,7 @@ import static org.junit.Assert.assertNotNull;
 public class KotlinDslDescriptorTest {
   @Test
   public void describesJenkinsConnection() throws Exception {
-    Document document = read("kotlin-dsl/projectFeatures/JenkinsConnection.xml");
+    Document document = read("kotlin-dsl/JenkinsConnection.xml");
     assertEquals("projectFeature", document.getDocumentElement().getAttribute("kind"));
     assertEquals("OAuthProvider", document.getDocumentElement().getAttribute("type"));
     assertEquals("JenkinsConnection", document.getElementsByTagName("class").item(0).getAttributes().getNamedItem("name").getNodeValue());
@@ -23,7 +23,7 @@ public class KotlinDslDescriptorTest {
 
   @Test
   public void describesJenkinsBridgeFeature() throws Exception {
-    Document document = read("kotlin-dsl/buildFeatures/JenkinsBridge.xml");
+    Document document = read("kotlin-dsl/JenkinsBridge.xml");
     assertEquals("buildFeature", document.getDocumentElement().getAttribute("kind"));
     assertEquals("jenkinsBridge", document.getDocumentElement().getAttribute("type"));
     assertEquals("JenkinsBridge", document.getElementsByTagName("class").item(0).getAttributes().getNamedItem("name").getNodeValue());
