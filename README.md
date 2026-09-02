@@ -390,6 +390,9 @@ Node responsibilities are split as follows:
   the import returns a retryable failure; refresh and try again.
 - Build and trigger state is persisted in the shared TeamCity database so the main
   node can correlate work observed through another node.
+- Signed Jenkins artifact redirects use a stable encrypted signing secret associated
+  with the TeamCity build configuration, so a request redirected between nodes can
+  be validated by either node. The secret is never placed in the redirect URL.
 
 Install the same plugin archive on every node and restart or reload the plugin on
 each node after an upgrade. Verify the active node roles and plugin version in the
@@ -418,10 +421,17 @@ requires the separate Maven `replacer` plugin setup. Archive packaging remains a
 `mvn package` check. The hook also runs an optional `gitleaks` staged secret scan when `gitleaks`
 is installed. Set `JENKINS_BRIDGE_MAVEN_REPO` when Maven should use an isolated local repository.
 
-`mvn verify` additionally runs the database-backed TeamCity integration tests. Those
-fixture tests require Java 21 because the current TeamCity test server still uses
-the legacy Security Manager; the Maven profile enables the required Java 21 flag
-automatically.
+Database-backed TeamCity compatibility tests are intentionally separate from the
+lightweight unit-test path. Run them explicitly with:
+
+```bash
+mvn -Pteamcity-integration-tests verify
+```
+
+The profile adds the TeamCity fixture and proprietary compatibility dependencies,
+skips the unit-test suite, and runs only `*IT.java` tests. These fixture tests
+require Java 21 because the current TeamCity test server still uses the legacy
+Security Manager; the profile enables the required Java 21 flag automatically.
 
 The default TeamCity API version is `2026.1`, and Maven looks for its
 artifacts under `${user.home}/.m2/repository/TeamCity`. Both values are
@@ -440,7 +450,7 @@ If the selected TeamCity repository does not contain `license-protected` at the
 same version, override that test-only dependency separately:
 
 ```bash
-mvn test \
+mvn -Pteamcity-integration-tests verify \
   -Dteamcity-version=2026.3-DSL-eap1-SNAPSHOT \
   -Dteamcity-license-version=2026.2-SNAPSHOT
 ```

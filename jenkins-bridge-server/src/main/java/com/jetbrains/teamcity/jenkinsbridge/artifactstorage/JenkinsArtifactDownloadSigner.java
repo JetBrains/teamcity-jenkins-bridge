@@ -7,8 +7,9 @@ import java.nio.charset.StandardCharsets;
 import java.security.InvalidKeyException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.security.SecureRandom;
 import java.util.concurrent.TimeUnit;
+import jetbrains.buildServer.serverSide.BuildPromotion;
+import org.jetbrains.annotations.NotNull;
 
 /**
  * Signs and validates short-lived tokens that authorize a single Jenkins artifact download without
@@ -19,12 +20,10 @@ public class JenkinsArtifactDownloadSigner {
   private static final String HMAC_ALGORITHM = "HmacSHA256";
   private static final long TOKEN_TTL_MILLIS = TimeUnit.MINUTES.toMillis(5);
 
-  private final SecretKeySpec key;
+  private final JenkinsArtifactSigningSecretProvider secretProvider;
 
-  public JenkinsArtifactDownloadSigner() {
-    byte[] secret = new byte[32];
-    new SecureRandom().nextBytes(secret);
-    key = new SecretKeySpec(secret, HMAC_ALGORITHM);
+  public JenkinsArtifactDownloadSigner(@NotNull JenkinsArtifactSigningSecretProvider secretProvider) {
+    this.secretProvider = secretProvider;
   }
 
   /**
@@ -39,30 +38,31 @@ public class JenkinsArtifactDownloadSigner {
    * Computes the signature for the given artifact coordinates. Callers pass this alongside
    * the parameters it covers. {@link #isValid} recomputes it and compares.
    */
-  public ExpiringSignature sign(long teamCityBuildId, String jobName, int buildNumber, String relativePath) {
+  public ExpiringSignature sign(@NotNull BuildPromotion promotion, long teamCityBuildId, String jobName,
+                                int buildNumber, String relativePath) {
     long expiry = issueExpiry();
-    return sign(teamCityBuildId, jobName, buildNumber, relativePath, expiry);
+    return sign(promotion, teamCityBuildId, jobName, buildNumber, relativePath, expiry);
   }
 
-  private ExpiringSignature sign(long teamCityBuildId, String jobName, int buildNumber, String relativePath,
-                                 long expiry) {
+  private ExpiringSignature sign(@NotNull BuildPromotion promotion, long teamCityBuildId, String jobName,
+                                 int buildNumber, String relativePath, long expiry) {
     return new ExpiringSignature(
-        hmac(safePayloadFrom(teamCityBuildId, jobName, buildNumber, relativePath, expiry)), expiry);
+        hmac(secretProvider.secretFor(promotion), safePayloadFrom(teamCityBuildId, jobName, buildNumber, relativePath, expiry)), expiry);
   }
 
   /**
    * Verifies that {@code signature} matches the given parameters and that {@code expiry} has not
    * passed yet.
    */
-  public boolean isValid(long teamCityBuildId, String jobName, int buildNumber, String relativePath, long expiry,
-                         String signature) {
+  public boolean isValid(@NotNull BuildPromotion promotion, long teamCityBuildId, String jobName, int buildNumber,
+                         String relativePath, long expiry, String signature) {
     if (expiry < System.currentTimeMillis()) {
       return false;
     }
     if (signature == null) {
       return false;
     }
-    ExpiringSignature expected = sign(teamCityBuildId, jobName, buildNumber, relativePath, expiry);
+    ExpiringSignature expected = sign(promotion, teamCityBuildId, jobName, buildNumber, relativePath, expiry);
     return MessageDigest.isEqual(
         expected.signature().getBytes(OUR_CHARSET),
         signature.getBytes(OUR_CHARSET));
@@ -81,10 +81,10 @@ public class JenkinsArtifactDownloadSigner {
         + "|" + expiry;
   }
 
-  private String hmac(String payload) {
+  private String hmac(String secret, String payload) {
     try {
       Mac mac = Mac.getInstance(HMAC_ALGORITHM);
-      mac.init(key);
+      mac.init(new SecretKeySpec(secret.getBytes(OUR_CHARSET), HMAC_ALGORITHM));
       return toHex(mac.doFinal(payload.getBytes(OUR_CHARSET)));
     } catch (NoSuchAlgorithmException | InvalidKeyException e) {
       throw new IllegalStateException("Failed to compute HMAC signature", e);

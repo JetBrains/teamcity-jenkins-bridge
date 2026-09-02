@@ -54,7 +54,7 @@ public class JenkinsArtifactDownloadProcessor implements ArtifactDownloadProcess
     }
 
     long teamCityBuildId = buildPromotion.getId();
-    ExpiringSignature signature = mySigner.sign(teamCityBuildId, job, buildNumber, relativePath);
+    ExpiringSignature signature = mySigner.sign(buildPromotion, teamCityBuildId, job, buildNumber, relativePath);
 
     // Agents are not authenticated, so redirect to a custom endpoint that adds the Authorization header,
     // since it cannot be added here directly.

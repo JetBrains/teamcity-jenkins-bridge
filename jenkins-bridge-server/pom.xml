@@ -25,6 +25,64 @@
         <teamcity.test.argLine>-Djava.security.manager=allow</teamcity.test.argLine>
       </properties>
     </profile>
+    <profile>
+      <id>teamcity-integration-tests</id>
+      <dependencies>
+        <!-- The database-backed TeamCity fixture is intentionally integration-test only. -->
+        <dependency>
+          <groupId>org.jetbrains.teamcity</groupId>
+          <artifactId>server-test-core</artifactId>
+          <version>${teamcity-version}</version>
+          <scope>test</scope>
+        </dependency>
+
+        <dependency>
+          <groupId>org.jetbrains.teamcity</groupId>
+          <artifactId>configs-impl</artifactId>
+          <version>${teamcity-version}</version>
+          <scope>test</scope>
+        </dependency>
+
+        <!-- The public TeamCity repository does not publish this proprietary module for the
+             fixture's server version, but server-core loads its license exception during startup. -->
+        <dependency>
+          <groupId>org.jetbrains.teamcity</groupId>
+          <artifactId>license-protected</artifactId>
+          <version>${teamcity-license-version}</version>
+          <scope>test</scope>
+        </dependency>
+      </dependencies>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-compiler-plugin</artifactId>
+            <configuration>
+              <testIncludes combine.self="override">
+                <testInclude>**/*Test.java</testInclude>
+                <testInclude>**/*IT.java</testInclude>
+              </testIncludes>
+            </configuration>
+          </plugin>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-failsafe-plugin</artifactId>
+            <configuration>
+              <skipITs>false</skipITs>
+            </configuration>
+          </plugin>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-surefire-plugin</artifactId>
+            <configuration>
+              <!-- This profile is an explicit TeamCity compatibility run; unit tests belong
+                   to the default, lightweight Maven test path. -->
+              <skipTests>true</skipTests>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
   </profiles>
 
   <dependencies>
@@ -58,6 +116,15 @@
       <scope>provided</scope>
     </dependency>
 
+    <!-- BuildTypeEx's internal secure-storage API extends the VCS workspace API. This is a
+         production compile/runtime contract, not a database-fixture dependency. -->
+    <dependency>
+      <groupId>org.jetbrains.teamcity</groupId>
+      <artifactId>server-vcs-api-ex</artifactId>
+      <version>${teamcity-version}</version>
+      <scope>provided</scope>
+    </dependency>
+
     <dependency>
       <groupId>org.jetbrains.teamcity</groupId>
       <artifactId>common-impl</artifactId>
@@ -70,30 +137,6 @@
       <artifactId>oauth-integration</artifactId>
       <version>${teamcity-version}</version>
       <scope>provided</scope>
-    </dependency>
-
-    <!-- tests-support is only an aggregator; server-test-core contains the database-backed fixture. -->
-    <dependency>
-      <groupId>org.jetbrains.teamcity</groupId>
-      <artifactId>server-test-core</artifactId>
-      <version>${teamcity-version}</version>
-      <scope>test</scope>
-    </dependency>
-
-    <!-- server-test-core's SBuildType signatures reference the VCS workspace API. -->
-    <dependency>
-      <groupId>org.jetbrains.teamcity</groupId>
-      <artifactId>server-vcs-api-ex</artifactId>
-      <version>${teamcity-version}</version>
-      <scope>test</scope>
-    </dependency>
-
-    <!-- server-test-core bootstraps the real build-type/template implementation. -->
-    <dependency>
-      <groupId>org.jetbrains.teamcity</groupId>
-      <artifactId>configs-impl</artifactId>
-      <version>${teamcity-version}</version>
-      <scope>test</scope>
     </dependency>
 
     <!-- server-test-core's legacy commons-httpclient otherwise wins Maven conflict resolution with
@@ -150,6 +193,10 @@
         <configuration>
           <source>21</source>
           <target>21</target>
+          <!-- Integration fixture sources and their dependencies are profile-scoped. -->
+          <testIncludes>
+            <testInclude>**/*Test.java</testInclude>
+          </testIncludes>
         </configuration>
       </plugin>
 
@@ -174,7 +221,10 @@
         <artifactId>maven-failsafe-plugin</artifactId>
         <version>3.5.4</version>
         <configuration>
-          <argLine>${teamcity.test.argLine}</argLine>
+          <!-- Integration tests also use Mockito's inline mock maker. Attach the agent
+               explicitly because TeamCity's fixture JVM may not allow self-attachment. -->
+          <argLine>${teamcity.test.argLine} -javaagent:${settings.localRepository}/org/mockito/mockito-core/${mockito.version}/mockito-core-${mockito.version}.jar</argLine>
+          <skipITs>true</skipITs>
         </configuration>
         <executions>
           <execution>

@@ -1,6 +1,9 @@
 package com.jetbrains.teamcity.jenkinsbridge.integration;
 
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsArtifact;
+import com.jetbrains.teamcity.jenkinsbridge.artifactstorage.JenkinsArtifactDownloadSigner;
+import com.jetbrains.teamcity.jenkinsbridge.artifactstorage.TeamCitySecureArtifactSigningSecretProvider;
+import com.jetbrains.teamcity.jenkinsbridge.artifactstorage.ExpiringSignature;
 import com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityArtifactPublisher;
 import jetbrains.buildServer.ArtifactsConstants;
 import org.testng.annotations.Test;
@@ -13,6 +16,25 @@ import java.util.LinkedHashMap;
 
 /** Verifies artifact registration through TeamCity's real RunningBuildEx artifact API. */
 public class TeamCityArtifactApiIT extends TeamCityIntegrationTestBase {
+  @Test
+  public void secureArtifactSigningSecretIsSharedBySignerInstances() throws Exception {
+    TeamCityBuildFixture build = queueAndStartBuild(
+        Collections.singletonMap("jenkins.build.key", "artifact-signing-secret"), Collections.emptyMap());
+    TeamCitySecureArtifactSigningSecretProvider firstProvider =
+        new TeamCitySecureArtifactSigningSecretProvider();
+    TeamCitySecureArtifactSigningSecretProvider secondProvider =
+        new TeamCitySecureArtifactSigningSecretProvider();
+    JenkinsArtifactDownloadSigner firstSigner = new JenkinsArtifactDownloadSigner(firstProvider);
+    JenkinsArtifactDownloadSigner secondSigner = new JenkinsArtifactDownloadSigner(secondProvider);
+
+    ExpiringSignature signature = firstSigner.sign(
+        build.getRunningBuild().getBuildPromotion(), build.getBuildId(), "job", 1, "artifact.txt");
+
+    assertTrue(secondSigner.isValid(build.getRunningBuild().getBuildPromotion(), build.getBuildId(),
+        "job", 1, "artifact.txt", signature.expiry(), signature.signature()));
+    build.finish("SUCCESS", new java.util.Date());
+  }
+
   @Test
   public void artifactListIsPersistedWithJenkinsRoutingMetadata() throws Exception {
     LinkedHashMap<String, String> bridgeParameters = new LinkedHashMap<>();

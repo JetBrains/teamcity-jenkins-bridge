@@ -27,7 +27,7 @@ import static org.mockito.Mockito.when;
 public class JenkinsArtifactDownloadProcessorTest {
   private static final long BUILD_ID = 4242L;
 
-  private final JenkinsArtifactDownloadSigner signer = new JenkinsArtifactDownloadSigner();
+  private final JenkinsArtifactDownloadSigner signer = new JenkinsArtifactDownloadSigner(p -> "test-secret");
   private final JenkinsClient jenkinsClient = mock(JenkinsClient.class);
   private final JenkinsClientFactory jenkinsClientFactory = mock(JenkinsClientFactory.class);
   private final JenkinsArtifactDownloadProcessor processor =
@@ -56,7 +56,7 @@ public class JenkinsArtifactDownloadProcessorTest {
     assertEquals("7", params.get("build"));
     assertEquals("target/app.jar", params.get("path"));
     assertEquals(String.valueOf(BUILD_ID), params.get("buildId"));
-    assertTrue(signer.isValid(
+    assertTrue(signer.isValid(info.getBuildPromotion(),
         Long.parseLong(params.get("buildId")),
         params.get("job"),
         Integer.parseInt(params.get("build")),

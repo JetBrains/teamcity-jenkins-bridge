@@ -12,7 +12,7 @@ public class JenkinsStorageTypeTest {
 
   private final JenkinsClientFactory jenkinsClientFactory = mock(JenkinsClientFactory.class);
   private final JenkinsArtifactInfoUtils utils = new JenkinsArtifactInfoUtils();
-  private final JenkinsArtifactDownloadSigner signer = new JenkinsArtifactDownloadSigner();
+  private final JenkinsArtifactDownloadSigner signer = new JenkinsArtifactDownloadSigner(p -> "test-secret");
   private final JenkinsArtifactDownloadProcessor downloadProcessor = new JenkinsArtifactDownloadProcessor(utils, signer, jenkinsClientFactory);
   private final JenkinsArtifactContentProvider contentProvider = new JenkinsArtifactContentProvider(jenkinsClientFactory, utils);
   private final JenkinsStorageType storageType = new JenkinsStorageType(mock(ArtifactStorageTypeRegistry.class), mock(PluginDescriptor.class));
