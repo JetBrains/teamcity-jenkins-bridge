@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<dsl-extension kind="projectFeature" type="OAuthProvider" generateDslJar="true"
+               applicable="params['providerType'] == 'JenkinsBridge'">
+  <class name="JenkinsConnection"><description>Project feature defining a Jenkins Bridge connection</description></class>
+  <init><param name="providerType" value="JenkinsBridge" /></init>
+  <function name="jenkinsConnection"><description>Creates a Jenkins Bridge connection in the current project</description></function>
+  <params>
+    <param name="displayName" mandatory="true"><description>Human friendly connection name</description></param>
+    <param name="jenkinsUrl" dslName="url" mandatory="true"><description>Jenkins server root URL</description></param>
+    <param name="jenkinsUser" dslName="username" mandatory="true"><description>Jenkins username</description></param>
+    <param name="secure:jenkinsToken" dslName="token" mandatory="true"><description>Jenkins API token</description></param>
+  </params>
+  <examples><example><description>Store the token through a TeamCity credentials reference.</description><code>
+    jenkinsConnection {
+      id = "jenkins-prod"
+      displayName = "Production Jenkins"
+      url = "https://jenkins.example.com"
+      username = "ci-user"
+      token = "credentialsJSON:*****"
+    }
+  </code></example></examples>
+</dsl-extension>
