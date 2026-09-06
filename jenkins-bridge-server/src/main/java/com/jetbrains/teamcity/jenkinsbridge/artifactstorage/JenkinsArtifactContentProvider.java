@@ -4,6 +4,7 @@ import com.jetbrains.teamcity.jenkinsbridge.http.BridgeHttpClient;
 import com.jetbrains.teamcity.jenkinsbridge.http.BridgeHttpException;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClient;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClientFactory;
+import jetbrains.buildServer.serverSide.TeamCityProperties;
 import jetbrains.buildServer.serverSide.artifacts.ArtifactContentProvider;
 import jetbrains.buildServer.serverSide.artifacts.StoredBuildArtifactInfo;
 import org.jetbrains.annotations.NotNull;
@@ -11,6 +12,10 @@ import org.jetbrains.annotations.NotNull;
 import java.io.*;
 
 public class JenkinsArtifactContentProvider implements ArtifactContentProvider {
+
+  private static final String ARTIFACT_BUFFER_SIZE_PROPERTY =
+      "teamcity.internal.jenkinsBridge.artifact.bufferSize";
+  private static final int DEFAULT_ARTIFACT_BUFFER_SIZE = 64 * 1024;
 
   private final JenkinsClientFactory myJenkinsClientFactory;
   private final JenkinsArtifactInfoUtils myJenkinsArtifactInfoUtils;
@@ -60,11 +65,17 @@ public class JenkinsArtifactContentProvider implements ArtifactContentProvider {
                                    String relativePath, OutputStream buffer) throws BridgeHttpException {
     jenkinsClient.streamArtifact(job, buildNumber, relativePath,
         (BridgeHttpClient.StreamHandler) inputStream -> {
-          byte[] chunk = new byte[8192];
+          byte[] chunk = new byte[artifactBufferSize()];
           int read;
           while ((read = inputStream.read(chunk)) != -1) {
             buffer.write(chunk, 0, read);
           }
         });
+  }
+
+  private static int artifactBufferSize() {
+    int configuredSize = TeamCityProperties.getInteger(
+        ARTIFACT_BUFFER_SIZE_PROPERTY, DEFAULT_ARTIFACT_BUFFER_SIZE);
+    return configuredSize > 0 ? configuredSize : DEFAULT_ARTIFACT_BUFFER_SIZE;
   }
 }
