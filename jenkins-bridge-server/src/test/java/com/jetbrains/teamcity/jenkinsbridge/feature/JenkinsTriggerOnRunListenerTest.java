@@ -57,6 +57,8 @@ public class JenkinsTriggerOnRunListenerTest {
 
     fixture.listener().buildTypeAddedToQueue(fixture.queued);
 
+    verify(fixture.client).triggerBuildWithQueueId(
+        any(), any(), eq("Jenkins Bridge: TeamCity promotion 42"));
     verify(fixture.failureService, never()).failQueuedPromotion(anyLong(), anyString());
     verify(fixture.store).savePendingTrigger(any());
   }

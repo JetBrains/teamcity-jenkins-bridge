@@ -200,8 +200,7 @@ parameters.
 1. **TeamCity creates a promotion.** The user queues the generated build
    configuration. TeamCity creates a normal queued promotion. The bridge's
    queue preprocessor marks this bridge-controlled build agentless before it is
-   inserted into the queue. It records the TeamCity promotion ID as the plain numeric internal
-   parameter `jenkins.bridge.teamcity.promotion.id`. It does not call Jenkins or write bridge state.
+   inserted into the queue. It does not call Jenkins or write bridge state.
 
 2. **The main node claims the trigger callback.** Every TeamCity node may
    observe the queue callback, but only the current TeamCity main node proceeds.
