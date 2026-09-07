@@ -10,6 +10,7 @@ import jetbrains.buildServer.serverSide.BuildPromotionEx;
 import jetbrains.buildServer.clouds.server.executors.BuildExecutorDescriptor;
 import jetbrains.buildServer.clouds.server.executors.BuildExecutorsManager;
 import jetbrains.buildServer.serverSide.SBuildType;
+import jetbrains.buildServer.serverSide.impl.executors.ExecutorDescriptionFetcher;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -34,13 +35,21 @@ import java.util.Map;
 public class JenkinsQueueAgentlessPreprocessor implements AddToQueuePreprocessor {
   private static final Logger LOG = Logger.getInstance(JenkinsQueueAgentlessPreprocessor.class.getName());
   private final BuildExecutorsManager buildExecutorsManager;
+  private final ExecutorDescriptionFetcher executorDescriptionFetcher;
 
   public JenkinsQueueAgentlessPreprocessor() {
-    this(null);
+    this(null, null);
   }
 
   public JenkinsQueueAgentlessPreprocessor(BuildExecutorsManager buildExecutorsManager) {
+    this(buildExecutorsManager, null);
+  }
+
+  public JenkinsQueueAgentlessPreprocessor(
+      BuildExecutorsManager buildExecutorsManager,
+      ExecutorDescriptionFetcher executorDescriptionFetcher) {
     this.buildExecutorsManager = buildExecutorsManager;
+    this.executorDescriptionFetcher = executorDescriptionFetcher;
   }
 
   @Override
@@ -104,6 +113,9 @@ public class JenkinsQueueAgentlessPreprocessor implements AddToQueuePreprocessor
             executorProfileParameters(),
             new JenkinsBridgeExecutorType()));
     parameters.put(BuildAttributes.AGENT_LESS_BUILD_EXECUTOR, descriptor.getId());
+    if (executorDescriptionFetcher != null) {
+      executorDescriptionFetcher.scheduleExecutorDescriptionFetching(descriptor);
+    }
   }
 
   private Map<String, String> executorProfileParameters() {
