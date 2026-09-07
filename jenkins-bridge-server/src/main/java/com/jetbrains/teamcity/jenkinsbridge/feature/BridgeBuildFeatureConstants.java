@@ -17,6 +17,12 @@ public final class BridgeBuildFeatureConstants {
   public static final String PARAM_JENKINS_JOB = "jenkinsJob";
 
   /**
+   * Optional Jenkins job-level remote trigger token. When set, Jenkins records the bridge's
+   * supplied cause as a remote cause instead of attributing the trigger only to the API user.
+   */
+  public static final String PARAM_REMOTE_TRIGGER_TOKEN = "secure:jenkinsRemoteTriggerToken";
+
+  /**
    * Read-only, informational. Absolute Jenkins job URL, composed from the selected connection and
    * the job path. The poller does not use it, it builds the URL from the connection at poll time.
    */
