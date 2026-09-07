@@ -90,7 +90,8 @@
         class="com.jetbrains.teamcity.jenkinsbridge.feature.JenkinsQueueAgentlessPreprocessor"/>
 
   <bean id="jenkinsBridgeAgentlessExecutor"
-        class="com.jetbrains.teamcity.jenkinsbridge.feature.JenkinsBridgeAgentlessExecutor"/>
+        class="com.jetbrains.teamcity.jenkinsbridge.feature.JenkinsBridgeAgentlessExecutor"
+        autowire="constructor"/>
 
   <bean id="jenkinsBridgeExecutorType"
         class="com.jetbrains.teamcity.jenkinsbridge.feature.JenkinsBridgeExecutorType"/>
