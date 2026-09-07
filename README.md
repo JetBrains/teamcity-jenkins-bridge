@@ -86,6 +86,11 @@ default is 1 (the newest existing Jenkins build); later polling is incremental.
 The generated configuration is read-only by default. This is expected: use
 TeamCity's **Run Custom Build** action to provide parameters and start it.
 
+To show the originating TeamCity promotion in Jenkins’ build cause, enable
+**Trigger builds remotely** on that Jenkins job and set the same job token in
+the Jenkins Bridge feature’s optional **Remote trigger token** field. This is
+separate from the Jenkins user API token stored by the project connection.
+
 ### 2. Run the first mirrored build
 
 Open the generated build configuration, choose **Run Custom Build**, review

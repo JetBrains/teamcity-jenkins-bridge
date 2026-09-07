@@ -1135,9 +1135,23 @@ public class JenkinsClient {
   public JenkinsTriggerResponse triggerBuildWithQueueId(String jobName, Map<String, String> parameters,
                                                         String cause)
       throws BridgeHttpException, JenkinsDataException {
+    return triggerBuildWithQueueId(jobName, parameters, cause, null);
+  }
+
+  /**
+   * Triggers Jenkins with an optional job-level remote trigger token. Jenkins only records a
+   * supplied {@code cause} as a remote cause when that token is configured on the job and sent
+   * with the request; API-token authentication alone produces a user cause.
+   */
+  public JenkinsTriggerResponse triggerBuildWithQueueId(
+      String jobName,
+      Map<String, String> parameters,
+      String cause,
+      @Nullable String remoteTriggerToken)
+      throws BridgeHttpException, JenkinsDataException {
     boolean parameterized = parameters != null && !parameters.isEmpty();
 
-    String url = buildTriggerUrl(jobName, parameterized, cause);
+    String url = buildTriggerUrl(jobName, parameterized, cause, remoteTriggerToken);
 
     String body = parameterized ? encodeForm(parameters) : "";
 
@@ -1158,12 +1172,20 @@ public class JenkinsClient {
   }
 
   @NotNull
-  private String buildTriggerUrl(@NotNull String jobName, boolean parameterized, @Nullable String cause) {
+  private String buildTriggerUrl(
+      @NotNull String jobName,
+      boolean parameterized,
+      @Nullable String cause,
+      @Nullable String remoteTriggerToken) {
     String endpoint = parameterized ? "buildWithParameters" : "build";
-    String causeParameter = cause == null || cause.trim().isEmpty()
-        ? ""
-        : "?cause=" + encodeQueryValue(cause);
-    return myConnection.getUrl() + jenkinsJobPath(jobName) + "/" + endpoint + causeParameter;
+    String query = "";
+    if (remoteTriggerToken != null && !remoteTriggerToken.trim().isEmpty()) {
+      query = "?token=" + encodeQueryValue(remoteTriggerToken);
+    }
+    if (cause != null && !cause.trim().isEmpty()) {
+      query += (query.isEmpty() ? "?" : "&") + "cause=" + encodeQueryValue(cause);
+    }
+    return myConnection.getUrl() + jenkinsJobPath(jobName) + "/" + endpoint + query;
   }
 
   /** Returns the numeric queue id in a Jenkins queue-item URL, or -1 for an invalid URL. */

@@ -27,6 +27,8 @@ import org.mockito.InOrder;
 
 import java.io.IOException;
 import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -52,15 +54,28 @@ public class JenkinsTriggerOnRunListenerTest {
   public void missingQueueIdKeepsCauseCorrelatedAttemptForPollingFallback() throws Exception {
     Fixture fixture = new Fixture();
     when(fixture.client.getJobParameters("job")).thenReturn(JenkinsJobParameters.empty());
-    when(fixture.client.triggerBuildWithQueueId(any(), any(), anyString()))
+    when(fixture.client.triggerBuildWithQueueId(any(), any(), anyString(), isNull()))
         .thenReturn(new JenkinsTriggerResponse("", -1L));
 
     fixture.listener().buildTypeAddedToQueue(fixture.queued);
 
     verify(fixture.client).triggerBuildWithQueueId(
-        any(), any(), eq("Jenkins Bridge: TeamCity promotion 42"));
+        any(), any(), eq("Jenkins Bridge: TeamCity promotion 42"), isNull());
     verify(fixture.failureService, never()).failQueuedPromotion(anyLong(), anyString());
     verify(fixture.store).savePendingTrigger(any());
+  }
+
+  @Test
+  public void configuredRemoteTriggerTokenIsSentWithTheCause() throws Exception {
+    Fixture fixture = new Fixture("job-trigger-token");
+    when(fixture.client.getJobParameters("job")).thenReturn(JenkinsJobParameters.empty());
+    when(fixture.client.triggerBuildWithQueueId(any(), any(), anyString(), anyString()))
+        .thenReturn(new JenkinsTriggerResponse("/queue/item/1/", 1L));
+
+    fixture.listener().buildTypeAddedToQueue(fixture.queued);
+
+    verify(fixture.client).triggerBuildWithQueueId(
+        any(), any(), eq("Jenkins Bridge: TeamCity promotion 42"), eq("job-trigger-token"));
   }
 
   @Test
@@ -73,7 +88,7 @@ public class JenkinsTriggerOnRunListenerTest {
     when(fixture.client.getJobParameters("job")).thenReturn(definitions);
     when(fixture.store.getImportedJenkinsParameterSnapshot("buildType"))
         .thenReturn(JenkinsTeamCityRunParameterFactory.snapshot(definitions));
-    when(fixture.client.triggerBuildWithQueueId(any(), any(), anyString()))
+    when(fixture.client.triggerBuildWithQueueId(any(), any(), anyString(), isNull()))
         .thenReturn(new JenkinsTriggerResponse("/queue/item/1/", 1L));
 
     fixture.listener().buildTypeAddedToQueue(fixture.queued);
@@ -107,7 +122,7 @@ public class JenkinsTriggerOnRunListenerTest {
         eq(42L), contains("Before: []"));
     verify(fixture.failureService).failQueuedPromotion(
         eq(42L), contains("After: "));
-    verify(fixture.client, never()).triggerBuildWithQueueId(any(), any(), anyString());
+    verify(fixture.client, never()).triggerBuildWithQueueId(any(), any(), anyString(), isNull());
     verify(fixture.store).removePendingTrigger(42L);
   }
 
@@ -116,12 +131,12 @@ public class JenkinsTriggerOnRunListenerTest {
     Fixture fixture = new Fixture();
     when(fixture.store.getImportedJenkinsParameterSnapshot("buildType")).thenReturn(null);
     when(fixture.client.getJobParameters("job")).thenReturn(JenkinsJobParameters.empty());
-    when(fixture.client.triggerBuildWithQueueId(any(), any(), anyString()))
+    when(fixture.client.triggerBuildWithQueueId(any(), any(), anyString(), isNull()))
         .thenReturn(new JenkinsTriggerResponse("/queue/item/1/", 1L));
 
     fixture.listener().buildTypeAddedToQueue(fixture.queued);
 
-    verify(fixture.client).triggerBuildWithQueueId(any(), any(), anyString());
+    verify(fixture.client).triggerBuildWithQueueId(any(), any(), anyString(), isNull());
     verify(fixture.store).saveImportedJenkinsParameterSnapshot("buildType", "[]");
   }
 
@@ -129,7 +144,7 @@ public class JenkinsTriggerOnRunListenerTest {
   public void runtimeFailureAfterJenkinsRequestFailsTeamCityBuildAsUncertain() throws Exception {
     Fixture fixture = new Fixture();
     when(fixture.client.getJobParameters("job")).thenReturn(JenkinsJobParameters.empty());
-    when(fixture.client.triggerBuildWithQueueId(any(), any(), anyString()))
+    when(fixture.client.triggerBuildWithQueueId(any(), any(), anyString(), isNull()))
         .thenThrow(new NullPointerException("unexpected bridge defect"));
 
     fixture.listener().buildTypeAddedToQueue(fixture.queued);
@@ -170,9 +185,9 @@ public class JenkinsTriggerOnRunListenerTest {
     Fixture second = new Fixture(43L, "second-job");
     when(first.client.getJobParameters("first-job")).thenReturn(JenkinsJobParameters.empty());
     when(second.client.getJobParameters("second-job")).thenReturn(JenkinsJobParameters.empty());
-    when(first.client.triggerBuildWithQueueId(any(), any(), anyString()))
+    when(first.client.triggerBuildWithQueueId(any(), any(), anyString(), isNull()))
         .thenReturn(new JenkinsTriggerResponse("/queue/item/101/", 101L));
-    when(second.client.triggerBuildWithQueueId(any(), any(), anyString()))
+    when(second.client.triggerBuildWithQueueId(any(), any(), anyString(), isNull()))
         .thenReturn(new JenkinsTriggerResponse("/queue/item/202/", 202L));
 
     BuildServerListener firstListener = first.listener();
@@ -193,8 +208,8 @@ public class JenkinsTriggerOnRunListenerTest {
     secondCall.get();
     executor.shutdownNow();
 
-    verify(first.client).triggerBuildWithQueueId(any(), any(), anyString());
-    verify(second.client).triggerBuildWithQueueId(any(), any(), anyString());
+    verify(first.client).triggerBuildWithQueueId(any(), any(), anyString(), isNull());
+    verify(second.client).triggerBuildWithQueueId(any(), any(), anyString(), isNull());
     verify(first.store, times(2)).savePendingTrigger(any());
     verify(second.store, times(2)).savePendingTrigger(any());
     verify(first.queued, never()).removeFromQueue(any(), any());
@@ -208,7 +223,7 @@ public class JenkinsTriggerOnRunListenerTest {
 
     fixture.listener().buildTypeAddedToQueue(fixture.queued);
 
-    verify(fixture.client, never()).triggerBuildWithQueueId(any(), any(), anyString());
+    verify(fixture.client, never()).triggerBuildWithQueueId(any(), any(), anyString(), isNull());
     verify(fixture.store, never()).savePendingTrigger(any());
   }
 
@@ -237,10 +252,18 @@ public class JenkinsTriggerOnRunListenerTest {
     final JenkinsStorageAutomaticActivator storageActivator = mock(JenkinsStorageAutomaticActivator.class);
 
     Fixture() throws Exception {
-      this(42L, "job");
+      this(42L, "job", null);
     }
 
     Fixture(long promotionId, String job) throws Exception {
+      this(promotionId, job, null);
+    }
+
+    Fixture(String remoteTriggerToken) throws Exception {
+      this(42L, "job", remoteTriggerToken);
+    }
+
+    Fixture(long promotionId, String job, String remoteTriggerToken) throws Exception {
       BuildPromotion promotion = mock(BuildPromotion.class);
       SBuildFeatureDescriptor feature = mock(SBuildFeatureDescriptor.class);
 
@@ -266,8 +289,12 @@ public class JenkinsTriggerOnRunListenerTest {
       when(buildType.getExternalId()).thenReturn("buildType");
       when(buildType.getBuildFeaturesOfType(BridgeBuildFeatureConstants.TYPE))
           .thenReturn(Collections.singletonList(feature));
-      when(feature.getParameters()).thenReturn(Collections.singletonMap(
-          BridgeBuildFeatureConstants.PARAM_JENKINS_JOB, job));
+      Map<String, String> featureParameters = new LinkedHashMap<String, String>();
+      featureParameters.put(BridgeBuildFeatureConstants.PARAM_JENKINS_JOB, job);
+      if (remoteTriggerToken != null) {
+        featureParameters.put(BridgeBuildFeatureConstants.PARAM_REMOTE_TRIGGER_TOKEN, remoteTriggerToken);
+      }
+      when(feature.getParameters()).thenReturn(featureParameters);
       when(clientFactory.forBuildType(buildType)).thenReturn(client);
       when(client.getControllerIdentity()).thenReturn("http://jenkins");
       when(store.getPendingTriggers()).thenReturn(Collections.emptyList());

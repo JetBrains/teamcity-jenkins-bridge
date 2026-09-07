@@ -58,6 +58,18 @@
 </tr>
 
 <tr>
+  <td><label for="<%=BridgeBuildFeatureConstants.PARAM_REMOTE_TRIGGER_TOKEN%>">Remote trigger token:</label></td>
+  <td>
+    <props:passwordProperty name="<%=BridgeBuildFeatureConstants.PARAM_REMOTE_TRIGGER_TOKEN%>" className="longField"
+                            disabled="${readOnly}"/>
+    <span class="smallNote">
+      Optional Jenkins job token from “Trigger builds remotely”. Enables the Jenkins cause to identify
+      this TeamCity promotion. Stored securely by TeamCity.
+    </span>
+  </td>
+</tr>
+
+<tr>
   <td><label for="<%=BridgeBuildFeatureConstants.PARAM_JENKINS_URL%>">Jenkins pipeline URL (read-only):</label></td>
   <td>
     <props:textProperty name="<%=BridgeBuildFeatureConstants.PARAM_JENKINS_URL%>" className="longField" maxlength="512"

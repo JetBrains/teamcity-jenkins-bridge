@@ -148,6 +148,8 @@ public class JenkinsTriggerOnRunListener {
     }
 
     String job = descriptor.getParameters().get(BridgeBuildFeatureConstants.PARAM_JENKINS_JOB);
+    String remoteTriggerToken = descriptor.getParameters().get(
+        BridgeBuildFeatureConstants.PARAM_REMOTE_TRIGGER_TOKEN);
     if (job == null || job.trim().isEmpty()) {
       return;
     }
@@ -224,7 +226,7 @@ public class JenkinsTriggerOnRunListener {
       LOG.debug(TeamCityNodeLog.currentNode(teamCityNodes)
           + " [Jenkins Bridge DEBUG] Sending Jenkins trigger request for TeamCity promotion "
           + promotion.getId());
-      trigger = jenkinsClient.triggerBuildWithQueueId(job, parameters, cause);
+      trigger = jenkinsClient.triggerBuildWithQueueId(job, parameters, cause, remoteTriggerToken);
     } catch (BridgeHttpException | JenkinsDataException e) {
       failTeamCityFirstAttempt(
           queued,
