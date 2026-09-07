@@ -12,16 +12,15 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Marks TeamCity-first bridge builds agentless <em>before</em> they enter the queue.
+ * Prepares TeamCity-first bridge builds before they enter the queue.
  *
  * <p>When a user clicks Run on a configuration carrying the Jenkins Bridge feature, TeamCity would
  * otherwise queue a normal build that competes for an agent and runs the config's own steps. The
- * bridge instead mirrors the Jenkins run into that build, so it must be agentless (bridge-controlled
- * running/finish state). Agent scheduling is decided at queue time, so the only place to flip it is
- * here — {@link AddToQueuePreprocessor} fires on the queueing path just before insert.
+ * bridge instead mirrors the Jenkins run into that build. Imported configurations are statically
+ * agentless, so TeamCity's normal agent/executor selection is not involved.
  *
- * <p>Scope is deliberately narrow: this only sets {@code teamcity.build.agentLess}. It performs no
- * Jenkins I/O — triggering Jenkins and recording the {@link com.jetbrains.teamcity.jenkinsbridge.persistence.PendingTrigger}
+ * <p>Scope is deliberately narrow: this only adds the bridge correlation parameter. It performs no Jenkins I/O — triggering Jenkins and recording the
+ * {@link com.jetbrains.teamcity.jenkinsbridge.persistence.PendingTrigger}
  * stay in {@link JenkinsTriggerOnRunListener}, off this latency-sensitive path. Non-bridge builds
  * pass through untouched after a cheap feature check. Artifact-storage setup is performed later
  * by the main-node Jenkins trigger listener, so secondary nodes do not mutate project storage.
@@ -41,10 +40,10 @@ public class JenkinsQueueAgentlessPreprocessor implements AddToQueuePreprocessor
       try {
         addBridgeParametersIfNeeded(promotion, triggeredBy);
       } catch (RuntimeException e) {
-        // Never break queueing for a bug in the bridge; the build just stays non-agentless and the
-        // existing post-queue listener + poller still mirror it (only the live-in-queue view suffers).
-        LOG.error("Jenkins Bridge: failed to mark promotion "
-            + safeId(promotion) + " agentless before queueing", e);
+        // Never break queueing for a bug in the bridge; the existing listener and poller still
+        // mirror the build, but correlation falls back to the pending-trigger lookup.
+        LOG.error("Jenkins Bridge: failed to prepare promotion "
+            + safeId(promotion) + " before queueing", e);
       }
     }
     // We only mutate promotions in place; the queued set and agent restrictions are left unchanged.
@@ -65,16 +64,11 @@ public class JenkinsQueueAgentlessPreprocessor implements AddToQueuePreprocessor
     }
     BuildPromotionEx ex = (BuildPromotionEx) promotion;
     Map<String, String> parameters = new LinkedHashMap<String, String>(promotion.getCustomParameters());
-    if (!ex.isAgentLessBuild()) {
-      parameters.put(TeamCityBuildParameters.AGENTLESS_BUILD_PROPERTY, "true");
-    }
     if (!parameters.containsKey(TeamCityBuildParameters.TEAMCITY_PROMOTION_ID)) {
       parameters.put(TeamCityBuildParameters.TEAMCITY_PROMOTION_ID,
           JenkinsTriggerCorrelation.encode(promotion.getId()));
     }
     ex.setCustomParameters(parameters);
-    LOG.info("Jenkins Bridge: marked TeamCity promotion " + promotion.getId()
-        + " agentless before queueing");
   }
 
   private boolean hasBridgeFeature(SBuildType buildType) {
