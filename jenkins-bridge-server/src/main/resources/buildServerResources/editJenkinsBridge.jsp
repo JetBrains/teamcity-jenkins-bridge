@@ -63,7 +63,7 @@
     <props:passwordProperty name="<%=BridgeBuildFeatureConstants.PARAM_REMOTE_TRIGGER_TOKEN%>" className="longField"
                             disabled="${readOnly}"/>
     <span class="smallNote">
-      Optional Jenkins job token from “Trigger builds remotely”. Enables the Jenkins cause to identify
+      Optional Jenkins job token from "Trigger builds remotely". Enables the Jenkins cause to identify
       this TeamCity promotion. Stored securely by TeamCity.
     </span>
   </td>
