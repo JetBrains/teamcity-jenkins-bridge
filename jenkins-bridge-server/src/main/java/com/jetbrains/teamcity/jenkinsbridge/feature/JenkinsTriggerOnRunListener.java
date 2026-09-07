@@ -177,10 +177,7 @@ public class JenkinsTriggerOnRunListener {
       return;
     }
     String controller = jenkinsClient.getControllerIdentity();
-    Long correlatedPromotionId = JenkinsTriggerCorrelation.decode(
-        promotion.getCustomParameters().get(TeamCityBuildParameters.TEAMCITY_PROMOTION_ID));
-    long causePromotionId = correlatedPromotionId == null ? promotion.getId() : correlatedPromotionId;
-    String cause = JenkinsTriggerCorrelation.cause(causePromotionId);
+    String cause = JenkinsTriggerCorrelation.cause(promotion.getId());
     String originatingNode = "";
     // Persist an unresolved intent before POST. If TeamCity dies around the request boundary,
     // startup can find this record and either bind the accepted Jenkins run or fail the TeamCity
@@ -359,7 +356,6 @@ public class JenkinsTriggerOnRunListener {
     result.putAll(promotion.getCustomParameters());
     result.remove(BridgeBuildFeatureConstants.JENKINS_BUILD_KEY_PARAM);
     result.remove(TeamCityBuildParameters.AGENTLESS_BUILD_PROPERTY);
-    result.remove(TeamCityBuildParameters.TEAMCITY_PROMOTION_ID);
     return JenkinsParameterPayloadBuilder.build(parameterDefinitions, result);
   }
 
