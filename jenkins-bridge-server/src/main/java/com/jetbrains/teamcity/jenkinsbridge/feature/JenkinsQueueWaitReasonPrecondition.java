@@ -22,7 +22,7 @@ import java.util.Map;
  * native agentless state or their direct-start lifecycle.</p>
  */
 public class JenkinsQueueWaitReasonPrecondition implements StartBuildPrecondition {
-  public static final String WAITING_FOR_JENKINS_BUILD = "Waiting for Jenkins build to start";
+  public static final String WAITING_FOR_JENKINS_BUILD = "Waiting for Jenkins build";
   private static final WaitReason WAIT_REASON = new SimpleWaitReason(WAITING_FOR_JENKINS_BUILD);
 
   @Nullable
