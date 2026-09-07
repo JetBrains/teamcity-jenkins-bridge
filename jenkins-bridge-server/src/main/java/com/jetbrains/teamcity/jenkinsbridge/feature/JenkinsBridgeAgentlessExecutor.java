@@ -33,6 +33,12 @@ public class JenkinsBridgeAgentlessExecutor implements AgentlessBuildExecutor {
 
   @Override
   @NotNull
+  public String getExecutorType() {
+    return JenkinsBridgeExecutorType.EXECUTOR_TYPE;
+  }
+
+  @Override
+  @NotNull
   public AgentlessBuildStartResult checkCanStart(@NotNull BuildPromotion buildPromotion) {
     return new AgentlessBuildStartResult(
         EXECUTOR_NAME, new SimpleWaitReason(WAITING_FOR_JENKINS_BUILD));

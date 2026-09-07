@@ -92,6 +92,9 @@
   <bean id="jenkinsBridgeAgentlessExecutor"
         class="com.jetbrains.teamcity.jenkinsbridge.feature.JenkinsBridgeAgentlessExecutor"/>
 
+  <bean id="jenkinsBridgeExecutorType"
+        class="com.jetbrains.teamcity.jenkinsbridge.feature.JenkinsBridgeExecutorType"/>
+
   <bean id="jenkinsJobImporter"
         class="com.jetbrains.teamcity.jenkinsbridge.feature.JenkinsJobImporter"/>
 

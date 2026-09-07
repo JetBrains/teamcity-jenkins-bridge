@@ -3,9 +3,12 @@ package com.jetbrains.teamcity.jenkinsbridge.feature;
 import com.intellij.openapi.diagnostic.Logger;
 import com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityBuildParameters;
 import jetbrains.buildServer.AgentRestrictor;
+import jetbrains.buildServer.serverSide.BuildAttributes;
 import jetbrains.buildServer.serverSide.AddToQueuePreprocessor;
 import jetbrains.buildServer.serverSide.BuildPromotion;
 import jetbrains.buildServer.serverSide.BuildPromotionEx;
+import jetbrains.buildServer.clouds.server.executors.BuildExecutorDescriptor;
+import jetbrains.buildServer.clouds.server.executors.BuildExecutorsManager;
 import jetbrains.buildServer.serverSide.SBuildType;
 
 import java.util.LinkedHashMap;
@@ -30,6 +33,15 @@ import java.util.Map;
  */
 public class JenkinsQueueAgentlessPreprocessor implements AddToQueuePreprocessor {
   private static final Logger LOG = Logger.getInstance(JenkinsQueueAgentlessPreprocessor.class.getName());
+  private final BuildExecutorsManager buildExecutorsManager;
+
+  public JenkinsQueueAgentlessPreprocessor() {
+    this(null);
+  }
+
+  public JenkinsQueueAgentlessPreprocessor(BuildExecutorsManager buildExecutorsManager) {
+    this.buildExecutorsManager = buildExecutorsManager;
+  }
 
   @Override
   public Map<BuildPromotion, AgentRestrictor> preprocess(
@@ -68,6 +80,7 @@ public class JenkinsQueueAgentlessPreprocessor implements AddToQueuePreprocessor
     if (!ex.isAgentLessBuild()) {
       parameters.put(TeamCityBuildParameters.AGENTLESS_BUILD_PROPERTY, "true");
     }
+    selectJenkinsBridgeExecutor(promotion, parameters);
     if (!parameters.containsKey(TeamCityBuildParameters.TEAMCITY_PROMOTION_ID)) {
       parameters.put(TeamCityBuildParameters.TEAMCITY_PROMOTION_ID,
           JenkinsTriggerCorrelation.encode(promotion.getId()));
@@ -75,6 +88,29 @@ public class JenkinsQueueAgentlessPreprocessor implements AddToQueuePreprocessor
     ex.setCustomParameters(parameters);
     LOG.info("Jenkins Bridge: marked TeamCity promotion " + promotion.getId()
         + " agentless before queueing");
+  }
+
+  private void selectJenkinsBridgeExecutor(BuildPromotion promotion, Map<String, String> parameters) {
+    if (buildExecutorsManager == null || promotion.getBuildType() == null) {
+      return;
+    }
+    BuildExecutorDescriptor descriptor = buildExecutorsManager
+        .getOwnAvailableExecutors(promotion.getBuildType().getProject()).stream()
+        .filter(candidate -> JenkinsBridgeExecutorType.EXECUTOR_TYPE.equals(
+            candidate.getExecutorType().getExecutorType()))
+        .findFirst()
+        .orElseGet(() -> buildExecutorsManager.addExecutor(
+            promotion.getBuildType().getProject(),
+            executorProfileParameters(),
+            new JenkinsBridgeExecutorType()));
+    parameters.put(BuildAttributes.AGENT_LESS_BUILD_EXECUTOR, descriptor.getId());
+  }
+
+  private Map<String, String> executorProfileParameters() {
+    Map<String, String> parameters = new LinkedHashMap<>();
+    parameters.put("profileName", "Jenkins Bridge");
+    parameters.put("profileDescription", "Mirrors the queued build through Jenkins Bridge");
+    return parameters;
   }
 
   private boolean hasBridgeFeature(SBuildType buildType) {
