@@ -7,8 +7,6 @@ import jetbrains.buildServer.serverSide.AddToQueuePreprocessor;
 import jetbrains.buildServer.serverSide.BuildPromotion;
 import jetbrains.buildServer.serverSide.BuildPromotionEx;
 import jetbrains.buildServer.serverSide.SBuildType;
-import jetbrains.buildServer.serverSide.TeamCityNode;
-import jetbrains.buildServer.serverSide.TeamCityNodes;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -32,11 +30,6 @@ import java.util.Map;
  */
 public class JenkinsQueueAgentlessPreprocessor implements AddToQueuePreprocessor {
   private static final Logger LOG = Logger.getInstance(JenkinsQueueAgentlessPreprocessor.class.getName());
-  private final TeamCityNodes teamCityNodes;
-
-  public JenkinsQueueAgentlessPreprocessor(TeamCityNodes teamCityNodes) {
-    this.teamCityNodes = teamCityNodes;
-  }
 
   @Override
   public Map<BuildPromotion, AgentRestrictor> preprocess(
@@ -75,12 +68,9 @@ public class JenkinsQueueAgentlessPreprocessor implements AddToQueuePreprocessor
     if (!ex.isAgentLessBuild()) {
       parameters.put(TeamCityBuildParameters.AGENTLESS_BUILD_PROPERTY, "true");
     }
-    if (!parameters.containsKey(TeamCityBuildParameters.TRIGGER_CORRELATION)) {
-      TeamCityNode node = teamCityNodes == null ? null : teamCityNodes.getCurrentNode();
-      String nodeId = node == null ? "unknown" : node.getId();
-      String triggerCorrelation = JenkinsTriggerCorrelation.encode(
-          promotion.getId(), nodeId, triggeredBy, java.time.Instant.now().toString());
-      parameters.put(TeamCityBuildParameters.TRIGGER_CORRELATION, triggerCorrelation);
+    if (!parameters.containsKey(TeamCityBuildParameters.TEAMCITY_PROMOTION_ID)) {
+      parameters.put(TeamCityBuildParameters.TEAMCITY_PROMOTION_ID,
+          JenkinsTriggerCorrelation.encode(promotion.getId()));
     }
     ex.setCustomParameters(parameters);
     LOG.info("Jenkins Bridge: marked TeamCity promotion " + promotion.getId()
