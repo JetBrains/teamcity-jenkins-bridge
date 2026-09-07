@@ -86,6 +86,21 @@ default is 1 (the newest existing Jenkins build); later polling is incremental.
 The generated configuration is read-only by default. This is expected: use
 TeamCity's **Run Custom Build** action to provide parameters and start it.
 
+Optionally, configure a remote-trigger token to show the originating TeamCity
+promotion in Jenkins' build cause. Normal authenticated triggering does not
+need this token; it provides an additional recovery path if Jenkins cannot
+return queue metadata.
+
+1. In Jenkins, open the mirrored job's **Configure** page and enable
+   **Trigger builds remotely (e.g., from scripts)**. Enter and save a token.
+2. In TeamCity, open the generated build configuration's **Settings > Build
+   Features**, edit **Jenkins Bridge**, and paste that same value into
+   **Remote trigger token**.
+3. Save the TeamCity build feature.
+
+This is the Jenkins job token, not the Jenkins user API token stored in the
+project connection. TeamCity stores the value as a secure parameter.
+
 ### 2. Run the first mirrored build
 
 Open the generated build configuration, choose **Run Custom Build**, review
@@ -200,8 +215,7 @@ parameters.
 1. **TeamCity creates a promotion.** The user queues the generated build
    configuration. TeamCity creates a normal queued promotion. The bridge's
    queue preprocessor marks this bridge-controlled build agentless before it is
-   inserted into the queue. It records the TeamCity promotion ID as the plain numeric internal
-   parameter `jenkins.bridge.teamcity.promotion.id`. It does not call Jenkins or write bridge state.
+   inserted into the queue. It does not call Jenkins or write bridge state.
 
 2. **The main node claims the trigger callback.** Every TeamCity node may
    observe the queue callback, but only the current TeamCity main node proceeds.

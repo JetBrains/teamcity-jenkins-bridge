@@ -148,6 +148,8 @@ public class JenkinsTriggerOnRunListener {
     }
 
     String job = descriptor.getParameters().get(BridgeBuildFeatureConstants.PARAM_JENKINS_JOB);
+    String remoteTriggerToken = descriptor.getParameters().get(
+        BridgeBuildFeatureConstants.PARAM_REMOTE_TRIGGER_TOKEN);
     if (job == null || job.trim().isEmpty()) {
       return;
     }
@@ -163,10 +165,7 @@ public class JenkinsTriggerOnRunListener {
       return;
     }
     String controller = jenkinsClient.getControllerIdentity();
-    Long correlatedPromotionId = JenkinsTriggerCorrelation.decode(
-        promotion.getCustomParameters().get(TeamCityBuildParameters.TEAMCITY_PROMOTION_ID));
-    long causePromotionId = correlatedPromotionId == null ? promotion.getId() : correlatedPromotionId;
-    String cause = JenkinsTriggerCorrelation.cause(causePromotionId);
+    String cause = JenkinsTriggerCorrelation.cause(promotion.getId());
     String originatingNode = "";
     // Persist an unresolved intent before POST. If TeamCity dies around the request boundary,
     // startup can find this record and either bind the accepted Jenkins run or fail the TeamCity
@@ -227,7 +226,7 @@ public class JenkinsTriggerOnRunListener {
       LOG.debug(TeamCityNodeLog.currentNode(teamCityNodes)
           + " [Jenkins Bridge DEBUG] Sending Jenkins trigger request for TeamCity promotion "
           + promotion.getId());
-      trigger = jenkinsClient.triggerBuildWithQueueId(job, parameters, cause);
+      trigger = jenkinsClient.triggerBuildWithQueueId(job, parameters, cause, remoteTriggerToken);
     } catch (BridgeHttpException | JenkinsDataException e) {
       failTeamCityFirstAttempt(
           queued,
@@ -345,7 +344,6 @@ public class JenkinsTriggerOnRunListener {
     result.putAll(promotion.getCustomParameters());
     result.remove(BridgeBuildFeatureConstants.JENKINS_BUILD_KEY_PARAM);
     result.remove(TeamCityBuildParameters.AGENTLESS_BUILD_PROPERTY);
-    result.remove(TeamCityBuildParameters.TEAMCITY_PROMOTION_ID);
     return JenkinsParameterPayloadBuilder.build(parameterDefinitions, result);
   }
 

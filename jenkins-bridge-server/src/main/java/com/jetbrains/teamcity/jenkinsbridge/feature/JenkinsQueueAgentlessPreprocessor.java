@@ -68,10 +68,6 @@ public class JenkinsQueueAgentlessPreprocessor implements AddToQueuePreprocessor
     if (!ex.isAgentLessBuild()) {
       parameters.put(TeamCityBuildParameters.AGENTLESS_BUILD_PROPERTY, "true");
     }
-    if (!parameters.containsKey(TeamCityBuildParameters.TEAMCITY_PROMOTION_ID)) {
-      parameters.put(TeamCityBuildParameters.TEAMCITY_PROMOTION_ID,
-          JenkinsTriggerCorrelation.encode(promotion.getId()));
-    }
     ex.setCustomParameters(parameters);
     LOG.info("Jenkins Bridge: marked TeamCity promotion " + promotion.getId()
         + " agentless before queueing");

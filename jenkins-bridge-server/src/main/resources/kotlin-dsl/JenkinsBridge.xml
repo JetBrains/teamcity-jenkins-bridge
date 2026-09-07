@@ -5,6 +5,7 @@
   <params>
     <param name="connectionId" type="string" mandatory="true"><description>ID of the Jenkins Bridge project connection</description></param>
     <param name="jenkinsJob" dslName="jobPath" mandatory="true"><description>Jenkins job path, with folders separated by '/'</description></param>
+    <param name="secure:jenkinsRemoteTriggerToken" dslName="remoteTriggerToken"><description>Optional Jenkins job remote trigger token, used to record the TeamCity promotion in the Jenkins build cause</description></param>
     <param name="recentBuildLimit" type="int"><description>Number of recent Jenkins builds to mirror on the first sync; defaults to 1</description></param>
   </params>
   <examples><example><description>Mirror a Jenkins job using a project connection.</description><code>

@@ -26,6 +26,7 @@ import org.junit.Test;
 
 import java.io.InputStream;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -770,6 +771,18 @@ public class JenkinsClientTest {
     assertEquals("http://jenkins/job/job/buildWithParameters?cause=Jenkins+Bridge%3A+promotion+42+%28node+secondary+1%29",
         httpClient.postUrl);
     assertEquals("BRANCH=feature%2Fx", httpClient.postBody);
+  }
+
+  @Test
+  public void triggerBuildWithRemoteTokenSendsItWithTheCause() throws Exception {
+    TriggerHttpClient httpClient = new TriggerHttpClient();
+    JenkinsClient client = new JenkinsClient(testConnection(), httpClient, newJaxbUnmarshaller());
+
+    client.triggerBuildWithQueueId("job", Collections.emptyMap(),
+        "Jenkins Bridge: TeamCity promotion 42", "job-trigger-token");
+
+    assertEquals("http://jenkins/job/job/build?token=job-trigger-token&cause=Jenkins+Bridge%3A+TeamCity+promotion+42",
+        httpClient.postUrl);
   }
 
   @Test
