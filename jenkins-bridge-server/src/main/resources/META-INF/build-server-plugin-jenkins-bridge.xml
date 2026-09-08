@@ -89,6 +89,9 @@
   <bean id="jenkinsQueueAgentlessPreprocessor"
         class="com.jetbrains.teamcity.jenkinsbridge.feature.JenkinsQueueAgentlessPreprocessor"/>
 
+  <bean id="jenkinsQueueWaitReasonPrecondition"
+        class="com.jetbrains.teamcity.jenkinsbridge.feature.JenkinsQueueWaitReasonPrecondition"/>
+
   <bean id="jenkinsJobImporter"
         class="com.jetbrains.teamcity.jenkinsbridge.feature.JenkinsJobImporter"/>
 
