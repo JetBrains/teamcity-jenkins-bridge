@@ -532,7 +532,7 @@ public class TeamCityBuildMirrorService {
       String synchronizationExceptions = synchronizationExceptions(mirror);
       if (!synchronizationExceptions.isEmpty()) {
         summary += "\nJenkins Bridge synchronization exceptions\n"
-            + "Jenkins remains authoritative; the following data may be absent from TeamCity:\n"
+            + "Jenkins remains the source of truth; the following data may be absent from TeamCity:\n"
             + synchronizationExceptions;
       }
 
