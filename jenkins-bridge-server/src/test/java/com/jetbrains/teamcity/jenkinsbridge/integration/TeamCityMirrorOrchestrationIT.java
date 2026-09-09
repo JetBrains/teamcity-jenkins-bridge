@@ -83,17 +83,22 @@ public class TeamCityMirrorOrchestrationIT extends TeamCityIntegrationTestBase {
   }
 
   @Test
-  public void JenkinsHttpExceptionDuringTestFetchStopsCompletion() throws Exception {
+  public void JenkinsHttpExceptionDuringTestFetchIsReportedAndDoesNotBlockCompletion() throws Exception {
     JenkinsScenarioClient jenkins = new JenkinsScenarioClient()
         .failTestReportWith(new BridgeHttpException("GET", "http://jenkins/testReport", 500, "down"));
     JenkinsBuildInfo finished = buildInfo(34, false, "SUCCESS");
     BuildMirror mirror = newMirror(finished);
     TeamCityBuildFixture fixture = newFixtureService(false);
 
-    BridgeHttpException failure = expectFailure(BridgeHttpException.class,
-        () -> invokeSyncBuild(fixture.service, fixture.mirrorStore, jenkins, mirror, finished));
-    assertEquals(500, failure.getStatusCode());
-    assertFalse(fixture.reload(mirror).isFinished());
+    myTestLogger.doNotFailOnErrorMessages();
+    invokeSyncBuild(fixture.service, fixture.mirrorStore, jenkins, mirror, finished);
+
+    SBuild persisted = fixture.reload(mirror);
+    assertNotNull(persisted);
+    myFixture.waitForBuildFinished(persisted.getBuildId());
+    assertTrue(fixture.reload(mirror).isFinished());
+    assertFalse(mirror.isTestsSynced());
+    assertNotNull(mirror.getTestSyncError());
   }
 
   @Test

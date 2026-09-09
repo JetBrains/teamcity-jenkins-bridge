@@ -401,7 +401,15 @@ public class TeamCityBuildMirrorService {
     teamCityTestReporter.reportTests(teamCityBuildId, testReport);
 
     mirror.setTestsSynced(true);
+    mirror.setTestSyncError(null);
     mirror.setLastError(null);
+    mirrorStore.saveMirror(mirror);
+  }
+
+  /** Records a test-report fetch or TeamCity test-reporting failure while preserving retryability. */
+  public void recordTestSyncFailure(BuildMirror mirror, Exception failure) throws IOException {
+    mirror.setTestsSynced(false);
+    mirror.setTestSyncError(describeException(failure));
     mirrorStore.saveMirror(mirror);
   }
 
@@ -417,7 +425,6 @@ public class TeamCityBuildMirrorService {
       return;
     }
 
-    int registered = 0;
     List<String> failures = new ArrayList<String>();
     boolean artifactRegistrationFailed = false;
 
@@ -425,7 +432,6 @@ public class TeamCityBuildMirrorService {
     if (artifacts != null) {
       for (JenkinsArtifact artifact : artifacts.getArtifacts()) {
         safeArtifacts.add(artifact);
-        registered++;
       }
     }
 
@@ -436,22 +442,6 @@ public class TeamCityBuildMirrorService {
       failures.add(e.getClass().getSimpleName() + (e.getMessage() == null ? "" : ": " + e.getMessage()));
       LOG.warn("Jenkins Bridge: failed to register artifact list for "
           + mirror.getJenkinsBuildKey(), e);
-    }
-
-    String message = "\n--- Jenkins artifact mirroring ---\n"
-        + "Registered artifacts: " + registered + "\n"
-        + "Failures: " + failures.size() + "\n";
-    if (!failures.isEmpty()) {
-      message += "Artifact mirroring is best-effort; the TeamCity build result still follows Jenkins.\n";
-    }
-
-    try {
-      teamCityBuildLogger.addBridgeLog(teamCityBuildId, message);
-    } catch (TeamCityRunningBuildNotFoundException e) {
-      LOG.warn("Jenkins Bridge: failed to write artifact summary for "
-          + mirror.getJenkinsBuildKey(), e);
-      failures.add("Failed to write artifact summary: " + e.getClass().getSimpleName()
-          + (e.getMessage() == null ? "" : ": " + e.getMessage()));
     }
 
     mirror.setArtifactsSynced(!artifactRegistrationFailed);
@@ -537,6 +527,13 @@ public class TeamCityBuildMirrorService {
           + "Jenkins result: " + finalResult + "\n"
           + "Jenkins duration: " + jenkinsInfo.getDuration() + " ms\n";
 
+      String synchronizationExceptions = synchronizationExceptions(mirror);
+      if (!synchronizationExceptions.isEmpty()) {
+        summary += "\nJenkins Bridge synchronization exceptions\n"
+            + "Jenkins remains authoritative; the following data may be absent from TeamCity:\n"
+            + synchronizationExceptions;
+      }
+
       teamCityBuildLogger.addBridgeLog(teamCityBuildId, summary);
 
       mirror.setSummaryLogSent(true);
@@ -554,8 +551,6 @@ public class TeamCityBuildMirrorService {
     mirror.setJenkinsResult(finalResult);
     mirror.setTeamCityFinishDate(finishDate);
     mirror.setLastError(null);
-    // TODO we should log here if there is an artifact sync failure
-
     mirrorStore.saveMirror(mirror);
     mirrorStore.saveResultMetadata(mirror);
   }
@@ -642,6 +637,21 @@ public class TeamCityBuildMirrorService {
         result.append("; ");
       }
       result.append(failure);
+    }
+    return result.toString();
+  }
+
+  private String synchronizationExceptions(BuildMirror mirror) {
+    StringBuilder result = new StringBuilder();
+    if (mirror.getTestSyncError() != null && !mirror.getTestSyncError().isEmpty()) {
+      result.append("Tests: ").append(mirror.getTestSyncError()).append('\n');
+    }
+    if (mirror.getArtifactSyncError() != null && !mirror.getArtifactSyncError().isEmpty()) {
+      result.append("Artifacts: ").append(mirror.getArtifactSyncError()).append('\n');
+    }
+    List<String> vcsErrors = mirror.getVcsSyncErrors();
+    if (vcsErrors != null && !vcsErrors.isEmpty()) {
+      result.append("VCS: ").append(vcsErrors.get(vcsErrors.size() - 1)).append('\n');
     }
     return result.toString();
   }

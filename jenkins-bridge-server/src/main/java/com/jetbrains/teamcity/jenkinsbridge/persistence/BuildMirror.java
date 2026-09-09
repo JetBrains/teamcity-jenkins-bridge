@@ -42,6 +42,7 @@ public class BuildMirror {
   private boolean metadataLogSent;
   private boolean summaryLogSent;
   private boolean testsSynced;
+  private String testSyncError;
   private boolean artifactsSynced;
   private String artifactSyncError;
   private boolean vcsSynced;
@@ -207,6 +208,14 @@ public class BuildMirror {
 
   public void setTestsSynced(boolean testsSynced) {
     this.testsSynced = testsSynced;
+  }
+
+  public String getTestSyncError() {
+    return testSyncError;
+  }
+
+  public void setTestSyncError(String testSyncError) {
+    this.testSyncError = testSyncError;
   }
 
   public boolean isArtifactsSynced() {
