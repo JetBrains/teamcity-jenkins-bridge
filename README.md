@@ -1,7 +1,10 @@
 # Jenkins Bridge
 
-Jenkins Bridge is a TeamCity server-side plugin that mirrors Jenkins builds into
-agentless TeamCity builds.
+**See your Jenkins builds in TeamCity without moving or rewriting your Jenkins jobs.**
+
+Jenkins Bridge mirrors Jenkins build history and live runs into TeamCity. Jenkins continues to execute the jobs, while TeamCity displays their logs, results, tests, changes, parameters, and artifacts.
+
+Use it to evaluate TeamCity with real Jenkins workloads, get visibility across both systems, or prepare for a gradual migration.
 
 For each Jenkins run, the plugin can:
 
