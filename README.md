@@ -23,7 +23,8 @@ is presented as a stable demo feature.
 
 ## TeamCity compatibility
 
-The plugin is compatible with TeamCity **2026.1 and later**.
+> [!IMPORTANT]
+> The plugin requires TeamCity **2026.1 or later**.
 
 ## Contents
 
@@ -45,9 +46,8 @@ The plugin is compatible with TeamCity **2026.1 and later**.
 
 ## Quickstart
 
-This is the shortest path from a TeamCity project with Jenkins Bridge installed
-to a mirrored Jenkins build. Plugin installation and upgrades are administrator
-tasks; users only need access to the TeamCity project and Jenkins connection.
+Follow these steps to connect Jenkins, import a job, and see its builds in TeamCity. 
+An administrator installs and updates the plugin. Users only need access to a TeamCity project with a configured Jenkins connection.
 
 ### Before you start
 
