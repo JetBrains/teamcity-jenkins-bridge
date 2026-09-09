@@ -97,7 +97,7 @@ public class TeamCityBuildMirrorServiceTest {
   }
 
   @Test
-  public void syncArtifactMetadataRegistersArtifactListAndLogsSummary() throws Exception {
+  public void syncArtifactMetadataRegistersArtifactListWithoutConsoleSummary() throws Exception {
     CapturingArtifactListPublisher publisher = new CapturingArtifactListPublisher();
     CapturingLogger logger = new CapturingLogger();
     TeamCityBuildMirrorService service = new TeamCityBuildMirrorService(
@@ -116,7 +116,7 @@ public class TeamCityBuildMirrorServiceTest {
     assertEquals(2, publisher.published.size());
     assertEquals("target/app.jar", publisher.published.get(0).relativePath());
     assertEquals("reports/unit/report.txt", publisher.published.get(1).relativePath());
-    assertTrue(logger.texts.get(0).contains("Registered artifacts: 2"));
+    assertTrue(logger.texts.isEmpty());
   }
 
   @Test
@@ -132,7 +132,7 @@ public class TeamCityBuildMirrorServiceTest {
 
     assertTrue(mirror.isArtifactsSynced());
     assertTrue(publisher.published.isEmpty());
-    assertTrue(logger.texts.get(0).contains("Registered artifacts: 0"));
+    assertTrue(logger.texts.isEmpty());
   }
 
   @Test
@@ -166,7 +166,7 @@ public class TeamCityBuildMirrorServiceTest {
 
     assertTrue(!mirror.isArtifactsSynced());
     assertTrue(mirror.getArtifactSyncError().contains("IOException"));
-    assertTrue(logger.texts.get(0).contains("Failures: 1"));
+    assertTrue(logger.texts.isEmpty());
   }
 
   @Test(expected = NullPointerException.class)
@@ -303,6 +303,18 @@ public class TeamCityBuildMirrorServiceTest {
 
     assertFalse(mirror.isVcsSynced());
     assertTrue(hasVcsErrorContaining(mirror, "503"));
+  }
+
+  @Test
+  public void recordTestSyncFailureLeavesMirrorRetryable() throws Exception {
+    TeamCityBuildMirrorService service = new TeamCityBuildMirrorService(
+        null, null, null, null, new CapturingLogger(), null, null, null, null, null, null, new NoopStore());
+    BuildMirror mirror = BuildMirror.create("job#1@1", "job", buildInfo(1), "buildType", "now");
+
+    service.recordTestSyncFailure(mirror, new BridgeHttpException("GET", "http://jenkins/testReport", 503, "unavailable"));
+
+    assertFalse(mirror.isTestsSynced());
+    assertTrue(mirror.getTestSyncError().contains("503"));
   }
 
   private boolean hasVcsErrorContaining(BuildMirror mirror, String text) {

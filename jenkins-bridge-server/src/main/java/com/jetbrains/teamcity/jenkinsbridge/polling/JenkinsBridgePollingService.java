@@ -926,10 +926,16 @@ public class JenkinsBridgePollingService {
     }
 
     if (shouldSyncFinishedData(buildInfo, mirror, mirror.isTestsSynced())) {
-      JenkinsTestReport testReport = jenkinsClient.getTestReport(mirror.getJenkinsJob(), mirror.getJenkinsBuildNumber());
-      LOG.debug(TeamCityNodeLog.currentNode(teamCityNodes) + " [Jenkins Bridge DEBUG] Read " + testReport.getTestCount()
-          + " Jenkins test(s) for " + mirror.getJenkinsBuildKey());
-      mirrorService.syncTestsIfNeeded(mirror, teamCityBuildId, testReport);
+      try {
+        JenkinsTestReport testReport = jenkinsClient.getTestReport(mirror.getJenkinsJob(), mirror.getJenkinsBuildNumber());
+        LOG.debug(TeamCityNodeLog.currentNode(teamCityNodes) + " [Jenkins Bridge DEBUG] Read " + testReport.getTestCount()
+            + " Jenkins test(s) for " + mirror.getJenkinsBuildKey());
+        mirrorService.syncTestsIfNeeded(mirror, teamCityBuildId, testReport);
+      } catch (BridgeHttpException | JenkinsDataException | RuntimeException e) {
+        LOG.error("Jenkins Bridge: test mirroring failed for "
+            + mirror.getJenkinsBuildKey() + "; finishing will continue", e);
+        mirrorService.recordTestSyncFailure(mirror, e);
+      }
     }
     syncArtifactsIfNeeded(jenkinsClient, buildInfo, mirror, teamCityBuildId);
     if (shouldSyncFinishedData(buildInfo, mirror, mirror.isVcsSynced())) {
