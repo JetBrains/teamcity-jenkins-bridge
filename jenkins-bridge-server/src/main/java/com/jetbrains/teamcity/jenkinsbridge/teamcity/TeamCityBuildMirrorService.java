@@ -25,6 +25,7 @@ import jetbrains.buildServer.serverSide.BuildPromotion;
 import jetbrains.buildServer.serverSide.BuildPromotionEx;
 
 import java.io.IOException;
+import java.time.Instant;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -224,6 +225,7 @@ public class TeamCityBuildMirrorService {
         + "Monitoring Jenkins job: " + mirror.getJenkinsJob() + "\n"
         + "Jenkins build number: " + mirror.getJenkinsBuildNumber() + "\n"
         + "Jenkins build key: " + mirror.getJenkinsBuildKey() + "\n"
+        + "Jenkins build start date: " + formatJenkinsStartDate(mirror.getJenkinsBuildTimestamp()) + "\n"
         + "Jenkins build URL: " + nullToEmpty(mirror.getJenkinsBuildUrl()) + "\n"
         + "\n";
 
@@ -660,6 +662,10 @@ public class TeamCityBuildMirrorService {
     SimpleDateFormat formatter = new SimpleDateFormat("yyyyMMdd'T'HHmmssZ");
     formatter.setTimeZone(TimeZone.getTimeZone("UTC"));
     return formatter.format(finishTime);
+  }
+
+  private String formatJenkinsStartDate(long timestamp) {
+    return timestamp > 0L ? Instant.ofEpochMilli(timestamp).toString() : "unknown";
   }
 
 }
