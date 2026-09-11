@@ -49,6 +49,12 @@ is presented as a stable demo feature.
 Follow these steps to connect Jenkins, import a job, and see its builds in TeamCity. 
 An administrator installs and updates the plugin. Users only need access to a TeamCity project with a configured Jenkins connection.
 
+For the easiest evaluation, use the unlimited TeamCity Enterprise trial. The
+bridge represents Jenkins runs as agentless TeamCity builds: Jenkins remains
+responsible for executing the job and consuming Jenkins agent capacity, while
+TeamCity displays and tracks the mirrored result without running the job on a
+TeamCity build agent.
+
 ### Before you start
 
 - Ask your TeamCity administrator to install a Jenkins Bridge version supported
@@ -150,6 +156,9 @@ useful when diagnosing behavior but are not required for the normal user flow.
   as a separate mirrored build while it remains queued.
 - Jenkins remains the source of truth. A TeamCity build is a shallow,
   agentless representation and cannot execute the Jenkins job itself.
+- Pausing or cancelling a mirrored build from TeamCity is not currently
+  supported. Manage the running build in Jenkins; the TeamCity mirror follows
+  the Jenkins result and lifecycle.
 - Pipeline topology and stage data depend on the Jenkins APIs available to the
   connected server. Without usable Pipeline endpoints, the bridge degrades to
   the flat console mirror where possible.
