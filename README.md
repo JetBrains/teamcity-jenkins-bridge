@@ -53,7 +53,8 @@ For the easiest evaluation, use the unlimited TeamCity Enterprise trial. The
 bridge represents Jenkins runs as agentless TeamCity builds: Jenkins remains
 responsible for executing the job and consuming Jenkins agent capacity, while
 TeamCity displays and tracks the mirrored result without running the job on a
-TeamCity build agent.
+TeamCity build agent. Each mirrored TeamCity build still consumes a TeamCity
+license slot, even though it does not consume a TeamCity build agent.
 
 ### Before you start
 
@@ -155,7 +156,9 @@ useful when diagnosing behavior but are not required for the normal user flow.
   only internally to correlate a build started from TeamCity; it is not shown
   as a separate mirrored build while it remains queued.
 - Jenkins remains the source of truth. A TeamCity build is a shallow,
-  agentless representation and cannot execute the Jenkins job itself.
+  agentless representation and cannot execute the Jenkins job itself. Each
+  mirrored TeamCity build still consumes a TeamCity license slot, although it
+  does not consume a TeamCity build agent.
 - Pausing or cancelling a mirrored build from TeamCity is not currently
   supported. Manage the running build in Jenkins; the TeamCity mirror follows
   the Jenkins result and lifecycle.
