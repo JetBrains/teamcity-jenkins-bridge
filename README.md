@@ -162,6 +162,11 @@ useful when diagnosing behavior but are not required for the normal user flow.
 - Pausing or cancelling a mirrored build from TeamCity is not currently
   supported. Manage the running build in Jenkins; the TeamCity mirror follows
   the Jenkins result and lifecycle.
+- Re-running a mirrored build through **Actions > Run this build** is not
+  currently supported. The new promotion may not enter the Jenkins Bridge
+  triggering path and may not be picked up and bound by the poller. Use the
+  build configuration's normal **Run Custom Build** action instead. Support
+  for this rerun action is planned for a later fix.
 - Pipeline topology and stage data depend on the Jenkins APIs available to the
   connected server. Without usable Pipeline endpoints, the bridge degrades to
   the flat console mirror where possible.
