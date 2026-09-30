@@ -13,6 +13,7 @@ import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsTriggerResponse;
 import com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityBuildParameters;
 import com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityQueuedBuildFailureService;
 import com.jetbrains.teamcity.jenkinsbridge.util.TeamCityNodeLog;
+import com.jetbrains.teamcity.jenkinsbridge.util.Utilities;
 import jetbrains.buildServer.serverSide.BuildPromotion;
 import jetbrains.buildServer.serverSide.BuildServerAdapter;
 import jetbrains.buildServer.serverSide.BuildServerListener;
@@ -37,6 +38,10 @@ import java.util.Map;
 public class JenkinsTriggerOnRunListener {
   private static final Logger LOG = Logger.getInstance(JenkinsTriggerOnRunListener.class.getName());
   private static final String TRIGGERED_BY_BRIDGE = "Jenkins Bridge";
+  private static final String MULTIBRANCH_PARENT_REASON =
+      "Jenkins Bridge cannot start Jenkins multibranch parent jobs from TeamCity. "
+          + "Scan and start the desired branch or tag in Jenkins; "
+          + "the bridge will mirror that child build into TeamCity.";
 
   private final EventDispatcher<BuildServerListener> eventDispatcher;
   private final JenkinsClientFactory jenkinsClientFactory;
@@ -149,6 +154,15 @@ public class JenkinsTriggerOnRunListener {
 
     String job = descriptor.getParameters().get(BridgeBuildFeatureConstants.PARAM_JENKINS_JOB);
     if (job == null || job.trim().isEmpty()) {
+      return;
+    }
+
+    // A multibranch parent is a discovery container, not a runnable Jenkins child job. Reject it
+    // before creating trigger state or making Jenkins requests so TeamCity records an actionable
+    // failure instead of waiting indefinitely or reporting an unrelated trigger error.
+    if (Utilities.isBuildConfigMultibranch(buildType)) {
+      failureService.failQueuedPromotion(promotion.getId(), MULTIBRANCH_PARENT_REASON);
+      LOG.warn(MULTIBRANCH_PARENT_REASON);
       return;
     }
 

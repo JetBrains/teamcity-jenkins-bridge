@@ -20,6 +20,7 @@ import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsPipelineNodeStatus;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsTestReport;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsVcsInfo;
 import com.jetbrains.teamcity.jenkinsbridge.settings.JenkinsBridgeSettingsProvider;
+import com.jetbrains.teamcity.jenkinsbridge.vcs.VcsBuildCustomization;
 import com.jetbrains.teamcity.jenkinsbridge.vcs.VcsSyncResult;
 import jetbrains.buildServer.serverSide.BuildPromotion;
 import jetbrains.buildServer.serverSide.BuildPromotionEx;
@@ -105,13 +106,27 @@ public class TeamCityBuildMirrorService {
       return mirror.getTeamCityBuildId();
     }
 
+    VcsBuildCustomization vcsCustomization = null;
+    if (teamCityVcsPublisher != null && vcsInfo != null && !vcsInfo.repositories().isEmpty()) {
+      try {
+        vcsCustomization = teamCityVcsPublisher.prepareVcs(mirror, vcsInfo);
+        if (vcsCustomization.result().hasErrors()) {
+          LOG.warn("Jenkins Bridge: VCS preparation reported errors for "
+              + mirror.getJenkinsBuildKey() + ": " + vcsCustomization.result().getErrors());
+        }
+      } catch (TeamCityVcsOperationalException e) {
+        LOG.warn("Jenkins Bridge: failed to prepare VCS before queueing "
+            + mirror.getJenkinsBuildKey(), e);
+      }
+    }
+
     if (graph != null && teamCityPipelineChainService != null && !jenkinsInfo.isBuilding()) {
       // The native chain is retrospective: while Jenkins runs, the bridge creates and updates one
       // live top mirror. Once Jenkins finishes and the graph is stable, the normal chain path is
       // used only when no top exists yet (Jenkins-first); TeamCity-first builds are retrofitted in
       // ensureRetrospectivePipelineChain after their existing top has finished.
       try {
-        PipelineChainMirror chain = teamCityPipelineChainService.ensureChain(mirror, graph);
+        PipelineChainMirror chain = teamCityPipelineChainService.ensureChain(mirror, graph, vcsCustomization);
         if (chain != null && chain.getTopPromotionId() != null) {
           mirror.setPipelineGraph(graph);
           mirror.setPipelineChain(chain);
@@ -157,7 +172,8 @@ public class TeamCityBuildMirrorService {
         mirror.getTeamCityBuildTypeId(),
         properties,
         mirror.getJenkinsBuildParameters(),
-        vcsInfo);
+        vcsInfo,
+        vcsCustomization);
     mirror.setTeamCityBuildId(buildId);
     mirror.setSyncState(SyncState.TEAMCITY_CREATED);
     mirror.setLastError(null);

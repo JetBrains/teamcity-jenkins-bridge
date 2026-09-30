@@ -68,6 +68,36 @@ public class TeamCityVcsApiIT extends TeamCityIntegrationTestBase {
   }
 
   @Test
+  public void preparesTagRootBeforePromotionQueueing() throws Exception {
+    myFixture.registerVcsSupport("jetbrains.git");
+    BuildMirror mirror = BuildMirror.create(
+        "vcs-tag-prequeue-1", "source-job/v1.0", buildInfo(14), myBuildType.getExternalId(), "it-now");
+
+    JenkinsClient jenkinsClient = Mockito.mock(JenkinsClient.class);
+    Mockito.when(jenkinsClient.getBranchRefType("source-job/v1.0")).thenReturn(VcsRefType.TAGS);
+    JenkinsClientFactory clientFactory = Mockito.mock(JenkinsClientFactory.class);
+    Mockito.when(clientFactory.forBuildType(myBuildType)).thenReturn(jenkinsClient);
+    TeamCityVcsPublisher publisher = new TeamCityVcsPublisher(
+        myProjectManager, Mockito.mock(TeamCityRunningBuildLocator.class),
+        Mockito.mock(BuildChainChangesCollector.class), clientFactory);
+
+    publisher.prepareVcs(mirror, new JenkinsVcsInfo(Collections.singletonList(
+        new JenkinsVcsRepository(
+            "hudson.plugins.git.util.BuildData",
+            "https://github.com/example/tag-repository.git",
+            "tagcommit123",
+            "refs/tags/v1.0"))));
+
+    SVcsRoot root = myBuildType.getProject().getVcsRoots().stream()
+        .filter(candidate -> candidate.getName().endsWith("/tags"))
+        .findFirst()
+        .orElse(null);
+    assertNotNull(root);
+    assertNotNull(myBuildType.getVcsRootInstanceEntryForParent(root));
+    assertEquals("+:refs/tags/*", root.getProperty("teamcity:branchSpec"));
+  }
+
+  @Test
   public void unsupportedVcsIsSkippedWithoutMutatingTeamCity() throws Exception {
     TeamCityBuildFixture build = queueAndStartBuild(
         Collections.singletonMap("jenkins.build.key", "vcs-api-unsupported"), Collections.emptyMap());

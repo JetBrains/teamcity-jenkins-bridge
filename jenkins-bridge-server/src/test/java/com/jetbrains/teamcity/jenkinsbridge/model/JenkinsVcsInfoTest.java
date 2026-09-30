@@ -71,6 +71,16 @@ public class JenkinsVcsInfoTest {
     assertTrue(JenkinsVcsInfo.empty().repositories().isEmpty());
   }
 
+  @Test
+  public void parsesPrimaryScmRevisionWithoutBuildData() {
+    JenkinsVcsInfo info = parse("{\"actions\":[{"
+        + "\"_class\":\"jenkins.scm.api.SCMRevisionAction\","
+        + "\"revision\":{\"hash\":\"abc123\",\"head\":{\"name\":\"v1.0\"}}}]}" );
+
+    assertTrue(info.repositories().isEmpty());
+    assertEquals(new JenkinsScmRevision("v1.0", "abc123"), info.primaryRevision().orElseThrow());
+  }
+
   private JenkinsVcsInfo parse(String json) {
     return JenkinsVcsInfo.fromJson(JsonParser.parseString(json).getAsJsonObject());
   }

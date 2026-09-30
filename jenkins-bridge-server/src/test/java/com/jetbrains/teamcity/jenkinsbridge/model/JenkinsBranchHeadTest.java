@@ -6,6 +6,8 @@ import com.jetbrains.teamcity.jenkinsbridge.xml.XmlReaderFactory;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 
 public class JenkinsBranchHeadTest {
   private static final JaxbUnmarshaller XML_UNMARSHALLER = new JaxbUnmarshaller(new XmlReaderFactory());
@@ -91,5 +93,46 @@ public class JenkinsBranchHeadTest {
     assertEquals(VcsRefType.HEADS, JenkinsBranchHead.refType(null, XML_UNMARSHALLER));
     assertEquals(VcsRefType.HEADS, JenkinsBranchHead.refType("", XML_UNMARSHALLER));
     assertEquals(VcsRefType.HEADS, JenkinsBranchHead.refType("not xml at all", XML_UNMARSHALLER));
+  }
+
+  @Test
+  public void readsConcreteTagScmFromMultibranchChild() {
+    JenkinsScmHeadInfo info = JenkinsBranchHead.scmInfo(tagScmXml(
+        "org.jenkinsci.plugins.github_branch_source.GitHubTagSCMHead",
+        "<url>git@github.com:org/repo.git</url>"), XML_UNMARSHALLER).orElseThrow();
+
+    assertEquals(VcsRefType.TAGS, info.refType());
+    assertEquals("v1.0", info.headName());
+    assertEquals("source-1", info.sourceId());
+    assertEquals("git@github.com:org/repo.git", info.remoteUrl());
+  }
+
+  @Test
+  public void acceptsEquivalentDuplicateRemotesButRejectsAmbiguousOnes() {
+    assertTrue(JenkinsBranchHead.scmInfo(tagScmXml(
+        "io.jenkins.plugins.gitlabbranchsource.GitLabTagSCMHead",
+        "<url>git@github.com:org/repo.git</url><url>https://github.com/org/repo.git</url>"),
+        XML_UNMARSHALLER).isPresent());
+    assertFalse(JenkinsBranchHead.scmInfo(tagScmXml(
+        "com.cloudbees.jenkins.plugins.bitbucket.BitbucketTagSCMHead",
+        "<url>https://example.test/one.git</url><url>https://example.test/two.git</url>"),
+        XML_UNMARSHALLER).isPresent());
+  }
+
+  private static String tagScmXml(String headClass, String urls) {
+    StringBuilder remotes = new StringBuilder();
+    for (String url : urls.split("(?=<url>)")) {
+      if (!url.isEmpty()) {
+        remotes.append("<hudson.plugins.git.UserRemoteConfig>").append(url)
+            .append("</hudson.plugins.git.UserRemoteConfig>");
+      }
+    }
+    return "<flow-definition><properties>"
+        + "<org.jenkinsci.plugins.workflow.multibranch.BranchJobProperty><branch>"
+        + "<sourceId>source-1</sourceId><head class=\"" + headClass + "\"><name>v1.0</name></head>"
+        + "<scm class=\"hudson.plugins.git.GitSCM\"><userRemoteConfigs>" + remotes
+        + "</userRemoteConfigs></scm></branch>"
+        + "</org.jenkinsci.plugins.workflow.multibranch.BranchJobProperty>"
+        + "</properties></flow-definition>";
   }
 }

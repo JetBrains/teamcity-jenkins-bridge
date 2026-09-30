@@ -1020,6 +1020,17 @@ public class JenkinsClient {
     }
   }
 
+  /** Reads the primary SCM serialized on a Jenkins multibranch child job. */
+  @NotNull
+  public Optional<JenkinsScmHeadInfo> getBranchScmInfo(String jobName) throws BridgeHttpException {
+    String url = myConnection.getUrl()
+        + jenkinsJobPath(jobName)
+        + "/config.xml";
+    String response = httpClient.get(
+        url, myConnection.getUser(), myConnection.getToken(), "application/xml");
+    return JenkinsBranchHead.scmInfo(response, xmlUnmarshaller);
+  }
+
   /**
    * Reads whether a multibranch pipeline branch job's config.xml is for a tag.
    * Defaults to {@link VcsRefType#HEADS} when the config cannot be read.

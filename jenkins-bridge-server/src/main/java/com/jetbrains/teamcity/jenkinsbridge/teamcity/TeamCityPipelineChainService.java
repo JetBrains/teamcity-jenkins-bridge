@@ -4,6 +4,7 @@ import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsPipelineGraph;
 import com.jetbrains.teamcity.jenkinsbridge.persistence.BuildMirror;
 import com.jetbrains.teamcity.jenkinsbridge.persistence.PipelineChainMirror;
 import com.jetbrains.teamcity.jenkinsbridge.persistence.PipelineChainNodeMirror;
+import com.jetbrains.teamcity.jenkinsbridge.vcs.VcsBuildCustomization;
 import jetbrains.buildServer.serverSide.BuildCustomizer;
 import jetbrains.buildServer.serverSide.BuildCustomizerEx;
 import jetbrains.buildServer.serverSide.BuildCustomizerFactory;
@@ -67,7 +68,11 @@ public class TeamCityPipelineChainService {
     this.planner = planner;
   }
 
-  public PipelineChainMirror ensureChain(BuildMirror mirror, JenkinsPipelineGraph graph)
+  public PipelineChainMirror ensureChain(
+      BuildMirror mirror,
+      JenkinsPipelineGraph graph,
+      VcsBuildCustomization vcsCustomization
+  )
       throws TeamCityPipelineChainException {
     // Per-build-config toggle. When off (default), return null -> the caller mirrors a single live build
     // (+ the Pipeline Graph tab). When on, we build the native TeamCity chain live and update node
@@ -91,7 +96,12 @@ public class TeamCityPipelineChainService {
 
     SProject generatedProject = ensureGeneratedProject(sourceBuildType.getProject());
     Map<String, SBuildType> buildTypesByNodeId = ensureBuildTypes(mirror, graph, plan, generatedProject);
-    return queueSourceBuild(mirror, plan, sourceBuildType, buildTypesByNodeId);
+    return queueSourceBuild(mirror, plan, sourceBuildType, buildTypesByNodeId, vcsCustomization);
+  }
+
+  public PipelineChainMirror ensureChain(BuildMirror mirror, JenkinsPipelineGraph graph)
+      throws TeamCityPipelineChainException {
+    return ensureChain(mirror, graph, null);
   }
 
   /**
@@ -316,7 +326,8 @@ public class TeamCityPipelineChainService {
       BuildMirror mirror,
       PipelineChainPlan plan,
       SBuildType sourceBuildType,
-      Map<String, SBuildType> buildTypesByNodeId
+      Map<String, SBuildType> buildTypesByNodeId,
+      VcsBuildCustomization vcsCustomization
   ) throws TeamCityPipelineChainException {
     Map<String, PipelineChainNodeMirror> nodeMirrors =
         new LinkedHashMap<String, PipelineChainNodeMirror>();
@@ -336,6 +347,10 @@ public class TeamCityPipelineChainService {
     customizer.setRebuildDependencies(true);
     ((BuildCustomizerEx) customizer).setDependenciesSupplier(
         dependenciesSupplier(plan, buildTypesByNodeId, sourceBuildType));
+    if (vcsCustomization != null && vcsCustomization.hasRevisions()) {
+      ((BuildCustomizerEx) customizer).setProvidedUpperLimitRevisions(
+          vcsCustomization.upperLimitRevisions());
+    }
     BuildPromotion promotion = customizer.createPromotion();
     SQueuedBuild queuedBuild = promotion.addToQueue(TRIGGERED_BY);
     if (queuedBuild == null) {

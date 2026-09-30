@@ -210,6 +210,23 @@ public class JenkinsTriggerOnRunListenerTest {
     verify(fixture.store, never()).savePendingTrigger(any());
   }
 
+  @Test
+  public void multibranchParentFailsWithActionableReasonWithoutCallingJenkins() throws Exception {
+    Fixture fixture = new Fixture();
+    when(fixture.buildType.getParameterValue(
+        BridgeBuildFeatureConstants.INTERNAL_MULTIBRANCH_PARAM)).thenReturn("true");
+
+    fixture.listener().buildTypeAddedToQueue(fixture.queued);
+
+    verify(fixture.failureService).failQueuedPromotion(eq(42L), contains(
+        "cannot start Jenkins multibranch parent jobs from TeamCity"));
+    verify(fixture.failureService).failQueuedPromotion(eq(42L), contains(
+        "Scan and start the desired branch or tag in Jenkins"));
+    verify(fixture.clientFactory, never()).forBuildType(any());
+    verify(fixture.store, never()).savePendingTrigger(any());
+    verify(fixture.storageActivator, never()).configurePromotionStorage(any(), anyString());
+  }
+
   private static void await(CountDownLatch latch) {
     try {
       latch.await();
