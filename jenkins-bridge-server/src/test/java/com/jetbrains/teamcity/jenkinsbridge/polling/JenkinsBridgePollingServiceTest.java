@@ -10,6 +10,8 @@ import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsBuildParameters;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsArtifacts;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsLogChunk;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsPipelineGraph;
+import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsScmHeadInfo;
+import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsScmRevision;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsStages;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsTestReport;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsVcsInfo;
@@ -20,17 +22,20 @@ import com.jetbrains.teamcity.jenkinsbridge.persistence.SyncState;
 import com.jetbrains.teamcity.jenkinsbridge.settings.JenkinsBridgeSettingsProvider;
 import com.jetbrains.teamcity.jenkinsbridge.settings.MirroredJob;
 import com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityBuildMirrorService;
+import com.jetbrains.teamcity.jenkinsbridge.vcs.VcsRefType;
 import jetbrains.buildServer.serverSide.TeamCityNode;
 import jetbrains.buildServer.serverSide.TeamCityNodes;
 import org.jetbrains.annotations.NotNull;
 import org.junit.Test;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.Map;
+import java.util.Optional;
 import java.time.Instant;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -425,6 +430,42 @@ public class JenkinsBridgePollingServiceTest {
     assertEquals(1, mirrorService.finishCalls);
   }
 
+  @Test
+  public void runningFirstTagUsesChildScmAndPrimaryRevisionBeforeBuildDataExists() throws Exception {
+    JenkinsBridgeSettingsProvider provider = provider();
+    BuildMirrorStore store = new BuildMirrorStore(buildMockProjectManager());
+    FakeJenkinsClient jenkinsClient = new FakeJenkinsClient();
+    jenkinsClient.addBuild(buildInfo());
+    jenkinsClient.scmInfo = Optional.of(new JenkinsScmHeadInfo(
+        VcsRefType.TAGS, "v1.0", "source", "https://github.com/org/repo.git"));
+    jenkinsClient.buildVcs = new JenkinsVcsInfo(Collections.emptyList(),
+        Optional.of(new JenkinsScmRevision("v1.0", "abc123")));
+    CapturingMirrorService mirrorService = new CapturingMirrorService();
+
+    pollMultibranchChild(newService(provider, jenkinsClient, mirrorService, store), jenkinsClient,
+        new MirroredJob("conn1", "job", "buildType", "Build", 1, false), 1);
+
+    assertEquals(1, mirrorService.lastQueueVcs.repositories().size());
+    assertEquals("refs/tags/v1.0", mirrorService.lastQueueVcs.repositories().getFirst().rawBranchName());
+    assertEquals("abc123", mirrorService.lastQueueVcs.repositories().getFirst().sha1());
+  }
+
+  @Test
+  public void runningRegularJobDoesNotFetchMultibranchVcsMetadataBeforeQueueing() throws Exception {
+    JenkinsBridgeSettingsProvider provider = provider();
+    BuildMirrorStore store = new BuildMirrorStore(buildMockProjectManager());
+    FakeJenkinsClient jenkinsClient = new FakeJenkinsClient();
+    jenkinsClient.addBuild(buildInfo());
+    CapturingMirrorService mirrorService = new CapturingMirrorService();
+
+    pollJob(newService(provider, jenkinsClient, mirrorService, store), jenkinsClient,
+        new MirroredJob("conn1", "job", "buildType", "Build", 1, false), 1);
+
+    assertEquals(0, jenkinsClient.getBuildVcsCalls);
+    assertEquals(0, jenkinsClient.getBranchScmInfoCalls);
+    assertNull(mirrorService.lastQueueVcs);
+  }
+
   private static JenkinsBuildInfo buildInfo() {
     return buildInfo(1, 1710000000001L);
   }
@@ -498,6 +539,20 @@ public class JenkinsBridgePollingServiceTest {
     return pollJob(service, jenkinsClient, mirroredJob, 1);
   }
 
+  private static JenkinsBridgePollingService.JobPollOutcome pollMultibranchChild(
+      JenkinsBridgePollingService service,
+      JenkinsClient jenkinsClient,
+      MirroredJob mirroredJob,
+      int recentBuildLimit
+  ) throws Exception {
+    Method pollJob = JenkinsBridgePollingService.class.getDeclaredMethod(
+        "pollJob", JenkinsClient.class, MirroredJob.class, List.class, int.class, boolean.class);
+    pollJob.setAccessible(true);
+    return (JenkinsBridgePollingService.JobPollOutcome) pollJob.invoke(
+        service, jenkinsClient, mirroredJob,
+        jenkinsClient.getBuilds(mirroredJob.jenkinsJob()), recentBuildLimit, true);
+  }
+
   private static JenkinsBridgePollingService.JobPollOutcome pollJob(
       JenkinsBridgePollingService service,
       JenkinsClient jenkinsClient,
@@ -534,9 +589,13 @@ public class JenkinsBridgePollingServiceTest {
     private final Map<Integer, JenkinsBuildInfo> buildInfos = new LinkedHashMap<Integer, JenkinsBuildInfo>();
     int getBuildParametersCalls;
     int getBuildInfoCalls;
+    int getBuildVcsCalls;
+    int getBranchScmInfoCalls;
     BridgeHttpException buildInfoFailure;
     BridgeHttpException artifactFailure;
     BridgeHttpException vcsFailure;
+    JenkinsVcsInfo buildVcs = JenkinsVcsInfo.empty();
+    Optional<JenkinsScmHeadInfo> scmInfo = Optional.empty();
 
     FakeJenkinsClient() {
       super(new com.jetbrains.teamcity.jenkinsbridge.connection.JenkinsConnection(
@@ -575,10 +634,18 @@ public class JenkinsBridgePollingServiceTest {
     @NotNull
     @Override
     public JenkinsVcsInfo getBuildVcs(String jobName, int buildNumber) throws BridgeHttpException {
+      getBuildVcsCalls++;
       if (vcsFailure != null) {
         throw vcsFailure;
       }
-      return JenkinsVcsInfo.empty();
+      return buildVcs;
+    }
+
+    @NotNull
+    @Override
+    public Optional<JenkinsScmHeadInfo> getBranchScmInfo(String jobName) {
+      getBranchScmInfoCalls++;
+      return scmInfo;
     }
 
     @Override
@@ -618,6 +685,7 @@ public class JenkinsBridgePollingServiceTest {
     int artifactSyncCalls;
     int finishCalls;
     int vcsFetchFailureCalls;
+    JenkinsVcsInfo lastQueueVcs;
 
     CapturingMirrorService() {
       super(null, null, null, null, null, null, null, null, null, null, null, null);
@@ -627,6 +695,7 @@ public class JenkinsBridgePollingServiceTest {
     public long ensureTeamCityBuild(BuildMirror mirror, String connectionId, JenkinsBuildInfo jenkinsInfo,
                                     JenkinsPipelineGraph graph, JenkinsVcsInfo vcsInfo) {
       ensureBuildCalls++;
+      lastQueueVcs = vcsInfo;
       lastJenkinsParameters = mirror.getJenkinsBuildParameters();
       if (mirror.getTeamCityBuildId() != null) {
         return mirror.getTeamCityBuildId();

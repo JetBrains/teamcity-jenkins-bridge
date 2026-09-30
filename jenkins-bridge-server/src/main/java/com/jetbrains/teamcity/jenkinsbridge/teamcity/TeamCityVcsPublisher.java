@@ -161,8 +161,10 @@ public class TeamCityVcsPublisher {
                 continue;
             }
             String branchRef = repo.branch.isDefault() ? null : repo.branch.ref();
-            revisions.put(entry.getVcsRoot().getId(), new RepositoryVersion(
-                    repo.repository.sha1(), repo.repository.sha1(), branchRef));
+            if (!repo.repository.sha1().isEmpty()) {
+                revisions.put(entry.getVcsRoot().getId(), new RepositoryVersion(
+                        repo.repository.sha1(), repo.repository.sha1(), branchRef));
+            }
             if (desiredBranch == null && !repo.branch.isDefault()) {
                 desiredBranch = repo.branch.displayName();
             }
