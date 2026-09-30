@@ -154,6 +154,10 @@ Find the result in the generated TeamCity build configuration's build list:
 Questions, suggestions, and other feedback can be shared in the
 [TeamCity Slack channel](https://teamcity.com/Slack).
 
+## Supported Jenkins versions
+
+The plugin has been tested with Jenkins 2.555.2
+
 ## Limitations
 
 The following are technical details about the current implementation. They are
