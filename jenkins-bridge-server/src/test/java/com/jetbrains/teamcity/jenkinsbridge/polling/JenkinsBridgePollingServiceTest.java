@@ -572,6 +572,11 @@ public class JenkinsBridgePollingServiceTest {
       return JenkinsStages.notPipeline();
     }
 
+    @Override
+    public JenkinsPipelineGraph getPipelineGraphView(String jobName, int buildNumber, String flowIdPrefix) {
+      return null;
+    }
+
     @NotNull
     @Override
     public JenkinsVcsInfo getBuildVcs(String jobName, int buildNumber) throws BridgeHttpException {
