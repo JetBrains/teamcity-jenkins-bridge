@@ -30,7 +30,7 @@ import static com.jetbrains.teamcity.jenkinsbridge.util.ProjectPermissionHelper.
 
 /**
  * AJAX endpoint backing the "Pipeline Graph" build-results tab. Given a TeamCity build id, resolves the
- * persisted Jenkins result metadata and returns its normalized Blue Ocean pipeline graph as JSON for the
+ * persisted Jenkins result metadata and returns its normalized Jenkins pipeline graph as JSON for the
  * tab's renderer. Result metadata is separate from active {@code BuildMirror} synchronization state.
  * Read-only; requires VIEW_PROJECT
  * on the build's project. Returns {@code {"pipeline": false}} for non-mirror / non-pipeline builds.
@@ -120,8 +120,12 @@ public class JenkinsPipelineGraphController extends BaseController {
       return new StageLogView(nodeId, "");
     }
     try {
-      JenkinsStageLog log = jenkinsClientFor(build).getStageLog(
-          metadata.getJenkinsJob(), metadata.getJenkinsBuildNumber(), nodeId);
+      JenkinsPipelineGraph graph = metadata.getPipelineGraph();
+      JenkinsStageLog log = graph != null && JenkinsPipelineGraph.SOURCE_PIPELINE_GRAPH_VIEW.equals(graph.getSource())
+          ? jenkinsClientFor(build).getPipelineGraphViewLog(
+              metadata.getJenkinsJob(), metadata.getJenkinsBuildNumber(), nodeId)
+          : jenkinsClientFor(build).getStageLog(
+              metadata.getJenkinsJob(), metadata.getJenkinsBuildNumber(), nodeId);
       return new StageLogView(nodeId, log.getText());
     } catch (BridgeHttpException | JenkinsDataException e) {
       StageLogView view = new StageLogView(nodeId, "");
@@ -144,9 +148,15 @@ public class JenkinsPipelineGraphController extends BaseController {
       return view;
     }
     try {
-      String nodeName = nodeNameFromGraph(metadata, nodeId);
-      for (JenkinsStageStep step : jenkinsClientFor(build).getStageStepsForNode(
-          metadata.getJenkinsJob(), metadata.getJenkinsBuildNumber(), nodeId, nodeName)) {
+      JenkinsPipelineGraph graph = metadata.getPipelineGraph();
+      List<JenkinsStageStep> steps = graph != null
+          && JenkinsPipelineGraph.SOURCE_PIPELINE_GRAPH_VIEW.equals(graph.getSource())
+          ? jenkinsClientFor(build).getPipelineGraphViewSteps(
+              metadata.getJenkinsJob(), metadata.getJenkinsBuildNumber(), nodeId)
+          : jenkinsClientFor(build).getStageStepsForNode(
+              metadata.getJenkinsJob(), metadata.getJenkinsBuildNumber(), nodeId,
+              nodeNameFromGraph(metadata, nodeId));
+      for (JenkinsStageStep step : steps) {
         view.steps.add(new StepView(step));
       }
     } catch (BridgeHttpException | JenkinsDataException e) {
@@ -187,18 +197,21 @@ public class JenkinsPipelineGraphController extends BaseController {
     final String source;
     final String confidence;
     final String topologyHash;
+    final boolean complete;
     final List<NodeView> nodes;
 
-    private GraphView(boolean pipeline, String source, String confidence, String topologyHash, List<NodeView> nodes) {
+    private GraphView(boolean pipeline, String source, String confidence, String topologyHash,
+                      boolean complete, List<NodeView> nodes) {
       this.pipeline = pipeline;
       this.source = source;
       this.confidence = confidence;
       this.topologyHash = topologyHash;
+      this.complete = complete;
       this.nodes = nodes;
     }
 
     static GraphView notPipeline() {
-      return new GraphView(false, "", "", "", Collections.<NodeView>emptyList());
+      return new GraphView(false, "", "", "", true, Collections.<NodeView>emptyList());
     }
 
     static GraphView of(JenkinsPipelineGraph graph) {
@@ -211,6 +224,7 @@ public class JenkinsPipelineGraphController extends BaseController {
           graph.getSource(),
           String.valueOf(graph.getConfidence()),
           graph.getTopologyHash(),
+          graph.isComplete(),
           nodes);
     }
   }
@@ -224,6 +238,8 @@ public class JenkinsPipelineGraphController extends BaseController {
     final long durationMillis;
     final List<String> parents;
     final List<String> children;
+    final String hierarchyParentId;
+    final boolean synthetic;
 
     NodeView(JenkinsPipelineGraphNode node) {
       this.id = node.getId();
@@ -233,6 +249,8 @@ public class JenkinsPipelineGraphController extends BaseController {
       this.durationMillis = node.getDurationMillis();
       this.parents = new ArrayList<String>(node.getParentIds());
       this.children = new ArrayList<String>(node.getChildIds());
+      this.hierarchyParentId = node.getHierarchyParentId();
+      this.synthetic = node.isSynthetic();
     }
   }
 

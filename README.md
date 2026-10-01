@@ -63,10 +63,12 @@ license slot, even though it does not consume a TeamCity build agent.
 - Jenkins must be reachable over HTTP(S). Create a Jenkins user API token and
   grant that user permission to read the job/build data and console output, and
   to start builds if TeamCity will trigger Jenkins.
-- Pipeline stage and graph mirroring requires the Jenkins Pipeline APIs used by
-  the bridge, including Blue Ocean for the graph. If those endpoints are not
-  available, the bridge falls back to the single-build console mirror where
-  possible.
+- For the live Pipeline stage hierarchy, install Jenkins **Pipeline Graph View**.
+  The bridge reads its stage, step, and log APIs, including Jenkins' synthetic
+  checkout and post-action stages when present. Blue Ocean remains a fallback
+  for the graph and supplies explicit edges for optional native TeamCity chains.
+  Without either graph API, the bridge uses the limited Pipeline REST API view
+  or the single-build console mirror where possible.
 
 ### 1. Configure the connection and project
 
