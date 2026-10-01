@@ -18,6 +18,7 @@ import static com.jetbrains.teamcity.jenkinsbridge.util.Utilities.nullToEmpty;
 public class JenkinsPipelineGraph {
   public static final String SOURCE_WFAPI = "WFAPI";
   public static final String SOURCE_BLUE_OCEAN = "BLUE_OCEAN";
+  public static final String SOURCE_PIPELINE_GRAPH_VIEW = "PIPELINE_GRAPH_VIEW";
 
   private boolean pipeline;
   private String source;
@@ -25,6 +26,7 @@ public class JenkinsPipelineGraph {
   private String topologyHash;
   private GraphConfidence confidence;
   private List<String> diagnostics;
+  private Boolean complete;
 
   // Gson needs a no-arg constructor.
   public JenkinsPipelineGraph() {
@@ -172,6 +174,16 @@ public class JenkinsPipelineGraph {
         diagnostics);
   }
 
+  /** A faithful stage tree without inferred execution edges. */
+  public static JenkinsPipelineGraph hierarchy(List<JenkinsPipelineGraphNode> nodes, boolean complete,
+                                                List<String> diagnostics) {
+    List<JenkinsPipelineGraphNode> graphNodes = copyNodes(nodes);
+    JenkinsPipelineGraph graph = new JenkinsPipelineGraph(true, SOURCE_PIPELINE_GRAPH_VIEW, graphNodes,
+        topologyHash(graphNodes), GraphConfidence.HIERARCHY_ONLY, diagnostics);
+    graph.complete = complete;
+    return graph;
+  }
+
   public boolean isPipeline() {
     return pipeline;
   }
@@ -190,6 +202,10 @@ public class JenkinsPipelineGraph {
 
   public GraphConfidence getConfidence() {
     return confidence == null ? GraphConfidence.UNAVAILABLE : confidence;
+  }
+
+  public boolean isComplete() {
+    return Boolean.TRUE.equals(complete);
   }
 
   public List<String> getDiagnostics() {
@@ -297,6 +313,9 @@ public class JenkinsPipelineGraph {
     List<String> lines = new ArrayList<String>();
     for (JenkinsPipelineGraphNode node : graphNodes) {
       lines.add("node:" + node.getId());
+      if (!node.getHierarchyParentId().isEmpty()) {
+        lines.add("contains:" + node.getHierarchyParentId() + "->" + node.getId());
+      }
       for (String child : node.getChildIds()) {
         lines.add("edge:" + node.getId() + "->" + child);
       }

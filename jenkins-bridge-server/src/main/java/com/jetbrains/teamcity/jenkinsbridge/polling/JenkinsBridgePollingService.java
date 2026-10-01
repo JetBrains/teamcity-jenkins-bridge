@@ -15,7 +15,9 @@ import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsBuildInfo;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsBuildParameters;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsArtifacts;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsLogChunk;
+import com.jetbrains.teamcity.jenkinsbridge.model.GraphConfidence;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsPipelineGraph;
+import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsPipelineGraphNode;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsQueueBuildResolution;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsStages;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsTestReport;
@@ -875,20 +877,50 @@ public class JenkinsBridgePollingService {
     // freestyle build (mirror the flat progressive console log). The decision is sticky per build.
     @Nullable Boolean persistedPipelineMode = mirror.getPipelineMode();
     @Nullable JenkinsStages stages = null;
+    @Nullable JenkinsPipelineGraph graph = null;
     boolean pipelineBuild;
     if (persistedPipelineMode == null) {
       stages = jenkinsClient.getStages(mirror.getJenkinsJob(), mirror.getJenkinsBuildNumber());
       pipelineBuild = stages.isPipeline();
+      String classificationEvidence = pipelineBuild
+          ? "WFAPI returned Pipeline stages" : "WFAPI did not identify a Pipeline";
+      if (!pipelineBuild) {
+        graph = jenkinsClient.getPipelineGraphView(
+            mirror.getJenkinsJob(), mirror.getJenkinsBuildNumber(), mirror.getJenkinsBuildKey());
+        pipelineBuild = graph != null && graph.isPipeline();
+        if (pipelineBuild) {
+          stages = JenkinsStages.emptyPipeline();
+          classificationEvidence += "; Pipeline Graph View identified a Pipeline";
+        } else {
+          classificationEvidence += "; Pipeline Graph View did not identify a Pipeline";
+        }
+      }
       mirror.setPipelineMode(pipelineBuild);
       // Persist the decision now so a freestyle poll with no new log does not re-probe wfapi forever.
       mirrorStore.saveMirror(mirror);
-      LOG.debug(TeamCityNodeLog.currentNode(teamCityNodes) + " [Jenkins Bridge DEBUG] " + mirror.getJenkinsBuildKey()
-          + " classified as " + (pipelineBuild ? "Pipeline" : "freestyle"));
+      LOG.info(TeamCityNodeLog.currentNode(teamCityNodes) + " Jenkins Bridge: " + mirror.getJenkinsBuildKey()
+          + " classified as " + (pipelineBuild ? "Pipeline" : "freestyle")
+          + " on first poll; evidence=" + classificationEvidence
+          + ", WFAPI stage count=" + stages.getStages().size()
+          + (graph == null ? "" : ", Pipeline Graph View nodes=" + graph.getNodes().size()
+              + ", complete=" + graph.isComplete()));
     } else {
       pipelineBuild = persistedPipelineMode;
+      LOG.debug(TeamCityNodeLog.currentNode(teamCityNodes) + " Jenkins Bridge: " + mirror.getJenkinsBuildKey()
+          + " reusing persisted pipeline classification=" + pipelineBuild);
     }
 
-    @Nullable JenkinsPipelineGraph graph = pipelineBuild ? loadPipelineGraph(jenkinsClient, mirror) : null;
+    if (pipelineBuild && graph == null) {
+      graph = loadPipelineGraph(jenkinsClient, mirror);
+    }
+    @Nullable JenkinsPipelineGraph nativeChainGraph = graph != null
+        && JenkinsPipelineGraph.SOURCE_BLUE_OCEAN.equals(graph.getSource())
+        && graph.getConfidence() == GraphConfidence.EXPLICIT ? graph : null;
+    if (graph != null && JenkinsPipelineGraph.SOURCE_PIPELINE_GRAPH_VIEW.equals(graph.getSource())
+        && !buildInfo.isBuilding()) {
+      nativeChainGraph = jenkinsClient.getNativeChainGraph(
+          mirror.getJenkinsJob(), mirror.getJenkinsBuildNumber(), mirror.getJenkinsBuildKey());
+    }
 
     ensureJenkinsBuildParametersLoaded(jenkinsClient, mirror);
 
@@ -900,7 +932,7 @@ public class JenkinsBridgePollingService {
     }
 
     long teamCityBuildId =
-        mirrorService.ensureTeamCityBuild(mirror, connectionId, buildInfo, graph, queueVcsInfo);
+        mirrorService.ensureTeamCityBuild(mirror, connectionId, buildInfo, nativeChainGraph, queueVcsInfo);
 
     mirrorService.ensureRunningDataSent(mirror, teamCityBuildId);
     mirrorService.ensureMetadataLogSent(mirror, teamCityBuildId);
@@ -913,7 +945,7 @@ public class JenkinsBridgePollingService {
         stages = jenkinsClient.getStages(mirror.getJenkinsJob(), mirror.getJenkinsBuildNumber());
       }
       if (graph != null) {
-        mirrorService.syncPipelineGraph(mirror, teamCityBuildId, graph);
+        mirrorService.syncPipelineGraph(mirror, teamCityBuildId, graph, nativeChainGraph);
       }
       LOG.debug(TeamCityNodeLog.currentNode(teamCityNodes) + " [Jenkins Bridge DEBUG] Syncing " + stages.getStages().size()
           + " Pipeline stage(s) for " + mirror.getJenkinsBuildKey());
@@ -946,7 +978,7 @@ public class JenkinsBridgePollingService {
       }
     }
     mirrorService.finishBuildIfNeeded(mirror, teamCityBuildId, buildInfo);
-    mirrorService.ensureRetrospectivePipelineChain(mirror, teamCityBuildId, graph);
+    mirrorService.ensureRetrospectivePipelineChain(mirror, teamCityBuildId, nativeChainGraph);
   }
 
   /** Synchronizes the flat Jenkins progressive console for the mirrored build. */
@@ -986,14 +1018,24 @@ public class JenkinsBridgePollingService {
           + mirror.getJenkinsBuildKey());
       return null;
     }
-    LOG.debug(TeamCityNodeLog.currentNode(teamCityNodes) + " [Jenkins Bridge DEBUG] Pipeline graph for " + mirror.getJenkinsBuildKey()
+    LOG.info(TeamCityNodeLog.currentNode(teamCityNodes) + " Jenkins Bridge: Pipeline graph for "
+        + mirror.getJenkinsBuildKey()
         + " has source " + graph.getSource()
         + ", confidence " + graph.getConfidence()
-        + ", " + graph.getNodes().size() + " node(s), topologyHash=" + graph.getTopologyHash());
+        + ", " + graph.getNodes().size() + " node(s), diagnostics=" + graph.getDiagnostics()
+        + ", topologyHash=" + graph.getTopologyHash());
+    for (JenkinsPipelineGraphNode node : graph.getNodes()) {
+      LOG.debug(TeamCityNodeLog.currentNode(teamCityNodes) + " Jenkins Bridge: selected graph node for "
+          + mirror.getJenkinsBuildKey() + ": id=" + node.getId() + ", name='" + node.getName()
+          + "', status=" + node.getStatus() + ", hierarchyParent=" + node.getHierarchyParentId()
+          + ", parents=" + node.getParentIds() + ", children=" + node.getChildIds()
+          + ", synthetic=" + node.isSynthetic() + ", startTimeMillis=" + node.getStartTimeMillis()
+          + ", durationMillis=" + node.getDurationMillis());
+    }
     mirror.setPipelineGraph(graph);
     mirrorStore.saveMirror(mirror);
-    LOG.debug(TeamCityNodeLog.currentNode(teamCityNodes) + " [Jenkins Bridge DEBUG] Delaying native Pipeline chain creation for "
-        + mirror.getJenkinsBuildKey() + " until Jenkins finishes so the WFAPI graph is complete");
+    LOG.debug(TeamCityNodeLog.currentNode(teamCityNodes) + " [Jenkins Bridge DEBUG] Native Pipeline chain, when enabled, "
+        + "uses the completed run's explicit Blue Ocean edges for " + mirror.getJenkinsBuildKey());
     return graph;
   }
 

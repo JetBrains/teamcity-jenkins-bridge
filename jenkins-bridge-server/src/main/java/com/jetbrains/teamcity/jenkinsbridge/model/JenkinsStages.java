@@ -28,6 +28,11 @@ public class JenkinsStages {
     return new JenkinsStages(false, Collections.<JenkinsStage>emptyList());
   }
 
+  /** Pipeline Graph View identified a run but WFAPI has no stage list. */
+  public static JenkinsStages emptyPipeline() {
+    return new JenkinsStages(true, Collections.<JenkinsStage>emptyList());
+  }
+
   public static JenkinsStages fromJson(JsonObject json) {
     JsonArray stagesJson = json.getAsJsonArray("stages");
     List<JenkinsStage> stages = new ArrayList<JenkinsStage>();
