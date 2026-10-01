@@ -568,6 +568,10 @@ public class JenkinsClient {
   @Nullable
   public JenkinsPipelineGraph getPipelineGraph(String jobName, int buildNumber, String flowIdPrefix)
       throws BridgeHttpException, JenkinsDataException {
+    JenkinsPipelineGraph graphView = getPipelineGraphView(jobName, buildNumber, flowIdPrefix);
+    if (graphView != null && graphView.isPipeline() && !graphView.getNodes().isEmpty()) {
+      return graphView;
+    }
     JenkinsPipelineGraph blueOceanGraph = getBlueOceanPipelineGraph(jobName, buildNumber, flowIdPrefix);
     if (isUsableForNativeChain(blueOceanGraph)) {
       return blueOceanGraph;
@@ -576,6 +580,85 @@ public class JenkinsClient {
     JenkinsPipelineGraph wfapiGraph = getWfapiPipelineGraph(
         jobName, buildNumber, flowIdPrefix, blueOceanGraph.getDiagnostics());
     return wfapiGraph.isPipeline() ? wfapiGraph : blueOceanGraph;
+  }
+
+  /** Blue Ocean supplies explicit execution edges for the optional native TeamCity chain. */
+  @Nullable
+  public JenkinsPipelineGraph getNativeChainGraph(String jobName, int buildNumber, String flowIdPrefix) {
+    try {
+      JenkinsPipelineGraph graph = getBlueOceanPipelineGraph(jobName, buildNumber, flowIdPrefix);
+      return isUsableForNativeChain(graph) ? graph : null;
+    } catch (BridgeHttpException | JenkinsDataException e) {
+      LOG.warn("Jenkins Bridge: native chain topology unavailable for " + jobName + "#" + buildNumber, e);
+      return null;
+    }
+  }
+
+  /** Jenkins Pipeline Overview tree. Its children express containment, not execution dependencies. */
+  @Nullable
+  public JenkinsPipelineGraph getPipelineGraphView(String jobName, int buildNumber, String flowIdPrefix) {
+    String url = myConnection.getUrl() + jenkinsJobPath(jobName) + "/" + buildNumber + "/stages/tree";
+    try {
+      JsonObject response = parseJsonObject(
+          httpClient.get(url, myConnection.getUser(), myConnection.getToken(), "application/json"),
+          "Pipeline Graph View tree");
+      JsonElement data = response.get("data");
+      if (data == null || !data.isJsonObject()) {
+        return null;
+      }
+      JsonElement stages = data.getAsJsonObject().get("stages");
+      if (stages == null || !stages.isJsonArray()) {
+        return null;
+      }
+      List<JenkinsPipelineGraphNode> nodes = new ArrayList<JenkinsPipelineGraphNode>();
+      Set<String> ids = new LinkedHashSet<String>();
+      if (!collectGraphViewStages(stages.getAsJsonArray(), "", flowIdPrefix, nodes, ids, 0)) {
+        LOG.warn("Jenkins Bridge: Pipeline Graph View returned an invalid stage tree for "
+            + jobName + "#" + buildNumber);
+        return null;
+      }
+      JsonElement complete = data.getAsJsonObject().get("complete");
+      boolean isComplete = complete != null && complete.isJsonPrimitive() && complete.getAsBoolean();
+      return JenkinsPipelineGraph.hierarchy(nodes, isComplete,
+          Collections.singletonList("Pipeline Graph View stage hierarchy; execution edges are unavailable"));
+    } catch (BridgeHttpException | JenkinsDataException e) {
+      if (!(e instanceof BridgeHttpException) || ((BridgeHttpException) e).getStatusCode() != 404) {
+        LOG.warn("Jenkins Bridge: Pipeline Graph View tree unavailable for " + jobName + "#" + buildNumber, e);
+      }
+      return null;
+    }
+  }
+
+  private boolean collectGraphViewStages(JsonArray stages, String parentId, String flowIdPrefix,
+                                         List<JenkinsPipelineGraphNode> nodes, Set<String> ids, int depth) {
+    if (depth > 256) {
+      return false;
+    }
+    for (JsonElement element : stages) {
+      if (element == null || !element.isJsonObject()) {
+        return false;
+      }
+      JsonObject stage = element.getAsJsonObject();
+      String id = stringValue(stage, "id");
+      if (id.isEmpty() || !ids.add(id)) {
+        return false;
+      }
+      JsonElement synthetic = stage.get("synthetic");
+      boolean isSynthetic = synthetic != null && synthetic.isJsonPrimitive() && synthetic.getAsBoolean();
+      nodes.add(new JenkinsPipelineGraphNode(id, nullToEmpty(flowIdPrefix) + ":" + id,
+          stringValue(stage, "name"),
+          JenkinsPipelineNodeStatus.from(stringValue(stage, "state")).name(),
+          longValue(stage, "startTimeMillis", 0L), longValue(stage, "totalDurationMillis", 0L),
+          Collections.<String>emptyList(), Collections.<String>emptyList(), Collections.<String>emptyList(),
+          parentId, isSynthetic));
+      JsonElement children = stage.get("children");
+      if (children != null && !children.isJsonNull()
+          && (!children.isJsonArray() || !collectGraphViewStages(
+              children.getAsJsonArray(), id, flowIdPrefix, nodes, ids, depth + 1))) {
+        return false;
+      }
+    }
+    return true;
   }
 
   private boolean isUsableForNativeChain(JenkinsPipelineGraph graph) {
@@ -820,6 +903,74 @@ public class JenkinsClient {
     } catch (IllegalStateException | ClassCastException  e) {
       return defaultValue;
     }
+  }
+
+  /** Pipeline Graph View logs share the tree's node ids, including synthetic stages. */
+  public JenkinsStageLog getPipelineGraphViewLog(String jobName, int buildNumber, String nodeId)
+      throws BridgeHttpException {
+    String url = myConnection.getUrl() + jenkinsJobPath(jobName) + "/" + buildNumber
+        + "/stages/log?nodeId=" + encodeQueryValue(nodeId);
+    try {
+      return JenkinsStageLog.of(stripConsoleNotes(
+          httpClient.get(url, myConnection.getUser(), myConnection.getToken(), "text/plain")));
+    } catch (BridgeHttpException e) {
+      if (e.getStatusCode() == 404) {
+        return JenkinsStageLog.empty();
+      }
+      throw e;
+    }
+  }
+
+  /** Fetches Pipeline Overview's own step titles and logs for one stage id. */
+  public List<JenkinsStageStep> getPipelineGraphViewSteps(String jobName, int buildNumber, String stageId)
+      throws BridgeHttpException, JenkinsDataException {
+    String url = myConnection.getUrl() + jenkinsJobPath(jobName) + "/" + buildNumber
+        + "/stages/steps?nodeId=" + encodeQueryValue(stageId);
+    JsonObject response;
+    try {
+      response = parseJsonObject(
+          httpClient.get(url, myConnection.getUser(), myConnection.getToken(), "application/json"),
+          "Pipeline Graph View steps");
+    } catch (BridgeHttpException e) {
+      if (e.getStatusCode() == 404) {
+        return Collections.emptyList();
+      }
+      throw e;
+    }
+    JsonElement data = response.get("data");
+    if (data == null || !data.isJsonObject()) {
+      throw new JenkinsDataException("Pipeline Graph View steps response has no data object");
+    }
+    JsonElement rawSteps = data.getAsJsonObject().get("steps");
+    if (rawSteps == null || !rawSteps.isJsonArray()) {
+      throw new JenkinsDataException("Pipeline Graph View steps response has no steps array");
+    }
+    List<JenkinsStageStep> steps = new ArrayList<JenkinsStageStep>();
+    for (JsonElement element : rawSteps.getAsJsonArray()) {
+      if (element == null || !element.isJsonObject()) {
+        continue;
+      }
+      JsonObject step = element.getAsJsonObject();
+      JsonElement flags = step.get("flags");
+      if (flags != null && flags.isJsonObject()) {
+        JsonElement hidden = flags.getAsJsonObject().get("hidden");
+        if (hidden != null && hidden.isJsonPrimitive() && hidden.getAsBoolean()) {
+          continue;
+        }
+      }
+      String id = stringValue(step, "id");
+      if (id.isEmpty()) {
+        continue;
+      }
+      String title = stringValue(step, "title");
+      String name = stringValue(step, "name");
+      steps.add(new JenkinsStageStep(id, title.isEmpty() ? name : title,
+          title.isEmpty() ? "" : name,
+          JenkinsPipelineNodeStatus.from(stringValue(step, "state")).name(),
+          longValue(step, "totalDurationMillis", 0L),
+          getPipelineGraphViewLog(jobName, buildNumber, id).getText()));
+    }
+    return steps;
   }
 
   /**

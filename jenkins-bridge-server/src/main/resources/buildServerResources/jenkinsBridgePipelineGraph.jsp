@@ -2,7 +2,7 @@
 <%@ taglib prefix="bs" tagdir="/WEB-INF/tags" %>
 <%--
   "Pipeline Graph" build-results tab. Polls JenkinsPipelineGraphController for the mirrored Jenkins
-  build's Blue Ocean graph and renders it as a live SVG DAG (stages + parallel branches), colored by
+  build's Jenkins graph and renders its live stage hierarchy or explicit DAG, colored by
   normalized node status. Clicking a stage shows its whole log (G3a) in the panel below, refreshed live
   while that stage runs. Mirrors what the user sees in Jenkins Blue Ocean / Pipeline Graph View.
 --%>
@@ -108,6 +108,37 @@
       group.addEventListener('click', function () { selectStage(node.id, node.name); });
     }
 
+    function renderHierarchy(data) {
+      var nodes = data.nodes, depthById = {}, active = false;
+      for (var i = 0; i < nodes.length; i++) {
+        var node = nodes[i];
+        var parentDepth = depthById[node.hierarchyParentId];
+        var depth = node.hierarchyParentId && parentDepth != null ? parentDepth + 1 : 0;
+        depthById[node.id] = depth;
+        if (ACTIVE[node.status]) active = true;
+        var col = color(node.status);
+        var row = document.createElement('div');
+        row.style.cssText = 'display:flex; align-items:center; gap:10px; max-width:760px; '
+          + 'margin:5px 0; padding:8px 10px; border:1px solid ' + col[1]
+          + '; border-radius:5px; background:' + col[0] + '; cursor:pointer;';
+        row.style.marginLeft = (depth * 24) + 'px';
+        if (node.id === selectedId) row.style.outline = '2px solid #1a73e8';
+        var label = document.createElement('span');
+        label.style.cssText = 'flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;';
+        label.textContent = node.name || '(stage)';
+        if (node.synthetic) label.title = 'Jenkins synthetic stage';
+        var state = document.createElement('span');
+        state.style.color = col[1];
+        state.textContent = node.status;
+        row.appendChild(label);
+        row.appendChild(state);
+        attachClick(row, node);
+        graphEl.appendChild(row);
+      }
+      statusEl.textContent = 'Source: ' + data.source + (active ? ' - running...' : ' - complete');
+      return active;
+    }
+
     function render(data) {
       lastData = data;
       graphEl.innerHTML = '';
@@ -115,6 +146,7 @@
         statusEl.innerHTML = 'No Jenkins pipeline graph is available for this build.';
         return false;
       }
+      if (data.source === 'PIPELINE_GRAPH_VIEW') return renderHierarchy(data);
       var nodes = data.nodes;
       var info = layout(nodes);
       var active = false, i;
@@ -250,7 +282,7 @@
             var sel = nodeById(data, selectedId);
             if (sel && ACTIVE[sel.status]) loadStageSteps(selectedId, sel.name);
           }
-          if (active) setTimeout(load, 5000);
+          if (active || (data.source === 'PIPELINE_GRAPH_VIEW' && !data.complete)) setTimeout(load, 5000);
         }
       });
     }

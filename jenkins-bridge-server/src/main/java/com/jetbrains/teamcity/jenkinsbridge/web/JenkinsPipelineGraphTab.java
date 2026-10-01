@@ -15,8 +15,8 @@ import java.util.Map;
 
 /**
  * "Pipeline Graph" tab on a build's results page. Shown only for mirrored Jenkins Pipeline builds that
- * have a persisted graph. The JSP polls {@link JenkinsPipelineGraphController} and renders the Blue
- * Ocean graph (stages + parallel branches) live, mirroring what the user sees in Jenkins.
+ * have a persisted graph. The JSP polls {@link JenkinsPipelineGraphController} and renders the
+ * Jenkins stage hierarchy or explicit graph live.
  */
 public class JenkinsPipelineGraphTab extends ViewLogTab {
   private final PluginDescriptor pluginDescriptor;

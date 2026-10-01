@@ -283,6 +283,12 @@ public class TeamCityBuildMirrorService {
 
   public void syncPipelineGraph(BuildMirror mirror, long teamCityBuildId, JenkinsPipelineGraph graph)
       throws BridgeHttpException, IOException {
+    syncPipelineGraph(mirror, teamCityBuildId, graph, graph);
+  }
+
+  public void syncPipelineGraph(BuildMirror mirror, long teamCityBuildId, JenkinsPipelineGraph graph,
+                                JenkinsPipelineGraph nativeChainGraph)
+      throws BridgeHttpException, IOException {
     if (graph == null) {
       return;
     }
@@ -301,9 +307,9 @@ public class TeamCityBuildMirrorService {
     }
 
     try {
-      if (mirror.getPipelineChain() != null
-          && mirror.getPipelineChain().matchesQueuedTopology(graph.getTopologyHash())) {
-        syncPipelineChainNodeStates(mirror, graph, mirror.getPipelineChain());
+      if (nativeChainGraph != null && mirror.getPipelineChain() != null
+          && mirror.getPipelineChain().matchesQueuedTopology(nativeChainGraph.getTopologyHash())) {
+        syncPipelineChainNodeStates(mirror, nativeChainGraph, mirror.getPipelineChain());
         appendPipelineChainLogOnce(
             mirror,
             teamCityBuildId,
@@ -607,7 +613,9 @@ public class TeamCityBuildMirrorService {
       return;
     }
     if (chain != null) {
-      mirror.setPipelineGraph(graph);
+      if (mirror.getPipelineGraph() == null) {
+        mirror.setPipelineGraph(graph);
+      }
       mirror.setPipelineChain(chain);
       mirror.setLastError(null);
       mirrorStore.saveMirror(mirror);
