@@ -23,7 +23,9 @@
     var buildId = '${buildId}';
 
     var SVGNS = 'http://www.w3.org/2000/svg';
-    var COL_W = 210, ROW_H = 66, NODE_W = 172, NODE_H = 40, PAD = 16;
+    var STAGE_COLUMN_WIDTH = 210, STAGE_ROW_HEIGHT = 66;
+    var STAGE_CARD_WIDTH = 172, STAGE_CARD_HEIGHT = 40, GRAPH_PADDING = 16;
+    var PARALLEL_FORK_GAP = 14, PARALLEL_GROUP_HEADER_SPACE = 36;
     var ACTIVE = { QUEUED: 1, IN_PROGRESS: 1, PAUSED_PENDING_INPUT: 1 };
     var COLORS = {
       SUCCESS:              ['#e6f4ea', '#34a853'],
@@ -66,42 +68,45 @@
     function truncate(s, n) { s = s || ''; return s.length > n ? s.substring(0, n - 1) + '...' : s; }
 
     // Longest-path depth = column. Memoized, with a cycle guard.
-    function depthOf(node, byId, memo, stack) {
-      if (memo[node.id] != null) return memo[node.id];
-      if (stack[node.id]) return 0;
-      stack[node.id] = true;
-      var d = 0;
+    function getLongestPathDepth(node, nodesById, memoizedDepths, recursionStack) {
+      if (memoizedDepths[node.id] != null) return memoizedDepths[node.id];
+      if (recursionStack[node.id]) return 0;
+      recursionStack[node.id] = true;
+      var depth = 0;
       for (var i = 0; i < node.parents.length; i++) {
-        var p = byId[node.parents[i]];
-        if (p) d = Math.max(d, 1 + depthOf(p, byId, memo, stack));
+        var parent = nodesById[node.parents[i]];
+        if (parent) {
+          depth = Math.max(depth,
+            1 + getLongestPathDepth(parent, nodesById, memoizedDepths, recursionStack));
+        }
       }
-      stack[node.id] = false;
-      memo[node.id] = d;
-      return d;
+      recursionStack[node.id] = false;
+      memoizedDepths[node.id] = depth;
+      return depth;
     }
 
-    function layout(nodes) {
-      var byId = {}, i;
-      for (i = 0; i < nodes.length; i++) byId[nodes[i].id] = nodes[i];
-      var memo = {}, cols = {}, maxDepth = 0;
+    function layoutGraphNodesByLongestPath(nodes) {
+      var nodesById = {}, i;
+      for (i = 0; i < nodes.length; i++) nodesById[nodes[i].id] = nodes[i];
+      var memoizedDepths = {}, columnsByDepth = {}, maximumDepth = 0;
       for (i = 0; i < nodes.length; i++) {
-        var d = depthOf(nodes[i], byId, memo, {});
-        (cols[d] = cols[d] || []).push(nodes[i]);
-        if (d > maxDepth) maxDepth = d;
+        var depth = getLongestPathDepth(nodes[i], nodesById, memoizedDepths, {});
+        (columnsByDepth[depth] = columnsByDepth[depth] || []).push(nodes[i]);
+        if (depth > maximumDepth) maximumDepth = depth;
       }
-      var maxRows = 0;
-      for (var c = 0; c <= maxDepth; c++) {
-        var col = cols[c] || [];
-        for (var r = 0; r < col.length; r++) {
-          col[r]._x = PAD + c * COL_W;
-          col[r]._y = PAD + r * ROW_H;
+      var maximumRowCount = 0;
+      for (var depthColumn = 0; depthColumn <= maximumDepth; depthColumn++) {
+        var column = columnsByDepth[depthColumn] || [];
+        for (var row = 0; row < column.length; row++) {
+          column[row]._x = GRAPH_PADDING + depthColumn * STAGE_COLUMN_WIDTH;
+          column[row]._y = GRAPH_PADDING + row * STAGE_ROW_HEIGHT;
         }
-        if (col.length > maxRows) maxRows = col.length;
+        if (column.length > maximumRowCount) maximumRowCount = column.length;
       }
       return {
-        byId: byId,
-        width: PAD * 2 + (maxDepth + 1) * COL_W - (COL_W - NODE_W),
-        height: PAD * 2 + Math.max(1, maxRows) * ROW_H - (ROW_H - NODE_H)
+        nodesById: nodesById,
+        width: GRAPH_PADDING * 2 + (maximumDepth + 1) * STAGE_COLUMN_WIDTH - (STAGE_COLUMN_WIDTH - STAGE_CARD_WIDTH),
+        height: GRAPH_PADDING * 2 + Math.max(1, maximumRowCount) * STAGE_ROW_HEIGHT - (STAGE_ROW_HEIGHT - STAGE_CARD_HEIGHT)
       };
     }
 
@@ -110,133 +115,217 @@
       group.addEventListener('click', function () { selectStage(node.id, node.name); });
     }
 
-    function renderSequentialParallelGroups(data, childrenById, roots) {
-      var active = false, maxLane = 0;
-      var mainY = PAD + 36;
-      var rootX = {};
-      var i;
-
-      function isParallel(root) { return childrenById[root.id].length > 1; }
-      function inputX(root) { return rootX[root.id] - 14; }
-      function outputX(root) { return rootX[root.id] + NODE_W + 14; }
-      function laneY(index) { return mainY + index * ROW_H; }
-
-      for (i = 0; i < roots.length; i++) {
-        rootX[roots[i].id] = PAD + i * COL_W;
-        var branches = childrenById[roots[i].id];
-        if (branches.length > 1) maxLane = Math.max(maxLane, branches.length - 1);
-        if (ACTIVE[roots[i].status]) active = true;
-        for (var branchIndex = 0; branchIndex < branches.length; branchIndex++) {
-          if (ACTIVE[branches[branchIndex].status]) active = true;
-        }
-      }
-
-      var width = PAD * 2 + (roots.length - 1) * COL_W + NODE_W;
-      var height = mainY + maxLane * ROW_H + NODE_H / 2 + PAD;
-      var svg = el('svg', { width: width, height: height, style: 'font-family:inherit; font-size:12px;' });
-      var markerId = 'jbgParallelArrow-' + buildId;
-      var defs = el('defs', {});
-      var marker = el('marker', {
-        id: markerId, markerWidth: '7', markerHeight: '7', refX: '6', refY: '3.5',
-        orient: 'auto', markerUnits: 'strokeWidth'
+    function createGraphSvg(width, height, arrowMarkerId) {
+      var svg = el('svg', {
+        width: width,
+        height: height,
+        style: 'font-family:inherit; font-size:12px;'
       });
-      marker.appendChild(el('path', { d: 'M0,0 L7,3.5 L0,7 z', fill: '#5f6368' }));
-      defs.appendChild(marker);
-      svg.appendChild(defs);
+      if (!arrowMarkerId) return svg;
 
-      // Draw fork and join lines first so the stage cards sit on top of them.
-      for (i = 0; i < roots.length; i++) {
-        var root = roots[i], branches = childrenById[root.id];
-        if (!isParallel(root)) continue;
-        var forkX = inputX(root), joinX = outputX(root);
-        var lastY = laneY(branches.length - 1);
-        svg.appendChild(el('path', {
-          d: 'M' + forkX + ',' + mainY + ' V' + lastY,
-          fill: 'none', stroke: '#b0bfd3', 'stroke-width': '2'
-        }));
-        svg.appendChild(el('path', {
-          d: 'M' + joinX + ',' + mainY + ' V' + lastY,
-          fill: 'none', stroke: '#b0bfd3', 'stroke-width': '2'
-        }));
-        for (var b = 0; b < branches.length; b++) {
-          var y = laneY(b);
-          svg.appendChild(el('path', {
-            d: 'M' + forkX + ',' + y + ' H' + rootX[root.id],
-            fill: 'none', stroke: '#b0bfd3', 'stroke-width': '2'
-          }));
-          svg.appendChild(el('path', {
-            d: 'M' + (rootX[root.id] + NODE_W) + ',' + y + ' H' + joinX,
-            fill: 'none', stroke: '#b0bfd3', 'stroke-width': '2'
-          }));
+      var definitions = el('defs', {});
+      var arrowMarker = el('marker', {
+        id: arrowMarkerId,
+        markerWidth: '7',
+        markerHeight: '7',
+        refX: '6',
+        refY: '3.5',
+        orient: 'auto',
+        markerUnits: 'strokeWidth'
+      });
+      arrowMarker.appendChild(el('path', { d: 'M0,0 L7,3.5 L0,7 z', fill: '#5f6368' }));
+      definitions.appendChild(arrowMarker);
+      svg.appendChild(definitions);
+      return svg;
+    }
+
+    function addGraphPath(svg, pathData, stroke, strokeWidth, arrowMarkerId) {
+      var attributes = {
+        d: pathData,
+        fill: 'none',
+        stroke: stroke,
+        'stroke-width': strokeWidth
+      };
+      if (arrowMarkerId) attributes['marker-end'] = 'url(#' + arrowMarkerId + ')';
+      svg.appendChild(el('path', attributes));
+    }
+
+    function drawStageCard(svg, stage, leftX, topY, maximumNameLength, tooltipHint) {
+      var stageColor = color(stage.status);
+      var isSelected = stage.id === selectedId;
+      var card = el('g', {});
+      card.appendChild(el('rect', {
+        x: leftX,
+        y: topY,
+        width: STAGE_CARD_WIDTH,
+        height: STAGE_CARD_HEIGHT,
+        rx: 5,
+        ry: 5,
+        fill: stageColor[0],
+        stroke: isSelected ? '#1a73e8' : stageColor[1],
+        'stroke-width': isSelected ? '3.5' : '2'
+      }));
+
+      var title = el('text', { x: leftX + 10, y: topY + 17, fill: '#202124' });
+      title.appendChild(document.createTextNode(truncate(stage.name || '(stage)', maximumNameLength || 22)));
+      card.appendChild(title);
+
+      var status = el('text', {
+        x: leftX + 10,
+        y: topY + 32,
+        fill: stageColor[1],
+        'font-size': '10px'
+      });
+      status.appendChild(document.createTextNode(stage.status));
+      card.appendChild(status);
+
+      var tooltip = el('title', {});
+      tooltip.appendChild(document.createTextNode((stage.name || '(stage)') + ' — ' + stage.status
+        + (stage.synthetic ? ' — Jenkins synthetic stage' : '') + (tooltipHint || '')));
+      card.appendChild(tooltip);
+      attachClick(card, stage);
+      svg.appendChild(card);
+    }
+
+    function drawParallelGroupLabel(svg, group, branchCount, centerX, baselineY) {
+      var groupLabel = el('g', {});
+      var title = (group.name || '(stage)') + ' (' + branchCount + ')';
+      var label = el('text', {
+        x: centerX,
+        y: baselineY - STAGE_CARD_HEIGHT / 2 - 10,
+        fill: group.id === selectedId ? '#1a73e8' : '#202124',
+        'font-size': '14px',
+        'font-weight': '500',
+        'text-anchor': 'middle'
+      });
+      label.appendChild(document.createTextNode(truncate(title, 24)));
+      groupLabel.appendChild(label);
+
+      var tooltip = el('title', {});
+      tooltip.appendChild(document.createTextNode((group.name || '(stage)') + ' — ' + group.status
+        + ' — ' + branchCount + ' parallel branches'));
+      groupLabel.appendChild(tooltip);
+      attachClick(groupLabel, group);
+      svg.appendChild(groupLabel);
+    }
+
+    function buildSequentialStageLayout(topLevelStages, childStagesByParentId) {
+      var stageColumns = [];
+      var mainLineY = GRAPH_PADDING + PARALLEL_GROUP_HEADER_SPACE;
+      var lastBranchIndex = 0;
+      var hasActiveStage = false;
+
+      for (var i = 0; i < topLevelStages.length; i++) {
+        var topLevelStage = topLevelStages[i];
+        var parallelBranches = childStagesByParentId[topLevelStage.id] || [];
+        var isParallelGroup = parallelBranches.length > 1;
+        var x = GRAPH_PADDING + i * STAGE_COLUMN_WIDTH;
+
+        stageColumns.push({
+          node: topLevelStage,
+          branches: parallelBranches,
+          x: x,
+          isParallelGroup: isParallelGroup,
+          forkX: x - PARALLEL_FORK_GAP,
+          joinX: x + STAGE_CARD_WIDTH + PARALLEL_FORK_GAP
+        });
+
+        if (isParallelGroup) {
+          lastBranchIndex = Math.max(lastBranchIndex, parallelBranches.length - 1);
+        }
+        if (ACTIVE[topLevelStage.status]) hasActiveStage = true;
+        for (var branchIndex = 0; branchIndex < parallelBranches.length; branchIndex++) {
+          if (ACTIVE[parallelBranches[branchIndex].status]) hasActiveStage = true;
         }
       }
 
-      // Roots are Jenkins' sequential top-level stages. A parallel group's input/output points
-      // sit at the fork/join, so the sequence continues around its parallel branches.
-      for (i = 0; i + 1 < roots.length; i++) {
-        var source = roots[i], target = roots[i + 1];
-        svg.appendChild(el('path', {
-          d: 'M' + (isParallel(source) ? outputX(source) : rootX[source.id] + NODE_W) + ',' + mainY
-            + ' H' + (isParallel(target) ? inputX(target) : rootX[target.id]),
-          fill: 'none', stroke: '#5f6368', 'stroke-width': '1.8',
-          'marker-end': 'url(#' + markerId + ')'
-        }));
-      }
+      var columnCount = Math.max(1, stageColumns.length);
+      return {
+        stageColumns: stageColumns,
+        mainLineY: mainLineY,
+        width: GRAPH_PADDING * 2 + (columnCount - 1) * STAGE_COLUMN_WIDTH + STAGE_CARD_WIDTH,
+        height: mainLineY + lastBranchIndex * STAGE_ROW_HEIGHT + STAGE_CARD_HEIGHT / 2 + GRAPH_PADDING,
+        hasActiveStage: hasActiveStage
+      };
+    }
 
-      function drawNode(node, x, y) {
-        var col = color(node.status);
-        var g = el('g', {});
-        g.appendChild(el('rect', {
-          x: x, y: y - NODE_H / 2, width: NODE_W, height: NODE_H, rx: 5, ry: 5,
-          fill: col[0], stroke: node.id === selectedId ? '#1a73e8' : col[1],
-          'stroke-width': node.id === selectedId ? '3.5' : '2'
-        }));
-        var title = el('text', { x: x + 10, y: y - 3, fill: '#202124' });
-        title.appendChild(document.createTextNode(truncate(node.name || '(stage)', 22)));
-        g.appendChild(title);
-        var sub = el('text', { x: x + 10, y: y + 13, fill: col[1], 'font-size': '10px' });
-        sub.appendChild(document.createTextNode(node.status));
-        g.appendChild(sub);
-        var tooltip = el('title', {});
-        tooltip.appendChild(document.createTextNode((node.name || '(stage)') + ' — ' + node.status
-          + (node.synthetic ? ' — Jenkins synthetic stage' : '')));
-        g.appendChild(tooltip);
-        attachClick(g, node);
-        svg.appendChild(g);
-      }
+    function getStageInputX(stageColumn) {
+      return stageColumn.isParallelGroup ? stageColumn.forkX : stageColumn.x;
+    }
 
-      for (i = 0; i < roots.length; i++) {
-        var current = roots[i], children = childrenById[current.id];
-        if (isParallel(current)) {
-          var groupTitle = (current.name || '(stage)') + ' (' + children.length + ')';
-          var visibleGroupTitle = truncate(groupTitle, 24);
-          var groupCenterX = rootX[current.id] + NODE_W / 2;
-          var groupLabel = el('g', {});
-          var groupText = el('text', {
-            x: groupCenterX, y: mainY - NODE_H / 2 - 10,
-            fill: current.id === selectedId ? '#1a73e8' : '#202124',
-            'font-size': '14px', 'font-weight': '500', 'text-anchor': 'middle'
-          });
-          groupText.appendChild(document.createTextNode(visibleGroupTitle));
-          groupLabel.appendChild(groupText);
-          var groupTooltip = el('title', {});
-          groupTooltip.appendChild(document.createTextNode((current.name || '(stage)') + ' — ' + current.status
-            + ' — ' + children.length + ' parallel branches'));
-          groupLabel.appendChild(groupTooltip);
-          attachClick(groupLabel, current);
-          svg.appendChild(groupLabel);
-          for (var childIndex = 0; childIndex < children.length; childIndex++) {
-            drawNode(children[childIndex], rootX[current.id], laneY(childIndex));
-          }
-        } else {
-          drawNode(current, rootX[current.id], mainY);
+    function getStageOutputX(stageColumn) {
+      return stageColumn.isParallelGroup ? stageColumn.joinX : stageColumn.x + STAGE_CARD_WIDTH;
+    }
+
+    function branchCenterY(layout, branchIndex) {
+      return layout.mainLineY + branchIndex * STAGE_ROW_HEIGHT;
+    }
+
+    function drawParallelGroupForkAndJoin(svg, stageColumn, layout) {
+      var lastBranchY = branchCenterY(layout, stageColumn.branches.length - 1);
+      addGraphPath(svg, 'M' + stageColumn.forkX + ',' + layout.mainLineY + ' V' + lastBranchY,
+        '#b0bfd3', '2');
+      addGraphPath(svg, 'M' + stageColumn.joinX + ',' + layout.mainLineY + ' V' + lastBranchY,
+        '#b0bfd3', '2');
+
+      for (var i = 0; i < stageColumn.branches.length; i++) {
+        var y = branchCenterY(layout, i);
+        addGraphPath(svg, 'M' + stageColumn.forkX + ',' + y + ' H' + stageColumn.x,
+          '#b0bfd3', '2');
+        addGraphPath(svg, 'M' + (stageColumn.x + STAGE_CARD_WIDTH) + ',' + y + ' H' + stageColumn.joinX,
+          '#b0bfd3', '2');
+      }
+    }
+
+    function drawSequentialStageConnections(svg, layout, arrowMarkerId) {
+      for (var i = 0; i + 1 < layout.stageColumns.length; i++) {
+        var currentStage = layout.stageColumns[i];
+        var nextStage = layout.stageColumns[i + 1];
+        var path = 'M' + getStageOutputX(currentStage) + ',' + layout.mainLineY
+          + ' H' + getStageInputX(nextStage);
+        addGraphPath(svg, path, '#5f6368', '1.8', arrowMarkerId);
+      }
+    }
+
+    function updateGraphStatus(data, viewName, hasActiveStage, note) {
+      graphNoteEl.textContent = note || '';
+      statusEl.textContent = 'Source: ' + data.source
+        + (viewName ? ' - ' + viewName : '')
+        + (hasActiveStage ? ' - running...' : ' - complete');
+    }
+
+    function renderSequentialStagesWithParallelBranches(data, childStagesByParentId, topLevelStages) {
+      var layout = buildSequentialStageLayout(topLevelStages, childStagesByParentId);
+      var arrowMarkerId = 'jbgSequenceArrow-' + buildId;
+      var svg = createGraphSvg(layout.width, layout.height, arrowMarkerId);
+
+      // Connectors go behind stage cards so the lines stop at each card edge.
+      for (var i = 0; i < layout.stageColumns.length; i++) {
+        if (layout.stageColumns[i].isParallelGroup) {
+          drawParallelGroupForkAndJoin(svg, layout.stageColumns[i], layout);
+        }
+      }
+      drawSequentialStageConnections(svg, layout, arrowMarkerId);
+
+      for (i = 0; i < layout.stageColumns.length; i++) {
+        var stageColumn = layout.stageColumns[i];
+        if (!stageColumn.isParallelGroup) {
+          drawStageCard(svg, stageColumn.node, stageColumn.x, layout.mainLineY - STAGE_CARD_HEIGHT / 2);
+          continue;
+        }
+
+        drawParallelGroupLabel(svg, stageColumn.node, stageColumn.branches.length,
+          stageColumn.x + STAGE_CARD_WIDTH / 2, layout.mainLineY);
+        for (var branchIndex = 0; branchIndex < stageColumn.branches.length; branchIndex++) {
+          drawStageCard(svg, stageColumn.branches[branchIndex], stageColumn.x,
+            branchCenterY(layout, branchIndex) - STAGE_CARD_HEIGHT / 2);
         }
       }
 
       graphEl.appendChild(svg);
-      graphNoteEl.textContent = 'Parallel stages are shown as branches that rejoin before the next sequential stage.';
-      statusEl.textContent = 'Source: ' + data.source + ' - parallel hierarchy' + (active ? ' - running...' : ' - complete');
-      return active;
+      updateGraphStatus(data, 'parallel hierarchy', layout.hasActiveStage,
+        'Parallel stages are shown as branches that rejoin before the next sequential stage.');
+      return layout.hasActiveStage;
     }
 
     function renderHierarchy(data) {
@@ -273,7 +362,7 @@
         }
       }
       if (hasParallelRoot && flatParallelHierarchy) {
-        return renderSequentialParallelGroups(data, childrenById, roots);
+        return renderSequentialStagesWithParallelBranches(data, childrenById, roots);
       }
 
       function leafSpan(node) {
@@ -305,8 +394,8 @@
           }
           xSlot = (firstSlot + nextSlot - 1) / 2;
         }
-        xById[node.id] = PAD + xSlot * COL_W;
-        yById[node.id] = PAD + depth * ROW_H + NODE_H / 2;
+        xById[node.id] = GRAPH_PADDING + xSlot * STAGE_COLUMN_WIDTH;
+        yById[node.id] = GRAPH_PADDING + depth * STAGE_ROW_HEIGHT + STAGE_CARD_HEIGHT / 2;
         if (ACTIVE[node.status]) active = true;
       }
 
@@ -317,30 +406,19 @@
         nextRootSlot += rootSpan;
       }
       leafCount = nextRootSlot;
-      var width = PAD * 2 + (Math.max(1, leafCount) - 1) * COL_W + NODE_W;
-      var height = PAD * 2 + (maxDepth + 1) * ROW_H - (ROW_H - NODE_H);
-      var svg = el('svg', { width: width, height: height, style: 'font-family:inherit; font-size:12px;' });
-
+      var width = GRAPH_PADDING * 2 + (Math.max(1, leafCount) - 1) * STAGE_COLUMN_WIDTH + STAGE_CARD_WIDTH;
+      var height = GRAPH_PADDING * 2 + (maxDepth + 1) * STAGE_ROW_HEIGHT - (STAGE_ROW_HEIGHT - STAGE_CARD_HEIGHT);
       var markerId = 'jbgSequenceArrow-' + buildId;
-      var defs = el('defs', {});
-      var marker = el('marker', {
-        id: markerId, markerWidth: '7', markerHeight: '7', refX: '6', refY: '3.5',
-        orient: 'auto', markerUnits: 'strokeWidth'
-      });
-      marker.appendChild(el('path', { d: 'M0,0 L7,3.5 L0,7 z', fill: '#5f6368' }));
-      defs.appendChild(marker);
-      svg.appendChild(defs);
+      var svg = createGraphSvg(width, height, markerId);
 
       function drawContainmentConnector(parent, child) {
-        var x1 = xById[parent.id] + NODE_W / 2;
-        var y1 = yById[parent.id] + NODE_H / 2;
-        var x2 = xById[child.id] + NODE_W / 2;
-        var y2 = yById[child.id] - NODE_H / 2;
+        var x1 = xById[parent.id] + STAGE_CARD_WIDTH / 2;
+        var y1 = yById[parent.id] + STAGE_CARD_HEIGHT / 2;
+        var x2 = xById[child.id] + STAGE_CARD_WIDTH / 2;
+        var y2 = yById[child.id] - STAGE_CARD_HEIGHT / 2;
         var middleY = Math.round((y1 + y2) / 2);
-        svg.appendChild(el('path', {
-          d: 'M' + x1 + ',' + y1 + ' V' + middleY + ' H' + x2 + ' V' + y2,
-          fill: 'none', stroke: '#9aa0a6', 'stroke-width': '1.5'
-        }));
+        addGraphPath(svg, 'M' + x1 + ',' + y1 + ' V' + middleY + ' H' + x2 + ' V' + y2,
+          '#9aa0a6', '1.5');
       }
 
       for (i = 0; i < nodes.length; i++) {
@@ -351,45 +429,18 @@
       }
       for (i = 0; i + 1 < roots.length; i++) {
         var source = roots[i], target = roots[i + 1];
-        svg.appendChild(el('path', {
-          d: 'M' + (xById[source.id] + NODE_W) + ',' + yById[source.id]
-            + ' H' + xById[target.id],
-          fill: 'none', stroke: '#5f6368', 'stroke-width': '1.8',
-          'marker-end': 'url(#' + markerId + ')'
-        }));
-      }
-
-      function drawNode(node) {
-        var x = xById[node.id], y = yById[node.id];
-        var col = color(node.status);
-        var g = el('g', {});
-        g.appendChild(el('rect', {
-          x: x, y: y - NODE_H / 2, width: NODE_W, height: NODE_H, rx: 5, ry: 5,
-          fill: col[0], stroke: node.id === selectedId ? '#1a73e8' : col[1],
-          'stroke-width': node.id === selectedId ? '3.5' : '2'
-        }));
-        var title = el('text', { x: x + 10, y: y - 3, fill: '#202124' });
-        title.appendChild(document.createTextNode(truncate(node.name || '(stage)', 22)));
-        g.appendChild(title);
-        var sub = el('text', { x: x + 10, y: y + 13, fill: col[1], 'font-size': '10px' });
-        sub.appendChild(document.createTextNode(node.status));
-        g.appendChild(sub);
-        var t = el('title', {});
-        t.appendChild(document.createTextNode(node.name + ' — ' + node.status
-          + (node.synthetic ? ' — Jenkins synthetic stage' : '')));
-        g.appendChild(t);
-        attachClick(g, node);
-        g.style.cursor = 'pointer';
-        svg.appendChild(g);
+        var path = 'M' + (xById[source.id] + STAGE_CARD_WIDTH) + ',' + yById[source.id]
+          + ' H' + xById[target.id];
+        addGraphPath(svg, path, '#5f6368', '1.8', markerId);
       }
 
       for (i = 0; i < nodes.length; i++) {
-        drawNode(nodes[i]);
+        drawStageCard(svg, nodes[i], xById[nodes[i].id], yById[nodes[i].id] - STAGE_CARD_HEIGHT / 2);
       }
 
       graphEl.appendChild(svg);
-      graphNoteEl.textContent = 'Arrows follow Jenkins top-level stage order; branch lines show stage containment.';
-      statusEl.textContent = 'Source: ' + data.source + ' - hierarchy' + (active ? ' - running...' : ' - complete');
+      updateGraphStatus(data, 'hierarchy', active,
+        'Arrows follow Jenkins top-level stage order; branch lines show stage containment.');
       return active;
     }
 
@@ -403,53 +454,34 @@
       }
       if (data.source === 'PIPELINE_GRAPH_VIEW') return renderHierarchy(data);
       var nodes = data.nodes;
-      var info = layout(nodes);
+      var info = layoutGraphNodesByLongestPath(nodes);
       var active = false, i;
 
-      var svg = el('svg', { width: info.width, height: info.height,
-        style: 'font-family:inherit; font-size:12px;' });
+      var svg = createGraphSvg(info.width, info.height, null);
 
       // Edges first (under nodes).
       for (i = 0; i < nodes.length; i++) {
         var n = nodes[i];
         for (var j = 0; j < n.children.length; j++) {
-          var ch = info.byId[n.children[j]];
+          var ch = info.nodesById[n.children[j]];
           if (!ch) continue;
-          var x1 = n._x + NODE_W, y1 = n._y + NODE_H / 2;
-          var x2 = ch._x, y2 = ch._y + NODE_H / 2;
-          svg.appendChild(el('path', {
-            d: 'M' + x1 + ',' + y1 + ' C' + (x1 + 40) + ',' + y1 + ' ' + (x2 - 40) + ',' + y2 + ' ' + x2 + ',' + y2,
-            fill: 'none', stroke: '#9aa0a6', 'stroke-width': '1.5'
-          }));
+          var x1 = n._x + STAGE_CARD_WIDTH, y1 = n._y + STAGE_CARD_HEIGHT / 2;
+          var x2 = ch._x, y2 = ch._y + STAGE_CARD_HEIGHT / 2;
+          var path = 'M' + x1 + ',' + y1 + ' C' + (x1 + 40) + ',' + y1 + ' '
+            + (x2 - 40) + ',' + y2 + ' ' + x2 + ',' + y2;
+          addGraphPath(svg, path, '#9aa0a6', '1.5');
         }
       }
 
-      // Nodes on top (clickable groups).
+      // Draw cards after connectors so the lines sit behind each stage.
       for (i = 0; i < nodes.length; i++) {
         var node = nodes[i];
-        var col = color(node.status);
         if (ACTIVE[node.status]) active = true;
-        var selected = node.id === selectedId;
-        var g = el('g', {});
-        g.appendChild(el('rect', {
-          x: node._x, y: node._y, width: NODE_W, height: NODE_H, rx: 5, ry: 5,
-          fill: col[0], stroke: selected ? '#1a73e8' : col[1], 'stroke-width': selected ? '3.5' : '2'
-        }));
-        var title = el('text', { x: node._x + 10, y: node._y + 17, fill: '#202124' });
-        title.appendChild(document.createTextNode(truncate(node.name, 24)));
-        g.appendChild(title);
-        var sub = el('text', { x: node._x + 10, y: node._y + 32, fill: col[1], 'font-size': '10px' });
-        sub.appendChild(document.createTextNode(node.status));
-        g.appendChild(sub);
-        var t = el('title', {});
-        t.appendChild(document.createTextNode(node.name + ' — ' + node.status + ' (click for log)'));
-        g.appendChild(t);
-        attachClick(g, node);
-        svg.appendChild(g);
+        drawStageCard(svg, node, node._x, node._y, 24, ' (click for log)');
       }
 
       graphEl.appendChild(svg);
-      statusEl.innerHTML = esc('Source: ' + data.source + (active ? ' - running...' : ' - complete'));
+      updateGraphStatus(data, '', active, '');
       return active;
     }
 
