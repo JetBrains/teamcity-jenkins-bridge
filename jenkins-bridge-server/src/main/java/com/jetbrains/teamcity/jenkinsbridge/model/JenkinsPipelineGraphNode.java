@@ -16,6 +16,8 @@ public class JenkinsPipelineGraphNode {
   private List<String> parentIds;
   private List<String> childIds;
   private List<String> logNodeIds;
+  private String hierarchyParentId;
+  private boolean synthetic;
 
   // Gson needs a no-arg constructor.
   public JenkinsPipelineGraphNode() {
@@ -41,6 +43,16 @@ public class JenkinsPipelineGraphNode {
     this.parentIds = copy(parentIds);
     this.childIds = copy(childIds);
     this.logNodeIds = copy(logNodeIds);
+  }
+
+  public JenkinsPipelineGraphNode(
+      String id, String flowId, String name, String status, long startTimeMillis, long durationMillis,
+      List<String> parentIds, List<String> childIds, List<String> logNodeIds,
+      String hierarchyParentId, boolean synthetic
+  ) {
+    this(id, flowId, name, status, startTimeMillis, durationMillis, parentIds, childIds, logNodeIds);
+    this.hierarchyParentId = nullToEmpty(hierarchyParentId);
+    this.synthetic = synthetic;
   }
 
   public String getId() {
@@ -77,6 +89,15 @@ public class JenkinsPipelineGraphNode {
 
   public List<String> getLogNodeIds() {
     return logNodeIds == null ? Collections.<String>emptyList() : Collections.unmodifiableList(logNodeIds);
+  }
+
+  /** Jenkins Pipeline Overview containment; never interpreted as a snapshot dependency. */
+  public String getHierarchyParentId() {
+    return nullToEmpty(hierarchyParentId);
+  }
+
+  public boolean isSynthetic() {
+    return synthetic;
   }
 
   private static List<String> copy(List<String> values) {
