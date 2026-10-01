@@ -12,6 +12,7 @@
     steps and their console output. Updates live while the build runs.
   </p>
   <div id="jbgStatus" class="grayNote" style="margin:0 0 0.5em;">Loading Jenkins pipeline graph&hellip;</div>
+  <div id="jbgGraphNote" class="grayNote" style="margin:0 0 0.5em;"></div>
   <div id="jbgGraph" style="overflow:auto; max-width:100%;"></div>
   <div id="jbgDetail" style="margin-top:1em;"></div>
 </div>
@@ -37,6 +38,7 @@
     };
 
     var statusEl = document.getElementById('jbgStatus');
+    var graphNoteEl = document.getElementById('jbgGraphNote');
     var graphEl = document.getElementById('jbgGraph');
     var detailEl = document.getElementById('jbgDetail');
 
@@ -108,40 +110,293 @@
       group.addEventListener('click', function () { selectStage(node.id, node.name); });
     }
 
-    function renderHierarchy(data) {
-      var nodes = data.nodes, depthById = {}, active = false;
-      for (var i = 0; i < nodes.length; i++) {
-        var node = nodes[i];
-        var parentDepth = depthById[node.hierarchyParentId];
-        var depth = node.hierarchyParentId && parentDepth != null ? parentDepth + 1 : 0;
-        depthById[node.id] = depth;
-        if (ACTIVE[node.status]) active = true;
-        var col = color(node.status);
-        var row = document.createElement('div');
-        row.style.cssText = 'display:flex; align-items:center; gap:10px; max-width:760px; '
-          + 'margin:5px 0; padding:8px 10px; border:1px solid ' + col[1]
-          + '; border-radius:5px; background:' + col[0] + '; cursor:pointer;';
-        row.style.marginLeft = (depth * 24) + 'px';
-        if (node.id === selectedId) row.style.outline = '2px solid #1a73e8';
-        var label = document.createElement('span');
-        label.style.cssText = 'flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;';
-        label.textContent = node.name || '(stage)';
-        if (node.synthetic) label.title = 'Jenkins synthetic stage';
-        var state = document.createElement('span');
-        state.style.color = col[1];
-        state.textContent = node.status;
-        row.appendChild(label);
-        row.appendChild(state);
-        attachClick(row, node);
-        graphEl.appendChild(row);
+    function renderSequentialParallelGroups(data, childrenById, roots) {
+      var active = false, maxLane = 0;
+      var mainY = PAD + 36;
+      var rootX = {};
+      var i;
+
+      function isParallel(root) { return childrenById[root.id].length > 1; }
+      function inputX(root) { return rootX[root.id] - 14; }
+      function outputX(root) { return rootX[root.id] + NODE_W + 14; }
+      function laneY(index) { return mainY + index * ROW_H; }
+
+      for (i = 0; i < roots.length; i++) {
+        rootX[roots[i].id] = PAD + i * COL_W;
+        var branches = childrenById[roots[i].id];
+        if (branches.length > 1) maxLane = Math.max(maxLane, branches.length - 1);
+        if (ACTIVE[roots[i].status]) active = true;
+        for (var branchIndex = 0; branchIndex < branches.length; branchIndex++) {
+          if (ACTIVE[branches[branchIndex].status]) active = true;
+        }
       }
-      statusEl.textContent = 'Source: ' + data.source + (active ? ' - running...' : ' - complete');
+
+      var width = PAD * 2 + (roots.length - 1) * COL_W + NODE_W;
+      var height = mainY + maxLane * ROW_H + NODE_H / 2 + PAD;
+      var svg = el('svg', { width: width, height: height, style: 'font-family:inherit; font-size:12px;' });
+      var markerId = 'jbgParallelArrow-' + buildId;
+      var defs = el('defs', {});
+      var marker = el('marker', {
+        id: markerId, markerWidth: '7', markerHeight: '7', refX: '6', refY: '3.5',
+        orient: 'auto', markerUnits: 'strokeWidth'
+      });
+      marker.appendChild(el('path', { d: 'M0,0 L7,3.5 L0,7 z', fill: '#5f6368' }));
+      defs.appendChild(marker);
+      svg.appendChild(defs);
+
+      // Draw fork and join lines first so the stage cards sit on top of them.
+      for (i = 0; i < roots.length; i++) {
+        var root = roots[i], branches = childrenById[root.id];
+        if (!isParallel(root)) continue;
+        var forkX = inputX(root), joinX = outputX(root);
+        var lastY = laneY(branches.length - 1);
+        svg.appendChild(el('path', {
+          d: 'M' + forkX + ',' + mainY + ' V' + lastY,
+          fill: 'none', stroke: '#b0bfd3', 'stroke-width': '2'
+        }));
+        svg.appendChild(el('path', {
+          d: 'M' + joinX + ',' + mainY + ' V' + lastY,
+          fill: 'none', stroke: '#b0bfd3', 'stroke-width': '2'
+        }));
+        for (var b = 0; b < branches.length; b++) {
+          var y = laneY(b);
+          svg.appendChild(el('path', {
+            d: 'M' + forkX + ',' + y + ' H' + rootX[root.id],
+            fill: 'none', stroke: '#b0bfd3', 'stroke-width': '2'
+          }));
+          svg.appendChild(el('path', {
+            d: 'M' + (rootX[root.id] + NODE_W) + ',' + y + ' H' + joinX,
+            fill: 'none', stroke: '#b0bfd3', 'stroke-width': '2'
+          }));
+        }
+      }
+
+      // Roots are Jenkins' sequential top-level stages. A parallel group's input/output points
+      // sit at the fork/join, so the sequence continues around its parallel branches.
+      for (i = 0; i + 1 < roots.length; i++) {
+        var source = roots[i], target = roots[i + 1];
+        svg.appendChild(el('path', {
+          d: 'M' + (isParallel(source) ? outputX(source) : rootX[source.id] + NODE_W) + ',' + mainY
+            + ' H' + (isParallel(target) ? inputX(target) : rootX[target.id]),
+          fill: 'none', stroke: '#5f6368', 'stroke-width': '1.8',
+          'marker-end': 'url(#' + markerId + ')'
+        }));
+      }
+
+      function drawNode(node, x, y) {
+        var col = color(node.status);
+        var g = el('g', {});
+        g.appendChild(el('rect', {
+          x: x, y: y - NODE_H / 2, width: NODE_W, height: NODE_H, rx: 5, ry: 5,
+          fill: col[0], stroke: node.id === selectedId ? '#1a73e8' : col[1],
+          'stroke-width': node.id === selectedId ? '3.5' : '2'
+        }));
+        var title = el('text', { x: x + 10, y: y - 3, fill: '#202124' });
+        title.appendChild(document.createTextNode(truncate(node.name || '(stage)', 22)));
+        g.appendChild(title);
+        var sub = el('text', { x: x + 10, y: y + 13, fill: col[1], 'font-size': '10px' });
+        sub.appendChild(document.createTextNode(node.status));
+        g.appendChild(sub);
+        var tooltip = el('title', {});
+        tooltip.appendChild(document.createTextNode((node.name || '(stage)') + ' — ' + node.status
+          + (node.synthetic ? ' — Jenkins synthetic stage' : '')));
+        g.appendChild(tooltip);
+        attachClick(g, node);
+        svg.appendChild(g);
+      }
+
+      for (i = 0; i < roots.length; i++) {
+        var current = roots[i], children = childrenById[current.id];
+        if (isParallel(current)) {
+          var groupTitle = (current.name || '(stage)') + ' (' + children.length + ')';
+          var visibleGroupTitle = truncate(groupTitle, 24);
+          var groupCenterX = rootX[current.id] + NODE_W / 2;
+          var groupLabel = el('g', {});
+          var groupText = el('text', {
+            x: groupCenterX, y: mainY - NODE_H / 2 - 10,
+            fill: current.id === selectedId ? '#1a73e8' : '#202124',
+            'font-size': '14px', 'font-weight': '500', 'text-anchor': 'middle'
+          });
+          groupText.appendChild(document.createTextNode(visibleGroupTitle));
+          groupLabel.appendChild(groupText);
+          var groupTooltip = el('title', {});
+          groupTooltip.appendChild(document.createTextNode((current.name || '(stage)') + ' — ' + current.status
+            + ' — ' + children.length + ' parallel branches'));
+          groupLabel.appendChild(groupTooltip);
+          attachClick(groupLabel, current);
+          svg.appendChild(groupLabel);
+          for (var childIndex = 0; childIndex < children.length; childIndex++) {
+            drawNode(children[childIndex], rootX[current.id], laneY(childIndex));
+          }
+        } else {
+          drawNode(current, rootX[current.id], mainY);
+        }
+      }
+
+      graphEl.appendChild(svg);
+      graphNoteEl.textContent = 'Parallel stages are shown as branches that rejoin before the next sequential stage.';
+      statusEl.textContent = 'Source: ' + data.source + ' - parallel hierarchy' + (active ? ' - running...' : ' - complete');
+      return active;
+    }
+
+    function renderHierarchy(data) {
+      var nodes = data.nodes, byId = {}, childrenById = {}, roots = [];
+      var xById = {}, yById = {}, spanById = {};
+      var active = false, maxDepth = 0, leafCount = 0;
+      var i;
+      for (i = 0; i < nodes.length; i++) {
+        byId[nodes[i].id] = nodes[i];
+        childrenById[nodes[i].id] = [];
+      }
+      for (i = 0; i < nodes.length; i++) {
+        var parentId = nodes[i].hierarchyParentId;
+        if (parentId && byId[parentId] && parentId !== nodes[i].id) {
+          childrenById[parentId].push(nodes[i]);
+        } else {
+          roots.push(nodes[i]);
+        }
+      }
+
+      // Blue Ocean presents a parallel stage group as sibling lanes between sequential stages.
+      // Use that layout when each top-level stage is either a leaf or a flat parallel group;
+      // retain the full hierarchy renderer below for deeper nested stage trees.
+      var hasParallelRoot = false, flatParallelHierarchy = true;
+      for (i = 0; i < roots.length; i++) {
+        var rootChildren = childrenById[roots[i].id];
+        if (rootChildren.length > 1) {
+          hasParallelRoot = true;
+          for (var nestedIndex = 0; nestedIndex < rootChildren.length; nestedIndex++) {
+            if (childrenById[rootChildren[nestedIndex].id].length) flatParallelHierarchy = false;
+          }
+        } else if (rootChildren.length === 1) {
+          flatParallelHierarchy = false;
+        }
+      }
+      if (hasParallelRoot && flatParallelHierarchy) {
+        return renderSequentialParallelGroups(data, childrenById, roots);
+      }
+
+      function leafSpan(node) {
+        if (spanById[node.id] != null) return spanById[node.id];
+        var children = childrenById[node.id] || [];
+        var span = 0;
+        if (!children.length) {
+          span = 1;
+        } else {
+          for (var childIndex = 0; childIndex < children.length; childIndex++) {
+            span += leafSpan(children[childIndex]);
+          }
+        }
+        spanById[node.id] = span;
+        return span;
+      }
+
+      function place(node, depth, firstSlot) {
+        maxDepth = Math.max(maxDepth, depth);
+        var children = childrenById[node.id] || [];
+        var xSlot;
+        if (!children.length) {
+          xSlot = firstSlot;
+        } else {
+          var nextSlot = firstSlot;
+          for (var childIndex = 0; childIndex < children.length; childIndex++) {
+            place(children[childIndex], depth + 1, nextSlot);
+            nextSlot += leafSpan(children[childIndex]);
+          }
+          xSlot = (firstSlot + nextSlot - 1) / 2;
+        }
+        xById[node.id] = PAD + xSlot * COL_W;
+        yById[node.id] = PAD + depth * ROW_H + NODE_H / 2;
+        if (ACTIVE[node.status]) active = true;
+      }
+
+      var nextRootSlot = 0;
+      for (i = 0; i < roots.length; i++) {
+        var rootSpan = leafSpan(roots[i]);
+        place(roots[i], 0, nextRootSlot);
+        nextRootSlot += rootSpan;
+      }
+      leafCount = nextRootSlot;
+      var width = PAD * 2 + (Math.max(1, leafCount) - 1) * COL_W + NODE_W;
+      var height = PAD * 2 + (maxDepth + 1) * ROW_H - (ROW_H - NODE_H);
+      var svg = el('svg', { width: width, height: height, style: 'font-family:inherit; font-size:12px;' });
+
+      var markerId = 'jbgSequenceArrow-' + buildId;
+      var defs = el('defs', {});
+      var marker = el('marker', {
+        id: markerId, markerWidth: '7', markerHeight: '7', refX: '6', refY: '3.5',
+        orient: 'auto', markerUnits: 'strokeWidth'
+      });
+      marker.appendChild(el('path', { d: 'M0,0 L7,3.5 L0,7 z', fill: '#5f6368' }));
+      defs.appendChild(marker);
+      svg.appendChild(defs);
+
+      function drawContainmentConnector(parent, child) {
+        var x1 = xById[parent.id] + NODE_W / 2;
+        var y1 = yById[parent.id] + NODE_H / 2;
+        var x2 = xById[child.id] + NODE_W / 2;
+        var y2 = yById[child.id] - NODE_H / 2;
+        var middleY = Math.round((y1 + y2) / 2);
+        svg.appendChild(el('path', {
+          d: 'M' + x1 + ',' + y1 + ' V' + middleY + ' H' + x2 + ' V' + y2,
+          fill: 'none', stroke: '#9aa0a6', 'stroke-width': '1.5'
+        }));
+      }
+
+      for (i = 0; i < nodes.length; i++) {
+        var parentNode = byId[nodes[i].hierarchyParentId];
+        if (parentNode && parentNode.id !== nodes[i].id) {
+          drawContainmentConnector(parentNode, nodes[i]);
+        }
+      }
+      for (i = 0; i + 1 < roots.length; i++) {
+        var source = roots[i], target = roots[i + 1];
+        svg.appendChild(el('path', {
+          d: 'M' + (xById[source.id] + NODE_W) + ',' + yById[source.id]
+            + ' H' + xById[target.id],
+          fill: 'none', stroke: '#5f6368', 'stroke-width': '1.8',
+          'marker-end': 'url(#' + markerId + ')'
+        }));
+      }
+
+      function drawNode(node) {
+        var x = xById[node.id], y = yById[node.id];
+        var col = color(node.status);
+        var g = el('g', {});
+        g.appendChild(el('rect', {
+          x: x, y: y - NODE_H / 2, width: NODE_W, height: NODE_H, rx: 5, ry: 5,
+          fill: col[0], stroke: node.id === selectedId ? '#1a73e8' : col[1],
+          'stroke-width': node.id === selectedId ? '3.5' : '2'
+        }));
+        var title = el('text', { x: x + 10, y: y - 3, fill: '#202124' });
+        title.appendChild(document.createTextNode(truncate(node.name || '(stage)', 22)));
+        g.appendChild(title);
+        var sub = el('text', { x: x + 10, y: y + 13, fill: col[1], 'font-size': '10px' });
+        sub.appendChild(document.createTextNode(node.status));
+        g.appendChild(sub);
+        var t = el('title', {});
+        t.appendChild(document.createTextNode(node.name + ' — ' + node.status
+          + (node.synthetic ? ' — Jenkins synthetic stage' : '')));
+        g.appendChild(t);
+        attachClick(g, node);
+        g.style.cursor = 'pointer';
+        svg.appendChild(g);
+      }
+
+      for (i = 0; i < nodes.length; i++) {
+        drawNode(nodes[i]);
+      }
+
+      graphEl.appendChild(svg);
+      graphNoteEl.textContent = 'Arrows follow Jenkins top-level stage order; branch lines show stage containment.';
+      statusEl.textContent = 'Source: ' + data.source + ' - hierarchy' + (active ? ' - running...' : ' - complete');
       return active;
     }
 
     function render(data) {
       lastData = data;
       graphEl.innerHTML = '';
+      graphNoteEl.textContent = '';
       if (!data || !data.pipeline || !data.nodes || !data.nodes.length) {
         statusEl.innerHTML = 'No Jenkins pipeline graph is available for this build.';
         return false;
