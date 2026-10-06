@@ -892,8 +892,9 @@ public class JenkinsBridgePollingService {
 
     ensureJenkinsBuildParametersLoaded(jenkinsClient, mirror);
 
-    // Try to fetch any existing VCS info before queueing to pin the correct branch name
-    // TODO: Check whether this API call can be merged with another one to prevent unnecessary network communication
+    // Completed Jenkins builds may already expose SCM data before the mirror is queued. Running
+    // builds are queued immediately from their child job identity; their VCS revisions are synced
+    // later, before the TeamCity mirror is finalized.
     JenkinsVcsInfo queueVcsInfo = null;
     if (shouldLoadQueueVcs(mirror, buildInfo)) {
       queueVcsInfo = loadBuildVcs(jenkinsClient, mirror);
