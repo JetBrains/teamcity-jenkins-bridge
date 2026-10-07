@@ -6,6 +6,7 @@ import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClientFactory;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsVcsInfo;
 import com.jetbrains.teamcity.jenkinsbridge.persistence.BuildMirror;
 import com.jetbrains.teamcity.jenkinsbridge.vcs.VcsRefType;
+import com.jetbrains.teamcity.jenkinsbridge.vcs.VcsBuildCustomization;
 import com.jetbrains.teamcity.jenkinsbridge.vcs.VcsSyncResult;
 import jetbrains.buildServer.serverSide.BuildPromotionEx;
 import jetbrains.buildServer.serverSide.PersistTask;
@@ -180,6 +181,23 @@ public class TeamCityVcsPublisherTest {
     assertEquals("+:refs/tags/*", paramsCaptor.getValue().get("teamcity:branchSpec"));
     assertEquals("refs/tags/v1.0", paramsCaptor.getValue().get("branch"));
     assertFalse(result.hasErrors());
+  }
+
+  @Test
+  public void prepareVcsCreatesTagRootAndReturnsPinnedTagRevisionBeforeQueueing() throws Exception {
+    when(jenkinsClient.getBranchRefType(any())).thenReturn(VcsRefType.TAGS);
+    SVcsRoot created = gitRoot("https://github.com/org/repo.git");
+    when(project.createVcsRoot(eq("jetbrains.git"), anyString(), anyMap())).thenReturn(created);
+    VcsRootInstanceEntry entry = entry(15L);
+    when(buildType.getVcsRootInstanceEntryForParent(created)).thenReturn(null, entry);
+
+    VcsBuildCustomization customization = publisher.prepareVcs(
+        mirror(), gitInfo("https://github.com/org/repo.git", "abc123", "refs/tags/v1.0"));
+
+    assertFalse(customization.result().hasErrors());
+    assertEquals("abc123", customization.upperLimitRevisions().get(15L).getVersion());
+    assertEquals("refs/tags/v1.0", customization.upperLimitRevisions().get(15L).getVcsBranch());
+    assertEquals("v1.0", customization.desiredBranchName());
   }
 
   @Test

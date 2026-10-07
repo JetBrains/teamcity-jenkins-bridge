@@ -32,7 +32,7 @@ public class BuildMirror {
   private Boolean pipelineMode;
   // Per-stage watermarks, keyed by Jenkins stage id; only populated for Pipeline builds.
   private Map<String, StageMirror> stages;
-  // Latest normalized WFAPI graph snapshot for this Jenkins run. Used by future chain mirroring.
+  // Latest normalized graph/tab snapshot for this Jenkins run.
   private JenkinsPipelineGraph pipelineGraph;
   // Native TeamCity build-chain mirror for the latest eligible Pipeline graph snapshot.
   private PipelineChainMirror pipelineChain;

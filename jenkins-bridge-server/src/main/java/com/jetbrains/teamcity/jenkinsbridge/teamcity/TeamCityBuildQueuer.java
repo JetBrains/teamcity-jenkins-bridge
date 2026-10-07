@@ -6,6 +6,7 @@ import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClientFactory;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsVcsInfo;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsVcsRepository;
 import com.jetbrains.teamcity.jenkinsbridge.util.Utilities;
+import com.jetbrains.teamcity.jenkinsbridge.vcs.VcsBuildCustomization;
 import com.jetbrains.teamcity.jenkinsbridge.vcs.VcsRefType;
 import jetbrains.buildServer.serverSide.*;
 import org.jetbrains.annotations.Nullable;
@@ -44,6 +45,16 @@ public class TeamCityBuildQueuer {
       Map<String, String> jenkinsBuildParameters,
       @Nullable JenkinsVcsInfo vcsInfo
   ) throws TeamCityBuildQueueException {
+    return queueAgentlessBuild(buildTypeId, properties, jenkinsBuildParameters, vcsInfo, null);
+  }
+
+  public long queueAgentlessBuild(
+      String buildTypeId,
+      Map<String, String> properties,
+      Map<String, String> jenkinsBuildParameters,
+      @Nullable JenkinsVcsInfo vcsInfo,
+      @Nullable VcsBuildCustomization vcsCustomization
+  ) throws TeamCityBuildQueueException {
     SBuildType buildType = findBuildType(buildTypeId, projectManager);
     if (buildType == null) {
       throw new TeamCityBuildQueueException("TeamCity build type " + buildTypeId + " was not found");
@@ -69,6 +80,7 @@ public class TeamCityBuildQueuer {
     if (branchResolution.branchName() != null && customizer instanceof BuildCustomizerEx customizerEx) {
       customizerEx.setDesiredBranchName(branchResolution.branchName(), false);
     }
+    applyVcsCustomization(customizer, vcsCustomization, branchResolution.branchName() == null);
 
     BuildPromotion promotion = customizer.createPromotion();
     if (storageActivator != null) {
@@ -82,6 +94,22 @@ public class TeamCityBuildQueuer {
     }
 
     return queuedBuild.getBuildPromotion().getId();
+  }
+
+  private void applyVcsCustomization(
+      BuildCustomizer customizer,
+      @Nullable VcsBuildCustomization vcsCustomization,
+      boolean applyDesiredBranch
+  ) throws TeamCityBuildQueueException {
+    if (vcsCustomization == null || !(customizer instanceof BuildCustomizerEx customizerEx)) {
+      return;
+    }
+    if (applyDesiredBranch && vcsCustomization.desiredBranchName() != null) {
+      customizerEx.setDesiredBranchName(vcsCustomization.desiredBranchName(), false);
+    }
+    if (vcsCustomization.hasRevisions()) {
+      customizerEx.setProvidedUpperLimitRevisions(vcsCustomization.upperLimitRevisions());
+    }
   }
 
   /**

@@ -147,7 +147,8 @@ public class JenkinsClientTest {
     JenkinsVcsInfo vcsInfo = client.getBuildVcs("folder/job", 7);
 
     assertEquals("http://jenkins/job/folder/job/job/7/api/json?tree="
-            + "actions%5B_class%2ClastBuiltRevision%5BSHA1%2Cbranch%5Bname%5D%5D%2CremoteUrls%5D",
+            + "actions%5B_class%2ClastBuiltRevision%5BSHA1%2Cbranch%5Bname%5D%5D%2CremoteUrls%2C"
+            + "revision%5Bhash%2Chead%5Bname%5D%5D%5D",
         httpClient.url);
     assertEquals(2, vcsInfo.repositories().size());
     assertEquals("8f2fd2f092c3b923e1c7b42c0d6b87aea49d2771", vcsInfo.repositories().get(0).sha1());

@@ -8,6 +8,7 @@ import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsBuildInfo;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsVcsInfo;
 import com.jetbrains.teamcity.jenkinsbridge.persistence.BuildMirror;
 import com.jetbrains.teamcity.jenkinsbridge.persistence.BuildMirrorStore;
+import com.jetbrains.teamcity.jenkinsbridge.vcs.VcsBuildCustomization;
 import com.jetbrains.teamcity.jenkinsbridge.vcs.VcsSyncResult;
 import jetbrains.buildServer.serverSide.CustomDataStorage;
 import jetbrains.buildServer.serverSide.BuildPromotionEx;
@@ -486,7 +487,8 @@ public class TeamCityBuildMirrorServiceTest {
         String buildTypeId,
         Map<String, String> properties,
         Map<String, String> jenkinsBuildParameters,
-        JenkinsVcsInfo vcsInfo
+        JenkinsVcsInfo vcsInfo,
+        VcsBuildCustomization vcsCustomization
     ) {
       bridgeParameters = new LinkedHashMap<>(properties);
       jenkinsParameters = new LinkedHashMap<>(jenkinsBuildParameters);

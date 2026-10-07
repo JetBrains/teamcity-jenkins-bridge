@@ -15,11 +15,15 @@ import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsBuildInfo;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsBuildParameters;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsArtifacts;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsLogChunk;
+import com.jetbrains.teamcity.jenkinsbridge.model.GraphConfidence;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsPipelineGraph;
+import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsPipelineGraphNode;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsQueueBuildResolution;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsStages;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsTestReport;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsVcsInfo;
+import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsVcsRepository;
+import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsScmHeadInfo;
 import com.jetbrains.teamcity.jenkinsbridge.settings.JenkinsBridgeSettings;
 import com.jetbrains.teamcity.jenkinsbridge.settings.JenkinsBridgeSettingsProvider;
 import com.jetbrains.teamcity.jenkinsbridge.settings.MirroredJob;
@@ -31,6 +35,7 @@ import com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityRunningBuildNotFoun
 import com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityQueuedBuildFailureService;
 import com.jetbrains.teamcity.jenkinsbridge.util.TeamCityNodeLog;
 import com.jetbrains.teamcity.jenkinsbridge.util.Utilities;
+import com.jetbrains.teamcity.jenkinsbridge.vcs.VcsRefType;
 
 import jetbrains.buildServer.serverSide.ProjectManager;
 import jetbrains.buildServer.serverSide.SBuildType;
@@ -44,6 +49,8 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
+import java.util.Objects;
 import java.util.Map;
 import java.util.Set;
 import java.time.Duration;
@@ -493,7 +500,8 @@ public class JenkinsBridgePollingService {
             mirroredJob.teamCityBuildTypeExternalId(),
             mirroredJob.teamCityBuildTypeName(),
             recentBuildLimit, false);
-        outcome.merge(pollJob(jenkinsClient, branchJob, entry.getValue(), recentBuildLimit));
+        outcome.merge(pollJob(
+            jenkinsClient, branchJob, entry.getValue(), recentBuildLimit, true));
       }
       updateSystemProblem(mirroredJob, outcome);
       Set<String> mappings = new HashSet<String>();
@@ -557,6 +565,13 @@ public class JenkinsBridgePollingService {
   private JobPollOutcome pollJob(JenkinsClient jenkinsClient, MirroredJob mirroredJob,
                                  List<JenkinsBuildInfo> builds, int recentBuildLimit)
       throws BridgeHttpException, JenkinsDataException, IOException {
+    return pollJob(jenkinsClient, mirroredJob, builds, recentBuildLimit, false);
+  }
+
+  private JobPollOutcome pollJob(JenkinsClient jenkinsClient, MirroredJob mirroredJob,
+                                 List<JenkinsBuildInfo> builds, int recentBuildLimit,
+                                 boolean multibranchChild)
+      throws BridgeHttpException, JenkinsDataException, IOException {
     JobPollOutcome outcome = new JobPollOutcome();
     String job = mirroredJob.jenkinsJob();
     String keyPrefix = mirroredJob.getMirrorKeyPrefix();
@@ -619,7 +634,8 @@ public class JenkinsBridgePollingService {
     boolean watermarkCanAdvance = true;
 
     for (JenkinsBuildInfo build : toProcess) {
-      boolean discoveredAndTracked = syncDiscoveredBuild(jenkinsClient, mirroredJob, build, outcome);
+      boolean discoveredAndTracked = syncDiscoveredBuild(
+          jenkinsClient, mirroredJob, build, outcome, multibranchChild);
       if (!discoveredAndTracked) {
         watermarkCanAdvance = false;
         continue;
@@ -638,7 +654,8 @@ public class JenkinsBridgePollingService {
       if (handled.contains(mirror.getJenkinsBuildNumber())) {
         continue;
       }
-      syncActiveMirror(jenkinsClient, mirroredJob.connectionId(), mirror, outcome);
+      syncActiveMirror(
+          jenkinsClient, mirroredJob.connectionId(), mirror, outcome, multibranchChild);
     }
 
     // On a cold start the watermark also has to clear the builds that were deliberately skipped,
@@ -728,7 +745,8 @@ public class JenkinsBridgePollingService {
    * later synchronization failures are recorded for retry and do not block watermark progress.</p>
    */
   private boolean syncDiscoveredBuild(JenkinsClient jenkinsClient, MirroredJob mirroredJob,
-                                   JenkinsBuildInfo discoveredBuild, JobPollOutcome outcome) {
+                                   JenkinsBuildInfo discoveredBuild, JobPollOutcome outcome,
+                                   boolean multibranchChild) {
     String job = mirroredJob.jenkinsJob();
     BuildMirror mirror = null;
     boolean discoveredAndTracked = false;
@@ -784,7 +802,8 @@ public class JenkinsBridgePollingService {
       LOG.debug(TeamCityNodeLog.currentNode(teamCityNodes) + " [Jenkins Bridge DEBUG] Syncing Jenkins build " + mirror.getJenkinsBuildKey()
           + " in state " + mirror.getSyncState()
           + " with TeamCity build id " + mirror.getTeamCityBuildId());
-      syncBuild(jenkinsClient, mirroredJob.connectionId(), mirror, buildInfo);
+      syncBuild(
+          jenkinsClient, mirroredJob.connectionId(), mirror, buildInfo, multibranchChild);
       LOG.debug(TeamCityNodeLog.currentNode(teamCityNodes) + " [Jenkins Bridge DEBUG] Synced Jenkins build " + mirror.getJenkinsBuildKey()
           + " now in state " + mirror.getSyncState()
           + " with TeamCity build id " + mirror.getTeamCityBuildId());
@@ -805,7 +824,7 @@ public class JenkinsBridgePollingService {
   }
 
   private void syncActiveMirror(JenkinsClient jenkinsClient, String connectionId, BuildMirror mirror,
-                                JobPollOutcome outcome) {
+                                JobPollOutcome outcome, boolean multibranchChild) {
     try {
       JenkinsBuildInfo buildInfo = jenkinsClient.getBuildInfo(mirror.getJenkinsJob(), mirror.getJenkinsBuildNumber());
       if (mirror.getJenkinsBuildTimestamp() > 0L
@@ -818,7 +837,7 @@ public class JenkinsBridgePollingService {
             + "; the build number appears to have been reused");
         return;
       }
-      syncBuild(jenkinsClient, connectionId, mirror, buildInfo);
+      syncBuild(jenkinsClient, connectionId, mirror, buildInfo, multibranchChild);
     } catch (BridgeHttpException | JenkinsDataException | IOException | TeamCityBuildQueueException e) {
       outcome.recordJenkinsFailure(e);
       recordBuildError(mirror, e);
@@ -871,37 +890,79 @@ public class JenkinsBridgePollingService {
                          JenkinsBuildInfo buildInfo)
       throws BridgeHttpException, JenkinsDataException, IOException, TeamCityBuildQueueException,
       TeamCityBuildFinishException, TeamCityRunningBuildNotFoundException {
+    syncBuild(jenkinsClient, connectionId, mirror, buildInfo, false);
+  }
+
+  private void syncBuild(JenkinsClient jenkinsClient, String connectionId, BuildMirror mirror,
+                         JenkinsBuildInfo buildInfo, boolean multibranchChild)
+      throws BridgeHttpException, JenkinsDataException, IOException, TeamCityBuildQueueException,
+      TeamCityBuildFinishException, TeamCityRunningBuildNotFoundException {
     // Decide once whether this build is a Jenkins Pipeline (mirror stages as build steps) or a
     // freestyle build (mirror the flat progressive console log). The decision is sticky per build.
     @Nullable Boolean persistedPipelineMode = mirror.getPipelineMode();
     @Nullable JenkinsStages stages = null;
+    @Nullable JenkinsPipelineGraph graph = null;
     boolean pipelineBuild;
     if (persistedPipelineMode == null) {
       stages = jenkinsClient.getStages(mirror.getJenkinsJob(), mirror.getJenkinsBuildNumber());
       pipelineBuild = stages.isPipeline();
+      String classificationEvidence = pipelineBuild
+          ? "WFAPI returned Pipeline stages" : "WFAPI did not identify a Pipeline";
+      if (!pipelineBuild) {
+        graph = jenkinsClient.getPipelineGraphView(
+            mirror.getJenkinsJob(), mirror.getJenkinsBuildNumber(), mirror.getJenkinsBuildKey());
+        pipelineBuild = graph != null && graph.isPipeline();
+        if (pipelineBuild) {
+          stages = JenkinsStages.emptyPipeline();
+          classificationEvidence += "; Pipeline Graph View identified a Pipeline";
+        } else {
+          classificationEvidence += "; Pipeline Graph View did not identify a Pipeline";
+        }
+      }
       mirror.setPipelineMode(pipelineBuild);
       // Persist the decision now so a freestyle poll with no new log does not re-probe wfapi forever.
       mirrorStore.saveMirror(mirror);
-      LOG.debug(TeamCityNodeLog.currentNode(teamCityNodes) + " [Jenkins Bridge DEBUG] " + mirror.getJenkinsBuildKey()
-          + " classified as " + (pipelineBuild ? "Pipeline" : "freestyle"));
+      LOG.info(TeamCityNodeLog.currentNode(teamCityNodes) + " Jenkins Bridge: " + mirror.getJenkinsBuildKey()
+          + " classified as " + (pipelineBuild ? "Pipeline" : "freestyle")
+          + " on first poll; evidence=" + classificationEvidence
+          + ", WFAPI stage count=" + stages.getStages().size()
+          + (graph == null ? "" : ", Pipeline Graph View nodes=" + graph.getNodes().size()
+              + ", complete=" + graph.isComplete()));
     } else {
       pipelineBuild = persistedPipelineMode;
+      LOG.debug(TeamCityNodeLog.currentNode(teamCityNodes) + " Jenkins Bridge: " + mirror.getJenkinsBuildKey()
+          + " reusing persisted pipeline classification=" + pipelineBuild);
     }
 
-    @Nullable JenkinsPipelineGraph graph = pipelineBuild ? loadPipelineGraph(jenkinsClient, mirror) : null;
+    if (pipelineBuild && graph == null) {
+      graph = loadPipelineGraph(jenkinsClient, mirror);
+    }
+    @Nullable JenkinsPipelineGraph nativeChainGraph = graph != null
+        && JenkinsPipelineGraph.SOURCE_BLUE_OCEAN.equals(graph.getSource())
+        && graph.getConfidence() == GraphConfidence.EXPLICIT ? graph : null;
+    if (graph != null && JenkinsPipelineGraph.SOURCE_PIPELINE_GRAPH_VIEW.equals(graph.getSource())
+        && !buildInfo.isBuilding()) {
+      nativeChainGraph = jenkinsClient.getNativeChainGraph(
+          mirror.getJenkinsJob(), mirror.getJenkinsBuildNumber(), mirror.getJenkinsBuildKey());
+    }
 
     ensureJenkinsBuildParametersLoaded(jenkinsClient, mirror);
 
-    // Completed Jenkins builds may already expose SCM data before the mirror is queued. Running
+    // Prepare tag topology before promotion creation. BuildData may not exist yet, but the
+    // multibranch child config already contains the concrete GitSCM URL and tag name. Running
     // builds are queued immediately from their child job identity; their VCS revisions are synced
     // later, before the TeamCity mirror is finalized.
     JenkinsVcsInfo queueVcsInfo = null;
-    if (shouldLoadQueueVcs(mirror, buildInfo)) {
-      queueVcsInfo = loadBuildVcs(jenkinsClient, mirror);
+    if (mirror.getTeamCityBuildId() == null) {
+      if (multibranchChild) {
+        queueVcsInfo = loadQueueVcs(jenkinsClient, mirror);
+      } else if (!buildInfo.isBuilding()) {
+        queueVcsInfo = loadBuildVcs(jenkinsClient, mirror);
+      }
     }
 
     long teamCityBuildId =
-        mirrorService.ensureTeamCityBuild(mirror, connectionId, buildInfo, graph, queueVcsInfo);
+        mirrorService.ensureTeamCityBuild(mirror, connectionId, buildInfo, nativeChainGraph, queueVcsInfo);
 
     mirrorService.ensureRunningDataSent(mirror, teamCityBuildId);
     mirrorService.ensureMetadataLogSent(mirror, teamCityBuildId);
@@ -914,7 +975,7 @@ public class JenkinsBridgePollingService {
         stages = jenkinsClient.getStages(mirror.getJenkinsJob(), mirror.getJenkinsBuildNumber());
       }
       if (graph != null) {
-        mirrorService.syncPipelineGraph(mirror, teamCityBuildId, graph);
+        mirrorService.syncPipelineGraph(mirror, teamCityBuildId, graph, nativeChainGraph);
       }
       LOG.debug(TeamCityNodeLog.currentNode(teamCityNodes) + " [Jenkins Bridge DEBUG] Syncing " + stages.getStages().size()
           + " Pipeline stage(s) for " + mirror.getJenkinsBuildKey());
@@ -947,7 +1008,7 @@ public class JenkinsBridgePollingService {
       }
     }
     mirrorService.finishBuildIfNeeded(mirror, teamCityBuildId, buildInfo);
-    mirrorService.ensureRetrospectivePipelineChain(mirror, teamCityBuildId, graph);
+    mirrorService.ensureRetrospectivePipelineChain(mirror, teamCityBuildId, nativeChainGraph);
   }
 
   /** Synchronizes the flat Jenkins progressive console for the mirrored build. */
@@ -973,8 +1034,42 @@ public class JenkinsBridgePollingService {
     }
   }
 
-  private boolean shouldLoadQueueVcs(BuildMirror mirror, JenkinsBuildInfo buildInfo) {
-    return mirror.getTeamCityBuildId() == null && !buildInfo.isBuilding();
+  @Nullable
+  private JenkinsVcsInfo loadQueueVcs(JenkinsClient jenkinsClient, BuildMirror mirror)
+      throws IOException, BridgeHttpException {
+    JenkinsVcsInfo buildVcs = loadBuildVcs(jenkinsClient, mirror);
+    if (buildVcs == null) {
+      buildVcs = JenkinsVcsInfo.empty();
+    }
+
+    Optional<JenkinsScmHeadInfo> scmInfo =
+        jenkinsClient.getBranchScmInfo(mirror.getJenkinsJob());
+    if (scmInfo.isEmpty() || scmInfo.get().refType() != VcsRefType.TAGS) {
+      return buildVcs;
+    }
+
+    JenkinsScmHeadInfo tag = scmInfo.get();
+    String sha = buildVcs.primaryRevision()
+        .filter(revision -> tag.headName().equals(revision.headName()))
+        .map(revision -> revision.hash())
+        .orElse("");
+    List<JenkinsVcsRepository> repositories = new ArrayList<>(buildVcs.repositories());
+    String normalizedTagUrl = Utilities.normalizeRepositoryUrl(tag.remoteUrl());
+    boolean primaryPresent = false;
+    for (JenkinsVcsRepository repository : repositories) {
+      if (Objects.equals(normalizedTagUrl, Utilities.normalizeRepositoryUrl(repository.remoteUrl()))) {
+        primaryPresent = true;
+        break;
+      }
+    }
+    if (!primaryPresent) {
+      repositories.add(new JenkinsVcsRepository(
+          "hudson.plugins.git.util.BuildData",
+          tag.remoteUrl(),
+          sha,
+          "refs/tags/" + tag.headName()));
+    }
+    return new JenkinsVcsInfo(repositories, buildVcs.primaryRevision());
   }
 
   @Nullable
@@ -987,14 +1082,24 @@ public class JenkinsBridgePollingService {
           + mirror.getJenkinsBuildKey());
       return null;
     }
-    LOG.debug(TeamCityNodeLog.currentNode(teamCityNodes) + " [Jenkins Bridge DEBUG] Pipeline graph for " + mirror.getJenkinsBuildKey()
+    LOG.info(TeamCityNodeLog.currentNode(teamCityNodes) + " Jenkins Bridge: Pipeline graph for "
+        + mirror.getJenkinsBuildKey()
         + " has source " + graph.getSource()
         + ", confidence " + graph.getConfidence()
-        + ", " + graph.getNodes().size() + " node(s), topologyHash=" + graph.getTopologyHash());
+        + ", " + graph.getNodes().size() + " node(s), diagnostics=" + graph.getDiagnostics()
+        + ", topologyHash=" + graph.getTopologyHash());
+    for (JenkinsPipelineGraphNode node : graph.getNodes()) {
+      LOG.debug(TeamCityNodeLog.currentNode(teamCityNodes) + " Jenkins Bridge: selected graph node for "
+          + mirror.getJenkinsBuildKey() + ": id=" + node.getId() + ", name='" + node.getName()
+          + "', status=" + node.getStatus() + ", hierarchyParent=" + node.getHierarchyParentId()
+          + ", parents=" + node.getParentIds() + ", children=" + node.getChildIds()
+          + ", synthetic=" + node.isSynthetic() + ", startTimeMillis=" + node.getStartTimeMillis()
+          + ", durationMillis=" + node.getDurationMillis());
+    }
     mirror.setPipelineGraph(graph);
     mirrorStore.saveMirror(mirror);
-    LOG.debug(TeamCityNodeLog.currentNode(teamCityNodes) + " [Jenkins Bridge DEBUG] Delaying native Pipeline chain creation for "
-        + mirror.getJenkinsBuildKey() + " until Jenkins finishes so the WFAPI graph is complete");
+    LOG.debug(TeamCityNodeLog.currentNode(teamCityNodes) + " [Jenkins Bridge DEBUG] Native Pipeline chain, when enabled, "
+        + "uses the completed run's explicit Blue Ocean edges for " + mirror.getJenkinsBuildKey());
     return graph;
   }
 

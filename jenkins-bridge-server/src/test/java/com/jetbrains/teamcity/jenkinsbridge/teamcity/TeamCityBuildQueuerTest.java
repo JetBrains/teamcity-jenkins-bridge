@@ -7,8 +7,10 @@ import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClient;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClientFactory;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsPullRequestInfo;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsVcsInfo;
+import com.jetbrains.teamcity.jenkinsbridge.vcs.VcsBuildCustomization;
 import jetbrains.buildServer.parameters.ParametersProvider;
 import jetbrains.buildServer.serverSide.*;
+import jetbrains.buildServer.serverSide.RepositoryVersion;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -134,6 +136,19 @@ public class TeamCityBuildQueuerTest {
         gitInfo("https://github.com/org/repo.git", "abc123", "refs/remotes/origin/dev"));
 
     verify(customizer).setDesiredBranchName("dev", false);
+  }
+
+  @Test
+  public void queueAgentlessBuildAppliesPreparedVcsRevisionBeforeCreatingPromotion() throws Exception {
+    Map<Long, RepositoryVersion> revisions = new LinkedHashMap<>();
+    revisions.put(17L, new RepositoryVersion("abc123", "abc123", "refs/tags/v1.0.0"));
+
+    queuer.queueAgentlessBuild(BUILD_TYPE_ID, properties(), Collections.emptyMap(), null,
+        new VcsBuildCustomization(new com.jetbrains.teamcity.jenkinsbridge.vcs.VcsSyncResult(),
+            revisions, "v1.0.0"));
+
+    verify(customizer).setProvidedUpperLimitRevisions(revisions);
+    verify(customizer).createPromotion();
   }
 
   @Test

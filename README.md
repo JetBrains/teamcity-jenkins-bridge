@@ -63,10 +63,12 @@ license slot, even though it does not consume a TeamCity build agent.
 - Jenkins must be reachable over HTTP(S). Create a Jenkins user API token and
   grant that user permission to read the job/build data and console output, and
   to start builds if TeamCity will trigger Jenkins.
-- Pipeline stage and graph mirroring requires the Jenkins Pipeline APIs used by
-  the bridge, including Blue Ocean for the graph. If those endpoints are not
-  available, the bridge falls back to the single-build console mirror where
-  possible.
+- For the live Pipeline stage hierarchy, install Jenkins **Pipeline Graph View**.
+  The bridge reads its stage, step, and log APIs, including Jenkins' synthetic
+  checkout and post-action stages when present. Blue Ocean remains a fallback
+  for the graph and supplies explicit edges for optional native TeamCity chains.
+  Without either graph API, the bridge uses the limited Pipeline REST API view
+  or the single-build console mirror where possible.
 
 ### 1. Configure the connection and project
 
@@ -102,6 +104,14 @@ Open the generated build configuration, choose **Run Custom Build**, review
 the synchronized parameters, and queue the build. The main TeamCity node
 triggers Jenkins, follows the resulting run, and binds it to the TeamCity
 promotion. Jenkins remains the execution source of truth.
+
+> [!IMPORTANT]
+> TeamCity-first triggering currently applies to directly runnable Jenkins jobs,
+> not Jenkins multibranch parents. For a multibranch Pipeline, use Jenkins to
+> scan/discover branches and tags and start the child job in Jenkins. The bridge
+> then mirrors that Jenkins run into TeamCity. TeamCity does not reproduce
+> Jenkins' **Scan Multibranch Pipeline Now** behavior or reliably map a TeamCity
+> run of the parent configuration to a particular Jenkins child job.
 
 ![Run Custom Build](docs/images/jenkins-bridge-run-custom-build.png)
 
@@ -146,6 +156,10 @@ Find the result in the generated TeamCity build configuration's build list:
 Questions, suggestions, and other feedback can be shared in the
 [TeamCity Slack channel](https://teamcity.com/Slack).
 
+## Supported Jenkins versions
+
+The plugin has been tested with Jenkins 2.555.2
+
 ## Limitations
 
 The following are technical details about the current implementation. They are
@@ -167,6 +181,18 @@ useful when diagnosing behavior but are not required for the normal user flow.
   triggering path and may not be picked up and bound by the poller. Use the
   build configuration's normal **Run Custom Build** action instead. Support
   for this rerun action is planned for a later fix.
+- TeamCity-first triggering of an imported Jenkins multibranch parent is not
+  currently supported. Jenkins SCM-source plugins own branch/tag discovery and
+  create the runnable child jobs. Scan and start the desired branch or tag in
+  Jenkins; Jenkins Bridge mirrors the resulting child build into the imported
+  TeamCity configuration. TeamCity does not currently offer an equivalent scan
+  or an unambiguous parent-to-child selection contract.
+- If TeamCity reports **“Jenkins Bridge called Jenkins, but did not receive a
+  confirmed trigger response”**, the POST crossed the external-request boundary
+  but the bridge could not prove whether Jenkins accepted it. The TeamCity
+  promotion is deliberately failed and is not automatically retried, because a
+  retry could create a duplicate Jenkins build. Check the Jenkins job and queue
+  for an accepted build before manually retrying from TeamCity.
 - Pipeline topology and stage data depend on the Jenkins APIs available to the
   connected server. Without usable Pipeline endpoints, the bridge degrades to
   the flat console mirror where possible.
@@ -303,10 +329,17 @@ be attached to the correct TeamCity promotion.
 
 - If the bridge cannot prepare or persist the provisional record, it does not
   call Jenkins. The TeamCity promotion is recorded as a bridge failure.
-- If Jenkins is called but the request fails, or Jenkins returns no usable queue
-  URL/ID, the TeamCity promotion is recorded as an uncertain trigger failure.
-  The user should check Jenkins before retrying because Jenkins may have
-  accepted the request.
+- If the Jenkins POST starts but the bridge receives an HTTP, transport, or
+  response-processing failure before it can confirm the result, the TeamCity
+  promotion is recorded as an uncertain trigger failure. The message
+  **“Jenkins Bridge called Jenkins, but did not receive a confirmed trigger
+  response”** means Jenkins may still have accepted and queued the build. Check
+  the Jenkins job and queue before retrying. If Jenkins did accept it, allow
+  normal Jenkins-first discovery to mirror that run; do not submit another
+  TeamCity run merely to recover the failed promotion.
+- If Jenkins accepts the request but omits a queue URL/ID, the bridge retains
+  the cause-correlated pending trigger for polling fallback rather than
+  immediately resubmitting it.
 - A failed or ambiguous trigger is not blindly submitted again by the bridge.
   This prevents one TeamCity promotion from creating duplicate Jenkins runs.
 - If queue resolution temporarily fails, the correlated pending record remains

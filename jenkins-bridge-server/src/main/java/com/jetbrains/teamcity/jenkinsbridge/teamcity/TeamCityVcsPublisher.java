@@ -6,6 +6,7 @@ import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsVcsInfo;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsVcsRepository;
 import com.jetbrains.teamcity.jenkinsbridge.persistence.BuildMirror;
 import com.jetbrains.teamcity.jenkinsbridge.vcs.VcsProvider;
+import com.jetbrains.teamcity.jenkinsbridge.vcs.VcsBuildCustomization;
 import com.jetbrains.teamcity.jenkinsbridge.vcs.VcsRefType;
 import com.jetbrains.teamcity.jenkinsbridge.vcs.VcsSyncResult;
 import jetbrains.buildServer.serverSide.BuildPromotion;
@@ -58,6 +59,34 @@ public class TeamCityVcsPublisher {
     public VcsSyncResult applyVcsToBuild(BuildMirror mirror, JenkinsVcsInfo vcsInfo)
             throws TeamCityVcsOperationalException {
         return applyVcsToBuildInternal(mirror, vcsInfo);
+    }
+
+    /**
+     * Creates or attaches the VCS roots and calculates the exact Jenkins revision before a
+     * TeamCity promotion is queued. TeamCity needs this information during revision calculation;
+     * applying it only after the build starts is too late for a first-time tag mirror.
+     */
+    public VcsBuildCustomization prepareVcs(BuildMirror mirror, JenkinsVcsInfo vcsInfo)
+            throws TeamCityVcsOperationalException {
+        VcsSyncResult result = new VcsSyncResult();
+        if (vcsInfo == null || vcsInfo.repositories().isEmpty()) {
+            return new VcsBuildCustomization(result, null, null);
+        }
+
+        SBuildType buildType = findBuildType(mirror.getTeamCityBuildTypeId(), myProjectManager);
+        if (buildType == null) {
+            result.addError("TeamCity build type " + mirror.getTeamCityBuildTypeId() + " was not found");
+            return new VcsBuildCustomization(result, null, null);
+        }
+        if (!hasSupportedRepository(vcsInfo)) {
+            return new VcsBuildCustomization(result, null, null);
+        }
+
+        VcsRefType refType = myJenkinsClientFactory.forBuildType(buildType)
+                .getBranchRefType(mirror.getJenkinsJob());
+        List<AttachedRepository> attached = ensureVcsRootsAttached(
+                buildType.getProject(), buildType, vcsInfo, result, refType);
+        return buildCustomization(buildType, attached, result);
     }
 
     private VcsSyncResult applyVcsToBuildInternal(BuildMirror mirror, JenkinsVcsInfo vcsInfo)
@@ -116,6 +145,31 @@ public class TeamCityVcsPublisher {
             }
         }
         return false;
+    }
+
+    private VcsBuildCustomization buildCustomization(
+            SBuildType buildType,
+            List<AttachedRepository> attached,
+            VcsSyncResult result
+    ) {
+        Map<Long, RepositoryVersion> revisions = new LinkedHashMap<>();
+        String desiredBranch = null;
+        for (AttachedRepository repo : attached) {
+            VcsRootInstanceEntry entry = buildType.getVcsRootInstanceEntryForParent(repo.root);
+            if (entry == null) {
+                result.addError("No VCS root instance resolved for " + repo.repository.remoteUrl());
+                continue;
+            }
+            String branchRef = repo.branch.isDefault() ? null : repo.branch.ref();
+            if (!repo.repository.sha1().isEmpty()) {
+                revisions.put(entry.getVcsRoot().getId(), new RepositoryVersion(
+                        repo.repository.sha1(), repo.repository.sha1(), branchRef));
+            }
+            if (desiredBranch == null && !repo.branch.isDefault()) {
+                desiredBranch = repo.branch.displayName();
+            }
+        }
+        return new VcsBuildCustomization(result, revisions, desiredBranch);
     }
 
     /**
