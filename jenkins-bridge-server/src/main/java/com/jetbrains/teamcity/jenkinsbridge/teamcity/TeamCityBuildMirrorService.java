@@ -131,6 +131,7 @@ public class TeamCityBuildMirrorService {
           mirror.setPipelineGraph(graph);
           mirror.setPipelineChain(chain);
           mirror.setTeamCityBuildId(chain.getTopPromotionId());
+          mirror.setVcsDataMissingAtQueue(!hasUsableVcsInfo(vcsInfo));
           mirror.setSyncState(SyncState.TEAMCITY_CREATED);
           mirror.setLastError(null);
           mirrorStore.saveMirror(mirror);
@@ -175,10 +176,15 @@ public class TeamCityBuildMirrorService {
         vcsInfo,
         vcsCustomization);
     mirror.setTeamCityBuildId(buildId);
+    mirror.setVcsDataMissingAtQueue(!hasUsableVcsInfo(vcsInfo));
     mirror.setSyncState(SyncState.TEAMCITY_CREATED);
     mirror.setLastError(null);
     mirrorStore.saveMirror(mirror);
     return buildId;
+  }
+
+  private static boolean hasUsableVcsInfo(JenkinsVcsInfo vcsInfo) {
+    return vcsInfo != null && !vcsInfo.repositories().isEmpty();
   }
 
   Map<String, String> bridgeBuildParameters(BuildMirror mirror, String connectionId, JenkinsBuildInfo jenkinsInfo) {
@@ -237,7 +243,14 @@ public class TeamCityBuildMirrorService {
     }
 
     String storageWarning = storageWarning(teamCityBuildId);
+    String vcsWarning = mirror.isVcsDataMissingAtQueue()
+        ? "WARNING: Jenkins SCM data was not available when TeamCity queued this mirror. "
+            + "TeamCity may have selected its default VCS revisions and may show a branch/revision warning. "
+            + "The bridge will apply Jenkins revisions before this mirror finishes if Jenkins exposes them; "
+            + "otherwise TeamCity's default revisions may not match Jenkins.\n\n"
+        : "";
     String text = (storageWarning == null ? "" : "[Jenkins Bridge] WARNING: " + storageWarning + "\n\n")
+        + vcsWarning
         + "Monitoring Jenkins job: " + mirror.getJenkinsJob() + "\n"
         + "Jenkins build number: " + mirror.getJenkinsBuildNumber() + "\n"
         + "Jenkins build key: " + mirror.getJenkinsBuildKey() + "\n"
@@ -498,6 +511,13 @@ public class TeamCityBuildMirrorService {
       return;
     }
 
+    if (mirror.isVcsDataMissingAtQueue()
+        && (vcsInfo == null || vcsInfo.repositories().isEmpty())) {
+      mirror.setVcsSynced(false);
+      mirrorStore.saveMirror(mirror);
+      return;
+    }
+
     VcsSyncResult result = new VcsSyncResult();
     if (vcsInfo != null && !vcsInfo.repositories().isEmpty()) {
       try {
@@ -553,6 +573,11 @@ public class TeamCityBuildMirrorService {
           + "Jenkins URL: " + nullToEmpty(jenkinsInfo.getUrl()) + "\n"
           + "Jenkins result: " + finalResult + "\n"
           + "Jenkins duration: " + jenkinsInfo.getDuration() + " ms\n";
+
+      if (mirror.isVcsDataMissingAtQueue() && !mirror.isVcsSynced()) {
+        summary += "\nWARNING: Jenkins SCM revisions were not applied before this TeamCity mirror finished. "
+            + "TeamCity may still show default VCS revisions that differ from Jenkins.\n";
+      }
 
       String synchronizationExceptions = synchronizationExceptions(mirror);
       if (!synchronizationExceptions.isEmpty()) {

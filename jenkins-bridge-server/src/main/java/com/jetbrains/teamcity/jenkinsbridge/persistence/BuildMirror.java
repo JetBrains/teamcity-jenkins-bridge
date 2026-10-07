@@ -46,6 +46,7 @@ public class BuildMirror {
   private boolean artifactsSynced;
   private String artifactSyncError;
   private boolean vcsSynced;
+  private boolean vcsDataMissingAtQueue;
   private List<String> vcsSyncErrors;
   private boolean jenkinsBuildParametersLoaded;
   private Map<String, String> jenkinsBuildParameters;
@@ -240,6 +241,14 @@ public class BuildMirror {
 
   public void setVcsSynced(boolean vcsSynced) {
     this.vcsSynced = vcsSynced;
+  }
+
+  public boolean isVcsDataMissingAtQueue() {
+    return vcsDataMissingAtQueue;
+  }
+
+  public void setVcsDataMissingAtQueue(boolean vcsDataMissingAtQueue) {
+    this.vcsDataMissingAtQueue = vcsDataMissingAtQueue;
   }
 
   public List<String> getVcsSyncErrors() {

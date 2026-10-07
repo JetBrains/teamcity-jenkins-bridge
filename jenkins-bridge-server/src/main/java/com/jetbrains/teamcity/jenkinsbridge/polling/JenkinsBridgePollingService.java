@@ -949,7 +949,9 @@ public class JenkinsBridgePollingService {
     ensureJenkinsBuildParametersLoaded(jenkinsClient, mirror);
 
     // Prepare tag topology before promotion creation. BuildData may not exist yet, but the
-    // multibranch child config already contains the concrete GitSCM URL and tag name.
+    // multibranch child config already contains the concrete GitSCM URL and tag name. Running
+    // builds are queued immediately from their child job identity; their VCS revisions are synced
+    // later, before the TeamCity mirror is finalized.
     JenkinsVcsInfo queueVcsInfo = null;
     if (mirror.getTeamCityBuildId() == null) {
       if (multibranchChild) {

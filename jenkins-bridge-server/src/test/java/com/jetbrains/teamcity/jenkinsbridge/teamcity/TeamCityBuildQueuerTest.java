@@ -8,9 +8,12 @@ import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClientFactory;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsPullRequestInfo;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsVcsInfo;
 import com.jetbrains.teamcity.jenkinsbridge.vcs.VcsBuildCustomization;
+import com.jetbrains.teamcity.jenkinsbridge.vcs.VcsProvider;
+import com.jetbrains.teamcity.jenkinsbridge.vcs.constants.GenericVcsConstants;
 import jetbrains.buildServer.parameters.ParametersProvider;
 import jetbrains.buildServer.serverSide.*;
 import jetbrains.buildServer.serverSide.RepositoryVersion;
+import jetbrains.buildServer.vcs.SVcsRoot;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -131,6 +134,10 @@ public class TeamCityBuildQueuerTest {
   public void queueAgentlessBuildPinsFirstDiscoveredBranchForNormalJobWithVcsInfo() throws Exception {
     when(buildType.getBuildFeaturesOfType(BridgeBuildFeatureConstants.TYPE))
         .thenReturn(Collections.emptyList());
+    SVcsRoot gitRoot = mock(SVcsRoot.class);
+    when(gitRoot.getVcsName()).thenReturn(VcsProvider.GIT.teamCityVcsName());
+    when(gitRoot.getProperty(GenericVcsConstants.BRANCH_SPEC_PROP)).thenReturn("+:refs/heads/*");
+    when(buildType.getVcsRoots()).thenReturn(Collections.singletonList(gitRoot));
 
     queuer.queueAgentlessBuild(BUILD_TYPE_ID, properties(), Collections.emptyMap(),
         gitInfo("https://github.com/org/repo.git", "abc123", "refs/remotes/origin/dev"));

@@ -7,6 +7,7 @@ import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsVcsInfo;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsVcsRepository;
 import com.jetbrains.teamcity.jenkinsbridge.util.Utilities;
 import com.jetbrains.teamcity.jenkinsbridge.vcs.VcsBuildCustomization;
+import com.jetbrains.teamcity.jenkinsbridge.vcs.VcsRefType;
 import jetbrains.buildServer.serverSide.*;
 import org.jetbrains.annotations.Nullable;
 
@@ -116,8 +117,10 @@ public class TeamCityBuildQueuer {
    * the immutable branch name correctly, and any pull/merge request parameters to publish alongside it.
    */
   private BranchResolution resolveBranch(SBuildType buildType, Map<String, String> properties,
-                                          @Nullable JenkinsVcsInfo vcsInfo) {
+                                          @Nullable JenkinsVcsInfo vcsInfo)
+      throws TeamCityBuildQueueException {
     String branchName = null;
+    VcsRefType refType = null;
     Map<String, String> pullRequestParameters = Collections.emptyMap();
     if (Utilities.isBuildConfigMultibranch(buildType)) {
       // Check the name of the nested branch job for the branch name
@@ -129,6 +132,7 @@ public class TeamCityBuildQueuer {
       if (job != null && !job.trim().isEmpty()) {
         job = job.trim();
         branchName = decodeBranchFragment(lastPathSegment(job));
+        refType = jenkinsClientFactory.forBuildType(buildType).getBranchRefType(job);
         if (Utilities.looksLikePullOrMergeRequestBranch(branchName)) {
           var pullRequestInfoResult = jenkinsClientFactory.forBuildType(buildType).getPullRequestInfo(job);
           if (pullRequestInfoResult.isPresent()) {
@@ -143,8 +147,12 @@ public class TeamCityBuildQueuer {
         TeamCityBranch branch = TeamCityBranch.fromJenkinsGit(repo.rawBranchName());
         if (!branch.isDefault()) {
           branchName = branch.displayName();
+          refType = branch.ref().startsWith("refs/tags/") ? VcsRefType.TAGS : VcsRefType.HEADS;
         }
       }
+    }
+    if (branchName != null && refType != null) {
+      branchName = TeamCityBranchResolver.resolve(buildType, branchName, refType);
     }
     return new BranchResolution(branchName, pullRequestParameters);
   }
