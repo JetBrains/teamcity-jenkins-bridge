@@ -28,6 +28,8 @@ import java.util.regex.Pattern;
 
 import static com.jetbrains.teamcity.jenkinsbridge.util.Utilities.nullToEmpty;
 import static com.jetbrains.teamcity.jenkinsbridge.util.Utilities.stringValue;
+import static com.jetbrains.teamcity.jenkinsbridge.util.Utilities.decodeBranchFragment;
+import static com.jetbrains.teamcity.jenkinsbridge.util.Utilities.lastPathSegment;
 
 /**
  * Talks to one Jenkins server, the one described by the {@link JenkinsConnection} it was created
@@ -504,6 +506,44 @@ public class JenkinsClient {
       result.put(fullName, builds);
     }
     return result;
+  }
+
+  /**
+   * Resolves a user-visible branch name to the live Jenkins child-job path of a multibranch parent.
+   * Jenkins can encode slashes in branch-job names, so matching uses the complete child path after
+   * the parent and decodes URL-escaped fragments before comparing. Returns {@code null} when no
+   * child matches; ambiguous matches are rejected as invalid Jenkins data.
+   */
+  @Nullable
+  public String findMultibranchChildJob(@NotNull String pipelinePath, @NotNull String branchName)
+      throws BridgeHttpException, JenkinsDataException {
+    String requestedBranch = branchName.trim();
+    if (requestedBranch.isEmpty()) {
+      return null;
+    }
+    String parent = pipelinePath.trim();
+    String childPrefix = parent + "/";
+    List<JenkinsJob> children = listJobs(parent);
+    String match = null;
+    for (JenkinsJob child : children) {
+      String fullName = child.getFullName();
+      if (!child.isImportable() || !child.isBuildable()
+          || fullName == null || !fullName.startsWith(childPrefix)) {
+        continue;
+      }
+      String childBranch = decodeBranchFragment(fullName.substring(childPrefix.length()));
+      if (!requestedBranch.equals(fullName)
+          && !requestedBranch.equals(childBranch)
+          && !requestedBranch.equals(decodeBranchFragment(lastPathSegment(fullName)))) {
+        continue;
+      }
+      if (match != null && !match.equals(fullName)) {
+        throw new JenkinsDataException("More than one Jenkins branch job matches branch '"
+            + requestedBranch + "' under multibranch pipeline '" + parent + "'");
+      }
+      match = fullName;
+    }
+    return match;
   }
 
   /**

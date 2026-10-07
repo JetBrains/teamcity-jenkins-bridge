@@ -76,6 +76,9 @@
   <bean id="bridgeBuildFeatureController"
         class="com.jetbrains.teamcity.jenkinsbridge.feature.BridgeBuildFeatureController"/>
 
+  <bean id="jenkinsParameterDefinitionService"
+        class="com.jetbrains.teamcity.jenkinsbridge.feature.JenkinsParameterDefinitionService"/>
+
   <bean id="jenkinsParameterSynchronizer"
         class="com.jetbrains.teamcity.jenkinsbridge.feature.JenkinsParameterSynchronizer"/>
 
@@ -111,6 +114,12 @@
 
   <bean id="jenkinsPipelineGraphController"
         class="com.jetbrains.teamcity.jenkinsbridge.web.JenkinsPipelineGraphController"/>
+
+  <bean id="jenkinsMultibranchChildrenController"
+        class="com.jetbrains.teamcity.jenkinsbridge.web.JenkinsMultibranchChildrenController"/>
+
+  <bean id="jenkinsMultibranchRunDialogExtension"
+        class="com.jetbrains.teamcity.jenkinsbridge.web.JenkinsMultibranchRunDialogExtension"/>
 
   <bean id="jenkinsPipelineGraphTab"
         class="com.jetbrains.teamcity.jenkinsbridge.web.JenkinsPipelineGraphTab"/>

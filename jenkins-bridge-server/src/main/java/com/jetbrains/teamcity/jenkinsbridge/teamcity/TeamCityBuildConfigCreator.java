@@ -72,6 +72,12 @@ public class TeamCityBuildConfigCreator {
     buildType.addConfigParameter(parameterFactory.createTypedParameter(
         BridgeBuildFeatureConstants.INTERNAL_MULTIBRANCH_PARAM,
         String.valueOf(multibranch), HIDDEN_SPEC));
+    if (multibranch) {
+      buildType.addParameter(parameterFactory.createTypedParameter(
+          BridgeBuildFeatureConstants.MULTIBRANCH_BRANCH_PARAM,
+          "",
+          "text display='prompt' label='Jenkins branch'"));
+    }
     buildType.addConfigParameter(parameterFactory.createTypedParameter(READ_ONLY_PARAM, "true", HIDDEN_SPEC));
     buildType.setOption(BuildTypeOptions.BT_FAIL_IF_TESTS_FAIL, false);
     return buildType;

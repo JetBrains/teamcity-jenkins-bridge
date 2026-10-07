@@ -115,7 +115,7 @@ public class BuildMirrorStore {
     for (PendingTrigger pending : state.getPendingTriggers().values()) {
       if (cause.equals(pending.getTriggerCause())
           && nullToEmpty(controller).equals(nullToEmpty(pending.getJenkinsController()))
-          && nullToEmpty(job).equals(nullToEmpty(pending.getJenkinsJob()))) return pending;
+          && nullToEmpty(job).equals(nullToEmpty(pending.getTargetJenkinsJob()))) return pending;
     }
     return null;
   }
@@ -360,6 +360,20 @@ public class BuildMirrorStore {
     ensureStateIsLoaded();
     state.setLastPollTime(now());
     state.setLastError(error.getMessage());
+  }
+
+  @Nullable
+  public synchronized JenkinsJobParameterMetadata getJenkinsJobParameterMetadata(@NotNull String key)
+      throws IOException {
+    ensureStateIsLoaded();
+    return state.getJenkinsJobParameterMetadata(key);
+  }
+
+  public synchronized void saveJenkinsJobParameterMetadata(@NotNull String key,
+                                                          @NotNull JenkinsJobParameterMetadata metadata)
+      throws IOException {
+    ensureStateIsLoaded();
+    state.putJenkinsJobParameterMetadata(key, metadata);
   }
 
   @NotNull

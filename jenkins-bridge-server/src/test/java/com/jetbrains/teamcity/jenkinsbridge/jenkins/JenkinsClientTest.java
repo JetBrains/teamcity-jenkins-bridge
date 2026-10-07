@@ -67,6 +67,21 @@ public class JenkinsClientTest {
   }
 
   @Test
+  public void resolvesCanonicalBuildableMultibranchChildPath() throws Exception {
+    StubResponseHttpClient httpClient = new StubResponseHttpClient();
+    httpClient.body = "{\"jobs\":["
+        + "{\"name\":\"feature%2Flogin\",\"fullName\":\"team/pipeline/feature%2Flogin\","
+        + "\"displayName\":\"feature/login\",\"_class\":\"org.jenkinsci.plugins.workflow.job.WorkflowJob\",\"buildable\":true},"
+        + "{\"name\":\"disabled\",\"fullName\":\"team/pipeline/disabled\","
+        + "\"_class\":\"org.jenkinsci.plugins.workflow.job.WorkflowJob\",\"buildable\":false}]}";
+    JenkinsClient client = new JenkinsClient(testConnection(), httpClient, newJaxbUnmarshaller());
+
+    assertEquals("team/pipeline/feature%2Flogin",
+        client.findMultibranchChildJob("team/pipeline", "team/pipeline/feature%2Flogin"));
+    assertNull(client.findMultibranchChildJob("team/pipeline", "disabled"));
+  }
+
+  @Test
   public void getBuildInfoAllowsMissingResultForRunningBuild() throws Exception {
     StubResponseHttpClient httpClient = new StubResponseHttpClient();
     httpClient.body = "{\"number\":7,\"building\":true,\"result\":null}";

@@ -38,6 +38,9 @@ public final class BridgeBuildFeatureConstants {
   /** Internal build configuration parameter holding the detected Jenkins job type. */
   public static final String INTERNAL_MULTIBRANCH_PARAM = "teamcity.internal.jenkinsBridge.multibranch";
 
+  /** Run Custom Build input used to select a runnable child of an imported multibranch parent. */
+  public static final String MULTIBRANCH_BRANCH_PARAM = "jenkins.branch";
+
   /**
    * TC build parameter stamped onto Jenkins-first mirror builds (the Jenkins build key,
    * e.g. {@code "myjob#42@1710000000042"}). Absent on TC-first promotions, which are created by the

@@ -7,7 +7,10 @@ package com.jetbrains.teamcity.jenkinsbridge.persistence;
  */
 public class PendingTrigger {
   private long teamCityPromotionId;
+  /** Jenkins job path on the mapped TeamCity build feature (the multibranch parent when selected). */
   private String jenkinsJob;
+  /** Runnable Jenkins job path actually triggered; older records use {@link #jenkinsJob}. */
+  private String targetJenkinsJob;
   private String teamCityBuildTypeExternalId;
   private String queueItemUrl;
   private long jenkinsQueueId = -1L;
@@ -46,8 +49,17 @@ public class PendingTrigger {
   public PendingTrigger(long teamCityPromotionId, String jenkinsJob, String teamCityBuildTypeExternalId,
                         String queueItemUrl, long jenkinsQueueId, String jenkinsController,
                         String createdAt, String triggerCause, String originatingNode) {
+    this(teamCityPromotionId, jenkinsJob, teamCityBuildTypeExternalId, queueItemUrl, jenkinsQueueId,
+        jenkinsController, createdAt, triggerCause, originatingNode, jenkinsJob);
+  }
+
+  public PendingTrigger(long teamCityPromotionId, String jenkinsJob, String teamCityBuildTypeExternalId,
+                        String queueItemUrl, long jenkinsQueueId, String jenkinsController,
+                        String createdAt, String triggerCause, String originatingNode,
+                        String targetJenkinsJob) {
     this.teamCityPromotionId = teamCityPromotionId;
     this.jenkinsJob = jenkinsJob;
+    this.targetJenkinsJob = targetJenkinsJob;
     this.teamCityBuildTypeExternalId = teamCityBuildTypeExternalId;
     this.queueItemUrl = queueItemUrl;
     this.jenkinsQueueId = jenkinsQueueId;
@@ -63,6 +75,12 @@ public class PendingTrigger {
 
   public String getJenkinsJob() {
     return jenkinsJob;
+  }
+
+  /** Jenkins child job used for queue/build resolution; falls back for persisted legacy records. */
+  public String getTargetJenkinsJob() {
+    return targetJenkinsJob == null || targetJenkinsJob.trim().isEmpty()
+        ? jenkinsJob : targetJenkinsJob;
   }
 
   public String getTeamCityBuildTypeExternalId() {

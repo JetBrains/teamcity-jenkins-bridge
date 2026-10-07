@@ -211,7 +211,7 @@ public class JenkinsTriggerOnRunListenerTest {
   }
 
   @Test
-  public void multibranchParentFailsWithActionableReasonWithoutCallingJenkins() throws Exception {
+  public void multibranchRunWithoutSelectionFailsBeforeCreatingJenkinsClient() throws Exception {
     Fixture fixture = new Fixture();
     when(fixture.buildType.getParameterValue(
         BridgeBuildFeatureConstants.INTERNAL_MULTIBRANCH_PARAM)).thenReturn("true");
@@ -219,9 +219,7 @@ public class JenkinsTriggerOnRunListenerTest {
     fixture.listener().buildTypeAddedToQueue(fixture.queued);
 
     verify(fixture.failureService).failQueuedPromotion(eq(42L), contains(
-        "cannot start Jenkins multibranch parent jobs from TeamCity"));
-    verify(fixture.failureService).failQueuedPromotion(eq(42L), contains(
-        "Scan and start the desired branch or tag in Jenkins"));
+        "needs a Jenkins branch name to start a multibranch pipeline"));
     verify(fixture.clientFactory, never()).forBuildType(any());
     verify(fixture.store, never()).savePendingTrigger(any());
     verify(fixture.storageActivator, never()).configurePromotionStorage(any(), anyString());
@@ -292,8 +290,9 @@ public class JenkinsTriggerOnRunListenerTest {
 
       new JenkinsTriggerOnRunListener(
           dispatcher, clientFactory, store, failureService, teamCityNodes,
-          new JenkinsParameterSynchronizer(clientFactory, parameterFactory, store),
-          storageActivator);
+          new JenkinsParameterSynchronizer(clientFactory, parameterFactory, store,
+              new JenkinsParameterDefinitionService(store)),
+          storageActivator, new JenkinsParameterDefinitionService(store));
     }
 
     BuildServerListener listener() {

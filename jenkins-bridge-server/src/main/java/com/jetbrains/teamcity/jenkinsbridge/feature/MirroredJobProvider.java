@@ -2,6 +2,7 @@ package com.jetbrains.teamcity.jenkinsbridge.feature;
 
 import com.jetbrains.teamcity.jenkinsbridge.settings.MirroredJob;
 import com.jetbrains.teamcity.jenkinsbridge.util.Utilities;
+import org.jetbrains.annotations.NotNull;
 import jetbrains.buildServer.serverSide.ProjectManager;
 import jetbrains.buildServer.serverSide.SBuildFeatureDescriptor;
 import jetbrains.buildServer.serverSide.SBuildType;
@@ -33,7 +34,10 @@ public class MirroredJobProvider {
     return jobs;
   }
 
-  private MirroredJob toMirroredJob(SBuildType buildType, SBuildFeatureDescriptor descriptor) {
+  /** Shared interpretation of a persisted bridge feature for polling and triggering. */
+  @NotNull
+  public static MirroredJob toMirroredJob(@NotNull SBuildType buildType,
+                                        @NotNull SBuildFeatureDescriptor descriptor) {
     Map<String, String> params = descriptor.getParameters();
     String connectionId = params.get(BridgeBuildFeatureConstants.PARAM_CONNECTION_ID);
     String job = params.get(BridgeBuildFeatureConstants.PARAM_JENKINS_JOB);

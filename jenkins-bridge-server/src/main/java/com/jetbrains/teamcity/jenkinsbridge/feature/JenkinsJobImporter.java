@@ -186,7 +186,9 @@ public class JenkinsJobImporter {
     SBuildType buildType = buildConfigCreator.createMirrorBuildType(
         project, externalId, fullName, connectionId, jenkinsClient.jobUrl(fullName),
         jenkinsType, isMultibranch);
-    parameterSynchronizer.synchronize(jenkinsClient, buildType, fullName);
+    if (!isMultibranch) {
+      parameterSynchronizer.synchronize(jenkinsClient, buildType, fullName);
+    }
     buildType.schedulePersisting("Jenkins Bridge: persist imported Jenkins job build configuration").awaitUninterruptibly();
 
     return externalId;

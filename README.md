@@ -220,7 +220,9 @@ The import page reports created, skipped, and lock-contention failures separatel
 ## Triggering Jenkins builds
 
 An imported TeamCity build configuration is a TeamCity representation of one
-Jenkins job. The TeamCity promotion is used as the user-facing build record,
+Jenkins job. For multibranch pipelines, Run Custom Build loads the current runnable
+Jenkins branches and tags into a dropdown; the selected child is resolved again before
+Jenkins is triggered. The TeamCity promotion is used as the user-facing build record,
 but Jenkins remains the execution source of truth. When the Jenkins run is
 created, the bridge binds it to the original TeamCity promotion and mirrors the
 Jenkins data into that build.
@@ -281,6 +283,12 @@ parameters.
    `jenkins.bridge.parameterRefreshPollCycles` poll cycles (100 by default).
    This reduces the likelihood of stale parameters without replacing the
    trigger-time comparison and failed-to-start safeguard.
+
+   Multibranch child definitions are cached separately for each configured mapping,
+   Jenkins controller, and child job. Cached children refresh at the same cadence;
+   they do not replace the parent configuration's parameters. Refresh failures
+   retain the last successful schema. This cache is preparation for child selection;
+   the multibranch Run Custom Build form is not available yet.
 
    Jenkins may briefly return the previous parameter definitions after a job configuration change, so the trigger-time safeguard remains necessary.
 

@@ -5,6 +5,7 @@ import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClient;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClientFactory;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsDataException;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsJobParameters;
+import com.jetbrains.teamcity.jenkinsbridge.util.Utilities;
 import com.jetbrains.teamcity.jenkinsbridge.persistence.BuildMirrorStore;
 import jetbrains.buildServer.serverSide.SBuildFeatureDescriptor;
 import jetbrains.buildServer.serverSide.SBuildType;
@@ -15,21 +16,25 @@ import org.jetbrains.annotations.Nullable;
 import java.io.IOException;
 
 /**
- * Owns the complete Jenkins-parameter synchronization flow for a mirrored build configuration.
+ * Reconciles regular-job definitions into TeamCity configuration parameters. Multibranch child
+ * schemas are managed separately by {@link JenkinsParameterDefinitionService}.
  * Callers decide when to persist the TeamCity build configuration or whether a definition change
- * should prevent a trigger; this service owns fetching, reconciliation, and bridge-state updates.
+ * should prevent a trigger. Fetching and schema persistence are delegated to the definition service.
  */
 public final class JenkinsParameterSynchronizer {
   private final JenkinsClientFactory jenkinsClientFactory;
   private final ParameterFactory parameterFactory;
   private final BuildMirrorStore mirrorStore;
+  private final JenkinsParameterDefinitionService definitionService;
 
   public JenkinsParameterSynchronizer(@NotNull JenkinsClientFactory jenkinsClientFactory,
                                       @NotNull ParameterFactory parameterFactory,
-                                      @NotNull BuildMirrorStore mirrorStore) {
+                                      @NotNull BuildMirrorStore mirrorStore,
+                                      @NotNull JenkinsParameterDefinitionService definitionService) {
     this.jenkinsClientFactory = jenkinsClientFactory;
     this.parameterFactory = parameterFactory;
     this.mirrorStore = mirrorStore;
+    this.definitionService = definitionService;
   }
 
   @NotNull
@@ -51,17 +56,21 @@ public final class JenkinsParameterSynchronizer {
                                            @NotNull SBuildType buildType,
                                            @NotNull String job)
       throws BridgeHttpException, JenkinsDataException {
-    JenkinsJobParameters definitions = client.getJobParameters(job);
     try {
-      String previousSnapshot = mirrorStore.getImportedJenkinsParameterSnapshot(
-          buildType.getExternalId());
+      if (Utilities.isBuildConfigMultibranch(buildType)) {
+        throw new IllegalArgumentException("Multibranch schemas must be refreshed through the child definition service");
+      }
+      String previousSnapshot = mirrorStore.getImportedJenkinsParameterSnapshot(buildType.getExternalId());
+      JenkinsParameterDefinitionService.RefreshResult refreshed =
+          definitionService.refresh(client, buildType.getExternalId(), job);
+      JenkinsJobParameters definitions = refreshed.metadata().getDefinitions();
       JenkinsTeamCityRunParameterFactory.SynchronizationResult teamCityResult =
           JenkinsTeamCityRunParameterFactory.synchronize(
               parameterFactory,
               buildType,
               definitions,
               mirrorStore.getImportedJenkinsParameterNames(buildType.getExternalId()));
-      String currentSnapshot = JenkinsTeamCityRunParameterFactory.snapshot(definitions);
+      String currentSnapshot = refreshed.metadata().getSnapshot();
 
       mirrorStore.saveImportedJenkinsParameterNames(
           buildType.getExternalId(), teamCityResult.getImportedNames());
