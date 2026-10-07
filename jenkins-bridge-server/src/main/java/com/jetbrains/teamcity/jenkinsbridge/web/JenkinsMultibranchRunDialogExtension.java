@@ -8,7 +8,7 @@ import org.jetbrains.annotations.NotNull;
 
 import javax.servlet.http.HttpServletRequest;
 
-/** Loads the isolated branch-selector adapter only on TeamCity's Run Custom Build page. */
+/** Loads the adapter globally; it activates only when TeamCity renders Run Custom Build. */
 public final class JenkinsMultibranchRunDialogExtension extends SimplePageExtension {
   public JenkinsMultibranchRunDialogExtension(@NotNull PagePlaces pagePlaces,
                                               @NotNull PluginDescriptor pluginDescriptor) {
@@ -21,6 +21,8 @@ public final class JenkinsMultibranchRunDialogExtension extends SimplePageExtens
 
   @Override
   public boolean isAvailable(@NotNull HttpServletRequest request) {
-    return super.isAvailable(request) && request.getRequestURI().endsWith("/runCustomBuild.html");
+    // Run Custom Build is rendered as a dialog inside other pages, so the page request URI
+    // usually does not identify it. The client adapter already no-ops unless that dialog exists.
+    return super.isAvailable(request);
   }
 }
