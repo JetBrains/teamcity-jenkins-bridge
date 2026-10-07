@@ -10,10 +10,13 @@
   }
 
   function branchField(dialog) {
-    var fields = dialog.querySelectorAll("#runBuild input[name]");
-    for (var i = 0; i < fields.length; i++) {
-      if (fields[i].name === parameterName) {
-        return fields[i];
+    var parameterNames = dialog.querySelectorAll(
+      "#properties-tab input[name='customParameterNames']"
+    );
+    for (var i = 0; i < parameterNames.length; i++) {
+      if (parameterNames[i].value === parameterName) {
+        var row = parameterNames[i].closest("tr");
+        return row ? row.querySelector(".paramValue input, .paramValue textarea") : null;
       }
     }
     return null;
@@ -21,7 +24,7 @@
 
   function selectorFor(field) {
     var select = document.createElement("select");
-    select.name = parameterName;
+    select.name = field.name;
     select.id = field.id;
     select.className = field.className;
     select.setAttribute("aria-label", "Jenkins branch or tag");
