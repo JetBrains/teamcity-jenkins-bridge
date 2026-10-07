@@ -16,10 +16,44 @@ import java.util.regex.Pattern;
  * Resolves whether a Jenkins Git ref should be passed as TeamCity's explicit desired branch.
  * TeamCity validates that desired branch against the revisions selected from its VCS roots.
  */
-final class TeamCityBranchResolver {
+public final class TeamCityBranchResolver {
   private static final Logger LOG = Logger.getInstance(TeamCityBranchResolver.class.getName());
 
   private TeamCityBranchResolver() {
+  }
+
+  /**
+   * Resolves the TeamCity branch for a selected Jenkins multibranch child when an attached Git
+   * root monitors the matching head or tag. TeamCity-first promotions cannot query Jenkins in
+   * the queue preprocessor, so infer the ref kind from the configured branch specifications.
+   * Ambiguous ref names are safe to display as the same TeamCity branch name.
+   */
+  @Nullable
+  public static String resolveMultibranchSelection(SBuildType buildType, String branchName) {
+    if (branchName == null || branchName.trim().isEmpty()) {
+      return null;
+    }
+
+    BranchMapping heads = classify(buildType, branchName, VcsRefType.HEADS);
+    BranchMapping tags = classify(buildType, branchName, VcsRefType.TAGS);
+    if (heads == BranchMapping.MONITORED || tags == BranchMapping.MONITORED
+        || heads == BranchMapping.ROOTS_UNAVAILABLE || tags == BranchMapping.ROOTS_UNAVAILABLE) {
+      return branchName;
+    }
+    if (heads == BranchMapping.CONFIGURED_DEFAULT || tags == BranchMapping.CONFIGURED_DEFAULT) {
+      LOG.info("Jenkins Bridge: using TeamCity's default branch for selected Jenkins branch "
+          + branchName);
+      return null;
+    }
+    if (heads == BranchMapping.NO_GIT_ROOT) {
+      LOG.info("Jenkins Bridge: leaving TeamCity branch unset for selected Jenkins branch "
+          + branchName + " because the build type has no attached Git VCS root");
+      return null;
+    }
+
+    LOG.info("Jenkins Bridge: leaving TeamCity's default branch for selected Jenkins branch "
+        + branchName + " because no attached Git root monitors it");
+    return null;
   }
 
   /**
