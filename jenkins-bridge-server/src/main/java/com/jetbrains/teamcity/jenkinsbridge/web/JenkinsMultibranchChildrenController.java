@@ -28,6 +28,8 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+import static com.jetbrains.teamcity.jenkinsbridge.util.Utilities.decodeBranchFragment;
+
 /** Supplies indexed, runnable Jenkins children for the multibranch Run Custom Build selector. */
 public final class JenkinsMultibranchChildrenController extends BaseController {
   static final String PATH = "/jenkinsBridgeMultibranchChildren.html";
@@ -87,7 +89,9 @@ public final class JenkinsMultibranchChildrenController extends BaseController {
           || !job.getFullName().startsWith(childPrefix)) {
         continue;
       }
-      children.add(new ChildOption(job.getDisplayName(), job.getFullName()));
+      // Jenkins may expose the encoded item name as displayName for branch jobs. Decode only
+      // the label; the option value must remain the canonical full job path used for triggering.
+      children.add(new ChildOption(decodeBranchFragment(job.getDisplayName()), job.getFullName()));
     }
     return children;
   }
