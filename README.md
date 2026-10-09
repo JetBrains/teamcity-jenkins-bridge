@@ -288,7 +288,9 @@ parameters.
    Jenkins controller, and child job. Cached children refresh at the same cadence;
    they do not replace the parent configuration's parameters. Refresh failures
    retain the last successful schema. Run Custom Build loads currently runnable
-   children from Jenkins and submits the selected child's canonical job path.
+   children from Jenkins and submits the selected child's canonical job path. Selecting a child
+   loads that child's supported parameters into the dialog; changing branches replaces those
+   branch-specific fields.
 
    Jenkins may briefly return the previous parameter definitions after a job configuration change, so the trigger-time safeguard remains necessary.
 
