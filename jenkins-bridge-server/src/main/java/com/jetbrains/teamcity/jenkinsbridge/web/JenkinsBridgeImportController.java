@@ -103,12 +103,9 @@ public class JenkinsBridgeImportController extends BaseController {
           : e.getMessage());
     } catch (BridgeHttpException e) {
       if ("list".equals(action) && e.getStatusCode() == 404) {
-        String folderPath = request.getParameter("folderPath");
-        String message = folderPath == null || folderPath.trim().isEmpty()
-            ? "Jenkins root folder path was not found (HTTP 404)."
-            : "Jenkins folder path '" + folderPath + "' was not found (HTTP 404).";
         response.setStatus(HttpServletResponse.SC_OK);
-        return writeJson(response, Collections.singletonMap("message", message));
+        return writeJson(response, Collections.singletonMap(
+            "message", folderPathNotFoundMessage(request.getParameter("folderPath"))));
       }
       return upstreamFailure(response, e);
     } catch (JenkinsDataException e) {
@@ -119,6 +116,13 @@ public class JenkinsBridgeImportController extends BaseController {
   private ModelAndView upstreamFailure(HttpServletResponse response, Exception e) throws IOException {
     return error(response, 502, e.getClass().getSimpleName()
         + (e.getMessage() == null ? "" : ": " + e.getMessage()));
+  }
+
+  private static String folderPathNotFoundMessage(String folderPath) {
+    if (folderPath == null || folderPath.trim().isEmpty()) {
+      return "Jenkins root folder path was not found (HTTP 404).";
+    }
+    return "Jenkins folder path '" + folderPath + "' was not found (HTTP 404).";
   }
 
   private ModelAndView handleList(HttpServletRequest request, HttpServletResponse response, SProject project,
