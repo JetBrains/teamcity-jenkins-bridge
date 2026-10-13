@@ -362,20 +362,6 @@ public class BuildMirrorStore {
     state.setLastError(error.getMessage());
   }
 
-  @Nullable
-  public synchronized JenkinsJobParameterMetadata getJenkinsJobParameterMetadata(@NotNull String key)
-      throws IOException {
-    ensureStateIsLoaded();
-    return state.getJenkinsJobParameterMetadata(key);
-  }
-
-  public synchronized void saveJenkinsJobParameterMetadata(@NotNull String key,
-                                                          @NotNull JenkinsJobParameterMetadata metadata)
-      throws IOException {
-    ensureStateIsLoaded();
-    state.putJenkinsJobParameterMetadata(key, metadata);
-  }
-
   @NotNull
   public synchronized Set<String> getImportedJenkinsParameterNames(@NotNull String buildTypeExternalId)
       throws IOException {

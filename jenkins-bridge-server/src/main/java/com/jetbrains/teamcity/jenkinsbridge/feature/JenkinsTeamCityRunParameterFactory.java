@@ -55,18 +55,6 @@ public final class JenkinsTeamCityRunParameterFactory {
     return parameterFactory.createTypedParameter(name, value, spec);
   }
 
-  /** Returns a stable JSON representation of the Jenkins definitions used to render TeamCity. */
-  @NotNull
-  public static String snapshot(@NotNull JenkinsJobParameters definitions) {
-    return definitions.snapshot();
-  }
-
-  /** Returns an exact, readable representation suitable for trigger diagnostics. */
-  @NotNull
-  public static String describe(@NotNull JenkinsJobParameters definitions) {
-    return snapshot(definitions);
-  }
-
   /** Returns a diagnostic for submitted values that are invalid for current Jenkins choices. */
   @NotNull
   public static String invalidChoiceValues(@NotNull JenkinsJobParameters definitions,

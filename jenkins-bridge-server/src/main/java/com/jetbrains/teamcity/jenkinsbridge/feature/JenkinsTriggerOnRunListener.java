@@ -309,7 +309,7 @@ public class JenkinsTriggerOnRunListener {
     return "Jenkins Bridge did not start the build because Jenkins parameter definitions changed. "
         + "The TeamCity parameters were refreshed; run the build again.\n"
         + "Before: " + (previousSnapshot == null ? "<not recorded>" : previousSnapshot) + "\n"
-        + "After: " + JenkinsTeamCityRunParameterFactory.describe(currentDefinitions);
+        + "After: " + currentDefinitions.snapshot();
   }
 
   private void cleanupBeforeJenkinsRequestIfNeeded(

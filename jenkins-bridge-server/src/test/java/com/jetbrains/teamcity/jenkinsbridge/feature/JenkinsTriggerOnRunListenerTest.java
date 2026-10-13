@@ -70,7 +70,7 @@ public class JenkinsTriggerOnRunListenerTest {
             + "\"defaultParameterValue\":{\"value\":\"2026.08\"}}]}]}").getAsJsonObject());
     when(fixture.client.getJobParameters("job")).thenReturn(definitions);
     when(fixture.store.getImportedJenkinsParameterSnapshot("buildType"))
-        .thenReturn(JenkinsTeamCityRunParameterFactory.snapshot(definitions));
+        .thenReturn(definitions.snapshot());
     when(fixture.client.triggerBuildWithQueueId(any(), any(), anyString()))
         .thenReturn(new JenkinsTriggerResponse("/queue/item/1/", 1L));
 
@@ -290,8 +290,7 @@ public class JenkinsTriggerOnRunListenerTest {
 
       new JenkinsTriggerOnRunListener(
           dispatcher, clientFactory, store, failureService, teamCityNodes,
-          new JenkinsParameterSynchronizer(clientFactory, parameterFactory, store,
-              new JenkinsParameterDefinitionService(store)),
+          new JenkinsParameterSynchronizer(clientFactory, parameterFactory, store),
           storageActivator);
     }
 

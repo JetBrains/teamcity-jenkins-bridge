@@ -5,8 +5,8 @@ import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClient;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClientFactory;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsDataException;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsJobParameters;
-import com.jetbrains.teamcity.jenkinsbridge.util.Utilities;
 import com.jetbrains.teamcity.jenkinsbridge.persistence.BuildMirrorStore;
+import com.jetbrains.teamcity.jenkinsbridge.util.Utilities;
 import jetbrains.buildServer.serverSide.SBuildFeatureDescriptor;
 import jetbrains.buildServer.serverSide.SBuildType;
 import jetbrains.buildServer.serverSide.parameters.ParameterFactory;
@@ -20,22 +20,19 @@ import java.io.IOException;
  * parameters are not synchronized because TeamCity-first multibranch triggering does not support
  * user-supplied Jenkins parameter values.
  * Callers decide when to persist the TeamCity build configuration or whether a definition change
- * should prevent a trigger. Fetching and schema persistence are delegated to the definition service.
+ * should prevent a trigger.
  */
 public final class JenkinsParameterSynchronizer {
   private final JenkinsClientFactory jenkinsClientFactory;
   private final ParameterFactory parameterFactory;
   private final BuildMirrorStore mirrorStore;
-  private final JenkinsParameterDefinitionService definitionService;
 
   public JenkinsParameterSynchronizer(@NotNull JenkinsClientFactory jenkinsClientFactory,
                                       @NotNull ParameterFactory parameterFactory,
-                                      @NotNull BuildMirrorStore mirrorStore,
-                                      @NotNull JenkinsParameterDefinitionService definitionService) {
+                                      @NotNull BuildMirrorStore mirrorStore) {
     this.jenkinsClientFactory = jenkinsClientFactory;
     this.parameterFactory = parameterFactory;
     this.mirrorStore = mirrorStore;
-    this.definitionService = definitionService;
   }
 
   @NotNull
@@ -53,25 +50,24 @@ public final class JenkinsParameterSynchronizer {
   }
 
   @NotNull
-  public SynchronizationResult synchronize(@NotNull JenkinsClient client,
+  public SynchronizationResult synchronize(@NotNull JenkinsClient jenkinsClient,
                                            @NotNull SBuildType buildType,
                                            @NotNull String job)
       throws BridgeHttpException, JenkinsDataException {
     try {
       if (Utilities.isBuildConfigMultibranch(buildType)) {
-        throw new IllegalArgumentException("Multibranch Jenkins parameters are not synchronized");
+        throw new IllegalArgumentException(
+            "Jenkins parameter synchronization is not supported for multibranch pipelines");
       }
       String previousSnapshot = mirrorStore.getImportedJenkinsParameterSnapshot(buildType.getExternalId());
-      JenkinsParameterDefinitionService.RefreshResult refreshed =
-          definitionService.refresh(client, buildType.getExternalId(), job);
-      JenkinsJobParameters definitions = refreshed.metadata().getDefinitions();
+      JenkinsJobParameters definitions = jenkinsClient.getJobParameters(job);
       JenkinsTeamCityRunParameterFactory.SynchronizationResult teamCityResult =
           JenkinsTeamCityRunParameterFactory.synchronize(
               parameterFactory,
               buildType,
               definitions,
               mirrorStore.getImportedJenkinsParameterNames(buildType.getExternalId()));
-      String currentSnapshot = refreshed.metadata().getSnapshot();
+      String currentSnapshot = definitions.snapshot();
 
       mirrorStore.saveImportedJenkinsParameterNames(
           buildType.getExternalId(), teamCityResult.getImportedNames());

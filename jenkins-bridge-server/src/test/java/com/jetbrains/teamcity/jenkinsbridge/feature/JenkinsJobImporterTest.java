@@ -44,8 +44,7 @@ public class JenkinsJobImporterTest {
   private final MultiNodeLocks.Lock importLock = mock(MultiNodeLocks.Lock.class);
   private final BuildMirrorStore mirrorStore = mock(BuildMirrorStore.class);
   private final JenkinsParameterSynchronizer parameterSynchronizer =
-      new JenkinsParameterSynchronizer(jenkinsClientFactory, parameterFactory, mirrorStore,
-          new JenkinsParameterDefinitionService(mirrorStore));
+      new JenkinsParameterSynchronizer(jenkinsClientFactory, parameterFactory, mirrorStore);
 
   private final JenkinsJobImporter importer =
       new JenkinsJobImporter(projectManager, parameterFactory, jenkinsClientFactory, null, mirrorStore,

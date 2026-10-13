@@ -25,7 +25,6 @@ public class BridgeState {
   private static final String LAST_PRUNED_KEY_PREFIX = "last-pruned-";
   private static final String LAST_POLL_TIME_KEY = "last-poll-time";
   private static final String LAST_ERROR_KEY = "last-error";
-  private static final String JOB_PARAMETER_METADATA_KEY_PREFIX = "job-parameter-metadata-";
   private static final String JENKINS_PARAMETER_KEY_PREFIX = "jenkins-parameter-names-";
   private static final String JENKINS_PARAMETER_SNAPSHOT_KEY_PREFIX = "jenkins-parameter-snapshot-";
 
@@ -223,27 +222,6 @@ public class BridgeState {
   public void putImportedJenkinsParameterSnapshot(@NotNull String buildTypeExternalId,
                                                   @NotNull String snapshot) {
     myStorage.putValue(jenkinsParameterSnapshotKey(buildTypeExternalId), snapshot);
-  }
-
-  @Nullable
-  public JenkinsJobParameterMetadata getJenkinsJobParameterMetadata(@NotNull String key)
-      throws BridgeStateCorruptionException {
-    String storageKey = JOB_PARAMETER_METADATA_KEY_PREFIX + key;
-    String serialized = myStorage.getValue(storageKey);
-    if (serialized == null) {
-      return null;
-    }
-    JenkinsJobParameterMetadata metadata = parseEntry(storageKey, serialized, JenkinsJobParameterMetadata.class);
-    if (metadata == null || metadata.getDefinitions() == null || metadata.getSnapshot() == null
-        || metadata.getDefinitions().getParameters() == null
-        || !metadata.getSnapshot().equals(metadata.getDefinitions().snapshot())) {
-      throw new BridgeStateCorruptionException("Persisted Jenkins parameter metadata " + storageKey + " is invalid");
-    }
-    return metadata;
-  }
-
-  public void putJenkinsJobParameterMetadata(@NotNull String key, @NotNull JenkinsJobParameterMetadata metadata) {
-    myStorage.putValue(JOB_PARAMETER_METADATA_KEY_PREFIX + key, OUR_GSON.toJson(metadata));
   }
 
   private static String jenkinsParameterKey(String buildTypeExternalId) {

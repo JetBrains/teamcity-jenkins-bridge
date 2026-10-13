@@ -76,9 +76,6 @@
   <bean id="bridgeBuildFeatureController"
         class="com.jetbrains.teamcity.jenkinsbridge.feature.BridgeBuildFeatureController"/>
 
-  <bean id="jenkinsParameterDefinitionService"
-        class="com.jetbrains.teamcity.jenkinsbridge.feature.JenkinsParameterDefinitionService"/>
-
   <bean id="jenkinsParameterSynchronizer"
         class="com.jetbrains.teamcity.jenkinsbridge.feature.JenkinsParameterSynchronizer"/>
 
