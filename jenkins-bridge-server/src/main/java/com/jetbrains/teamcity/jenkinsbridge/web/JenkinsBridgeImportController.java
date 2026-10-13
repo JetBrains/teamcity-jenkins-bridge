@@ -102,6 +102,15 @@ public class JenkinsBridgeImportController extends BaseController {
           ? "Project settings are read-only; Jenkins jobs cannot be enabled"
           : e.getMessage());
     } catch (BridgeHttpException | JenkinsDataException e) {
+      if ("list".equals(action) && e instanceof BridgeHttpException httpException
+          && httpException.getStatusCode() == 404) {
+        String folderPath = request.getParameter("folderPath");
+        String message = folderPath == null || folderPath.trim().isEmpty()
+            ? "Jenkins root folder path was not found (HTTP 404)."
+            : "Jenkins folder path '" + folderPath + "' was not found (HTTP 404).";
+        response.setStatus(HttpServletResponse.SC_OK);
+        return writeJson(response, Collections.singletonMap("message", message));
+      }
       return error(response, 502, e.getClass().getSimpleName()
           + (e.getMessage() == null ? "" : ": " + e.getMessage()));
     }

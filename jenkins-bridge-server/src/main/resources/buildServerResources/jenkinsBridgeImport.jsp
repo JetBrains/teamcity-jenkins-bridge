@@ -368,6 +368,7 @@
           var data = parse(transport);
           if (!data) { setStatus('HTTP ' + transport.status + ' @ ' + url + ' - ' + (transport.responseText || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').substring(0, 200)); return; }
           if (data.error) { setStatus('Error: ' + data.error); return; }
+          if (data.message) { setStatus(data.message); return; }
           if (replace) {
             listedJobs = data.jobs || [];
             configuredJobs = data.configuredJobs || [];
