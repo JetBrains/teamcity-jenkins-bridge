@@ -17,7 +17,8 @@ import java.io.IOException;
 
 /**
  * Reconciles regular-job definitions into TeamCity configuration parameters. Multibranch child
- * schemas are managed separately by {@link JenkinsParameterDefinitionService}.
+ * parameters are not synchronized because TeamCity-first multibranch triggering does not support
+ * user-supplied Jenkins parameter values.
  * Callers decide when to persist the TeamCity build configuration or whether a definition change
  * should prevent a trigger. Fetching and schema persistence are delegated to the definition service.
  */
@@ -58,7 +59,7 @@ public final class JenkinsParameterSynchronizer {
       throws BridgeHttpException, JenkinsDataException {
     try {
       if (Utilities.isBuildConfigMultibranch(buildType)) {
-        throw new IllegalArgumentException("Multibranch schemas must be refreshed through the child definition service");
+        throw new IllegalArgumentException("Multibranch Jenkins parameters are not synchronized");
       }
       String previousSnapshot = mirrorStore.getImportedJenkinsParameterSnapshot(buildType.getExternalId());
       JenkinsParameterDefinitionService.RefreshResult refreshed =

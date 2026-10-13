@@ -2,7 +2,6 @@ package com.jetbrains.teamcity.jenkinsbridge.polling;
 
 import com.jetbrains.teamcity.jenkinsbridge.feature.MirroredJobProvider;
 import com.jetbrains.teamcity.jenkinsbridge.feature.JenkinsParameterSynchronizer;
-import com.jetbrains.teamcity.jenkinsbridge.feature.JenkinsParameterDefinitionService;
 import com.jetbrains.teamcity.jenkinsbridge.http.BridgeHttpException;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClient;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClientFactory;
@@ -85,7 +84,6 @@ public class JenkinsBridgePollingService {
   private final TeamCityNodes teamCityNodes;
   private final JenkinsBridgeSystemProblemReporter systemProblemReporter;
   private final JenkinsParameterSynchronizer parameterSynchronizer;
-  private final JenkinsParameterDefinitionService definitionService;
   private final Object systemProblemLifecycleLock = new Object();
   private final AtomicBoolean started = new AtomicBoolean(false);
   private long pollCycle;
@@ -103,8 +101,7 @@ public class JenkinsBridgePollingService {
       TeamCityQueuedBuildFailureService failureService,
       TeamCityNodes teamCityNodes,
       JenkinsBridgeSystemProblemReporter systemProblemReporter,
-      JenkinsParameterSynchronizer parameterSynchronizer,
-      JenkinsParameterDefinitionService definitionService
+      JenkinsParameterSynchronizer parameterSynchronizer
   ) {
     this.settingsProvider = settingsProvider;
     this.jenkinsClientFactory = jenkinsClientFactory;
@@ -118,7 +115,6 @@ public class JenkinsBridgePollingService {
     this.teamCityNodes = teamCityNodes;
     this.systemProblemReporter = systemProblemReporter;
     this.parameterSynchronizer = parameterSynchronizer;
-    this.definitionService = definitionService;
   }
 
   public void start() {
@@ -222,7 +218,7 @@ public class JenkinsBridgePollingService {
         if (refreshParametersRequired && !mirroredJob.isMultibranch()) {
           refreshParameters(mirroredJob);
         }
-        successfullyPolledMappings.addAll(pollPipeline(mirroredJob, refreshParametersRequired));
+        successfullyPolledMappings.addAll(pollPipeline(mirroredJob));
       } catch (BridgeHttpException e) {
         reportAuthoritativePollingFailure(mirroredJob, e);
         LOG.warn("Jenkins Bridge: failed to poll " + mirroredJob.describeForLog(), e);
@@ -306,19 +302,6 @@ public class JenkinsBridgePollingService {
     } catch (RuntimeException e) {
       LOG.error("Jenkins Bridge failed to refresh Jenkins parameters for "
           + mirroredJob.describeForLog(), e);
-    }
-  }
-
-  private void refreshChildParameters(JenkinsClient client, MirroredChildJob child) {
-    if (definitionService == null) {
-      return;
-    }
-    try {
-      if (definitionService.getCachedChild(client, child).isPresent()) {
-        definitionService.refreshChild(client, child);
-      }
-    } catch (BridgeHttpException | JenkinsDataException | IOException | RuntimeException e) {
-      LOG.warn("Jenkins Bridge could not refresh child parameters for " + child.describeForLog(), e);
     }
   }
 
@@ -500,7 +483,7 @@ public class JenkinsBridgePollingService {
   /**
    * Calls {@code pollJob} once for regular pipelines, and once for each branch in the case of a multibranch pipeline.
    */
-  private Set<String> pollPipeline(MirroredJob mirroredJob, boolean refreshParametersRequired)
+  private Set<String> pollPipeline(MirroredJob mirroredJob)
       throws BridgeHttpException, JenkinsDataException, IOException {
     if (!mirroredJob.hasMinimumConfiguration()) {
       LOG.warn(mirroredJob.describeMinimumConfigurationProblem());
@@ -516,9 +499,6 @@ public class JenkinsBridgePollingService {
       Set<String> mappings = new HashSet<String>();
       for (var entry : branchBuilds.entrySet()) {
         MirroredChildJob child = new MirroredChildJob(mirroredJob, entry.getKey());
-        if (refreshParametersRequired) {
-          refreshChildParameters(jenkinsClient, child);
-        }
         outcome.merge(pollJob(jenkinsClient, child, entry.getValue()));
         mappings.add(child.getMirrorKeyPrefix());
       }

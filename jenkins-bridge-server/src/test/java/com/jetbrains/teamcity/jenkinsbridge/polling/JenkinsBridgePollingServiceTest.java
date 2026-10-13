@@ -3,13 +3,10 @@ package com.jetbrains.teamcity.jenkinsbridge.polling;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.jetbrains.teamcity.jenkinsbridge.feature.MirroredJobProvider;
-import com.jetbrains.teamcity.jenkinsbridge.feature.JenkinsParameterDefinitionService;
 import com.jetbrains.teamcity.jenkinsbridge.http.BridgeHttpException;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClient;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClientFactory;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsBuildInfo;
-import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsJobParameters;
-import com.jetbrains.teamcity.jenkinsbridge.feature.JenkinsParameterDefinitionServiceTest;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsBuildParameters;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsArtifacts;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsLogChunk;
@@ -68,7 +65,7 @@ public class JenkinsBridgePollingServiceTest {
     org.mockito.Mockito.when(node.isMainNode()).thenReturn(false);
 
     JenkinsBridgePollingService service = new JenkinsBridgePollingService(
-        null, null, null, null, null, null, null, null, null, nodes, null, null, null);
+        null, null, null, null, null, null, null, null, null, nodes, null, null);
 
     assertFalse(service.mayPollOnCurrentNode());
   }
@@ -255,50 +252,6 @@ public class JenkinsBridgePollingServiceTest {
     assertEquals(false, refreshDue.invoke(service, 3));
     assertEquals(true, refreshDue.invoke(service, 3));
     assertEquals(false, refreshDue.invoke(service, 3));
-  }
-
-  @Test
-  public void childDefinitionsRefreshOnlyWhenCachedAndDue() throws Exception {
-    ProjectManager manager = buildMockProjectManager();
-    BuildMirrorStore store = new BuildMirrorStore(manager);
-    MultibranchJenkinsClient client = new MultibranchJenkinsClient();
-    client.childBuilds.put("job/main", List.of());
-    client.childBuilds.put("job/other", List.of());
-    MirroredJob parent = new MirroredJob("conn1", "job", "buildType", "Build", 1, true);
-    MirroredChildJob main = new MirroredChildJob(parent, "job/main");
-    JenkinsParameterDefinitionService definitions = new JenkinsParameterDefinitionService(store);
-    definitions.refreshChild(client, main);
-    client.parameterRequests.clear();
-    client.jobParameters = JenkinsParameterDefinitionServiceTest.definitions("UPDATED");
-    JenkinsBridgePollingService service = newPipelineService(manager, client, new CapturingMirrorService(), store, null);
-
-    pollPipeline(service, parent);
-    assertTrue(client.parameterRequests.isEmpty());
-    pollPipeline(service, parent, true);
-    assertEquals(List.of("job/main"), client.parameterRequests);
-    assertEquals(client.jobParameters.snapshot(), definitions.getCachedChild(client, main).orElseThrow().getSnapshot());
-    assertTrue(definitions.getCachedChild(client, new MirroredChildJob(parent, "job/other")).isEmpty());
-    org.mockito.Mockito.verify(manager.findBuildTypeByExternalId("buildType"), org.mockito.Mockito.never())
-        .schedulePersisting(org.mockito.ArgumentMatchers.anyString());
-  }
-
-  @Test
-  public void childParameterFailurePreservesCacheAndBuildPollingContinues() throws Exception {
-    ProjectManager manager = buildMockProjectManager();
-    BuildMirrorStore store = new BuildMirrorStore(manager);
-    MultibranchJenkinsClient client = new MultibranchJenkinsClient();
-    client.addChildBuild("job/main", buildInfo(1, 1710000000001L));
-    MirroredJob parent = new MirroredJob("conn1", "job", "buildType", "Build", 1, true);
-    MirroredChildJob child = new MirroredChildJob(parent, "job/main");
-    JenkinsParameterDefinitionService definitions = new JenkinsParameterDefinitionService(store);
-    definitions.refreshChild(client, child);
-    client.parameterFailure = new BridgeHttpException("GET", "job/main", 503, "unavailable");
-    JenkinsBridgePollingService service = newPipelineService(manager, client, new CapturingMirrorService(), store, null);
-
-    pollPipeline(service, parent, true);
-
-    assertNotNull(store.findMirror("buildType::job/main#1@1710000000001"));
-    assertEquals("[]", definitions.getCachedChild(client, child).orElseThrow().getSnapshot());
   }
 
   @Test
@@ -737,8 +690,7 @@ public class JenkinsBridgePollingServiceTest {
         null,
         null,
         reporter,
-        null,
-        new JenkinsParameterDefinitionService(store));
+        null);
   }
 
   private static void activate(JenkinsBridgePollingService service) throws Exception {
@@ -763,21 +715,15 @@ public class JenkinsBridgePollingServiceTest {
         .thenReturn(client);
     return new JenkinsBridgePollingService(
         provider(), factory, projectManager, null, mirrorService, store,
-        new MirroredJobProvider(projectManager), null, null, null, reporter, null, new JenkinsParameterDefinitionService(store));
+        new MirroredJobProvider(projectManager), null, null, null, reporter, null);
   }
 
   @SuppressWarnings("unchecked")
   private static Set<String> pollPipeline(JenkinsBridgePollingService service, MirroredJob mapping)
       throws Exception {
-    return pollPipeline(service, mapping, false);
-  }
-
-  @SuppressWarnings("unchecked")
-  private static Set<String> pollPipeline(JenkinsBridgePollingService service, MirroredJob mapping, boolean refresh)
-      throws Exception {
-    Method pollPipeline = JenkinsBridgePollingService.class.getDeclaredMethod("pollPipeline", MirroredJob.class, boolean.class);
+    Method pollPipeline = JenkinsBridgePollingService.class.getDeclaredMethod("pollPipeline", MirroredJob.class);
     pollPipeline.setAccessible(true);
-    return (Set<String>) pollPipeline.invoke(service, mapping, refresh);
+    return (Set<String>) pollPipeline.invoke(service, mapping);
   }
 
   /** Drives one job node through the poller after its mapping's connection is resolved. */
@@ -923,22 +869,6 @@ public class JenkinsBridgePollingServiceTest {
     final Map<String, BridgeHttpException> failedJobs = new LinkedHashMap<>();
     final List<String> detailRequests = new ArrayList<>();
     String listedParent;
-    final List<String> parameterRequests = new ArrayList<>();
-    JenkinsJobParameters jobParameters =
-        JenkinsJobParameters.empty();
-    BridgeHttpException parameterFailure;
-
-    @Override
-    public JenkinsJobParameters getJobParameters(String job)
-        throws BridgeHttpException {
-      parameterRequests.add(job);
-      if (parameterFailure != null) {
-        throw parameterFailure;
-      }
-      return jobParameters;
-    }
-
-
     void addChildBuild(String job, JenkinsBuildInfo build) {
       childBuilds.computeIfAbsent(job, ignored -> new ArrayList<>()).add(build);
     }

@@ -9,7 +9,6 @@ import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsDataException;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsJobParameters;
 import com.jetbrains.teamcity.jenkinsbridge.persistence.BuildMirrorStore;
 import com.jetbrains.teamcity.jenkinsbridge.persistence.PendingTrigger;
-import com.jetbrains.teamcity.jenkinsbridge.settings.MirroredChildJob;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsTriggerResponse;
 import com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityBuildParameters;
 import com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityQueuedBuildFailureService;
@@ -46,7 +45,6 @@ public class JenkinsTriggerOnRunListener {
   private final TeamCityQueuedBuildFailureService failureService;
   private final TeamCityNodes teamCityNodes;
   private final JenkinsParameterSynchronizer parameterSynchronizer;
-  private final JenkinsParameterDefinitionService definitionService;
   private final JenkinsStorageAutomaticActivator storageActivator;
   private final BuildServerListener listener = new BuildServerAdapter() {
     @Override
@@ -70,8 +68,7 @@ public class JenkinsTriggerOnRunListener {
       @NotNull TeamCityQueuedBuildFailureService failureService,
       @NotNull TeamCityNodes teamCityNodes,
       @NotNull JenkinsParameterSynchronizer parameterSynchronizer,
-      @NotNull JenkinsStorageAutomaticActivator storageActivator,
-      @NotNull JenkinsParameterDefinitionService definitionService
+      @NotNull JenkinsStorageAutomaticActivator storageActivator
   ) {
     this.eventDispatcher = eventDispatcher;
     this.jenkinsClientFactory = jenkinsClientFactory;
@@ -79,7 +76,6 @@ public class JenkinsTriggerOnRunListener {
     this.failureService = failureService;
     this.teamCityNodes = teamCityNodes;
     this.parameterSynchronizer = parameterSynchronizer;
-    this.definitionService = definitionService;
     this.storageActivator = storageActivator;
     this.eventDispatcher.addListener(listener);
   }
@@ -222,31 +218,25 @@ public class JenkinsTriggerOnRunListener {
         + " [Jenkins Bridge DEBUG] Saved provisional Jenkins trigger for TeamCity promotion "
         + promotion.getId());
 
-    JenkinsJobParameters parameterDefinitions;
-    String previousSnapshot;
+    JenkinsJobParameters parameterDefinitions = JenkinsJobParameters.empty();
+    String previousSnapshot = null;
     boolean teamCityChanged = false;
-    try {
-      if (multibranch) {
-        MirroredChildJob child = new MirroredChildJob(
-            MirroredJobProvider.toMirroredJob(buildType, descriptor), targetJob);
-        JenkinsParameterDefinitionService.RefreshResult refreshed = definitionService.refreshChild(jenkinsClient, child);
-        parameterDefinitions = refreshed.metadata().getDefinitions();
-        previousSnapshot = refreshed.previousSnapshot();
-      } else {
+    if (!multibranch) {
+      try {
         JenkinsParameterSynchronizer.SynchronizationResult synchronizedParameters =
             parameterSynchronizer.synchronize(jenkinsClient, buildType, targetJob);
         parameterDefinitions = synchronizedParameters.getDefinitions();
         previousSnapshot = synchronizedParameters.getPreviousSnapshot();
         teamCityChanged = synchronizedParameters.isTeamCityChanged();
+      } catch (BridgeHttpException | JenkinsDataException e) {
+        failTeamCityFirstAttempt(
+            queued,
+            promotion.getId(),
+            "Jenkins Bridge did not call Jenkins because Jenkins parameters could not be loaded. "
+                + "See this failed TeamCity build for details.",
+            e);
+        return;
       }
-    } catch (BridgeHttpException | JenkinsDataException e) {
-      failTeamCityFirstAttempt(
-          queued,
-          promotion.getId(),
-          "Jenkins Bridge did not call Jenkins because Jenkins parameters could not be loaded. "
-              + "See this failed TeamCity build for details.",
-          e);
-      return;
     }
     // Jenkins REST was read above, but the Jenkins build-trigger POST has not started yet.
     if (teamCityChanged) {
@@ -255,8 +245,8 @@ public class JenkinsTriggerOnRunListener {
           .awaitUninterruptibly();
     }
 
-    // Reject a definition change against the previous snapshot. Multibranch form-version
-    // validation will replace this draft cache comparison when the selection UI is implemented.
+    // Reject a definition change against the previous snapshot for regular jobs. Multibranch
+    // children use Jenkins defaults; parameter entry is not supported for that flow.
     if (previousSnapshot != null && !previousSnapshot.equals(parameterDefinitions.snapshot())) {
       failTeamCityFirstAttempt(
           queued,

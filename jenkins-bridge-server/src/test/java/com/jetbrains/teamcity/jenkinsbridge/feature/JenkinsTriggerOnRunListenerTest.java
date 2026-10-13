@@ -292,7 +292,7 @@ public class JenkinsTriggerOnRunListenerTest {
           dispatcher, clientFactory, store, failureService, teamCityNodes,
           new JenkinsParameterSynchronizer(clientFactory, parameterFactory, store,
               new JenkinsParameterDefinitionService(store)),
-          storageActivator, new JenkinsParameterDefinitionService(store));
+          storageActivator);
     }
 
     BuildServerListener listener() {

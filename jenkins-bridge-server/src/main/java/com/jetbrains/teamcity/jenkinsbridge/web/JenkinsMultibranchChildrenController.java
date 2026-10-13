@@ -2,14 +2,11 @@ package com.jetbrains.teamcity.jenkinsbridge.web;
 
 import com.google.gson.Gson;
 import com.jetbrains.teamcity.jenkinsbridge.feature.BridgeBuildFeatureConstants;
-import com.jetbrains.teamcity.jenkinsbridge.feature.JenkinsTeamCityRunParameterFactory;
 import com.jetbrains.teamcity.jenkinsbridge.http.BridgeHttpException;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClient;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClientFactory;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsDataException;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsJob;
-import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsJobParameters;
-import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsParameterDefinition;
 import com.jetbrains.teamcity.jenkinsbridge.util.ProjectPermissionHelper;
 import com.jetbrains.teamcity.jenkinsbridge.util.Utilities;
 import jetbrains.buildServer.controllers.BaseController;
@@ -70,10 +67,6 @@ public final class JenkinsMultibranchChildrenController extends BaseController {
 
     try {
       JenkinsClient client = jenkinsClientFactory.forBuildType(buildType);
-      String childJob = request.getParameter("childJob");
-      if (childJob != null && !childJob.trim().isEmpty()) {
-        return writeChildParameters(response, client, parentPath, childJob.trim());
-      }
       return writeJson(response, runnableChildren(client, parentPath));
     } catch (BridgeHttpException | JenkinsDataException e) {
       return error(response, 502, "Could not load Jenkins branches: " + safeMessage(e));
@@ -94,30 +87,6 @@ public final class JenkinsMultibranchChildrenController extends BaseController {
       children.add(new ChildOption(decodeBranchFragment(job.getDisplayName()), job.getFullName()));
     }
     return children;
-  }
-
-  private ModelAndView writeChildParameters(HttpServletResponse response, JenkinsClient client,
-                                            String parentPath, String childJob)
-      throws BridgeHttpException, JenkinsDataException, IOException {
-    boolean runnableChild = false;
-    for (ChildOption child : runnableChildren(client, parentPath)) {
-      if (childJob.equals(child.fullName)) {
-        runnableChild = true;
-        break;
-      }
-    }
-    if (!runnableChild) {
-      return error(response, 404, "The selected Jenkins branch is no longer runnable");
-    }
-
-    JenkinsJobParameters definitions = client.getJobParameters(childJob);
-    List<ParameterOption> parameters = new ArrayList<>();
-    for (JenkinsParameterDefinition definition : definitions.getParameters()) {
-      if (JenkinsTeamCityRunParameterFactory.canImport(definition)) {
-        parameters.add(new ParameterOption(definition));
-      }
-    }
-    return writeJson(response, parameters);
   }
 
   private ModelAndView writeJson(HttpServletResponse response, Object payload) throws IOException {
@@ -147,17 +116,4 @@ public final class JenkinsMultibranchChildrenController extends BaseController {
     }
   }
 
-  static final class ParameterOption {
-    final String name;
-    final String type;
-    final String defaultValue;
-    final List<String> choices;
-
-    ParameterOption(JenkinsParameterDefinition definition) {
-      this.name = definition.getName();
-      this.type = definition.getType();
-      this.defaultValue = definition.getDefaultValue();
-      this.choices = definition.getChoices();
-    }
-  }
 }
