@@ -1,6 +1,7 @@
 package com.jetbrains.teamcity.jenkinsbridge.web;
 
 import com.google.gson.Gson;
+import com.intellij.openapi.diagnostic.Logger;
 import com.jetbrains.teamcity.jenkinsbridge.feature.BridgeBuildFeatureConstants;
 import com.jetbrains.teamcity.jenkinsbridge.http.BridgeHttpException;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClient;
@@ -31,6 +32,8 @@ import static com.jetbrains.teamcity.jenkinsbridge.util.Utilities.decodeBranchFr
 /** Supplies indexed, runnable Jenkins children for the multibranch Run Custom Build selector. */
 public final class JenkinsMultibranchChildrenController extends BaseController {
   static final String PATH = "/jenkinsBridgeMultibranchChildren.html";
+  private static final Logger LOG =
+      Logger.getInstance(JenkinsMultibranchChildrenController.class.getName());
   private static final Gson GSON = new Gson();
 
   private final ProjectManager projectManager;
@@ -66,11 +69,28 @@ public final class JenkinsMultibranchChildrenController extends BaseController {
       return error(response, 400, "The Jenkins multibranch mapping is incomplete");
     }
 
+    JenkinsClient client;
     try {
-      JenkinsClient client = jenkinsClientFactory.forBuildType(buildType);
+      client = jenkinsClientFactory.forBuildType(buildType);
+    } catch (IllegalStateException e) {
+      LOG.warn(
+          "Jenkins Bridge could not resolve the Jenkins connection for TeamCity build configuration "
+              + buildType.getExternalId(),
+          e);
+      return error(response, 502,
+          "The Jenkins connection for this build configuration is unavailable. "
+              + "Check its Jenkins Bridge settings.");
+    }
+
+    try {
       return writeJson(response, runnableChildren(client, parentPath));
     } catch (BridgeHttpException | JenkinsDataException e) {
-      return error(response, 502, "Could not load Jenkins branches: " + safeMessage(e));
+      LOG.warn(
+          "Jenkins Bridge could not load Jenkins branches for TeamCity build configuration "
+              + buildType.getExternalId(),
+          e);
+      return error(response, 502,
+          "Could not load Jenkins branches. See the TeamCity server log for details.");
     }
   }
 
@@ -100,11 +120,6 @@ public final class JenkinsMultibranchChildrenController extends BaseController {
   private ModelAndView error(HttpServletResponse response, int status, String message) throws IOException {
     response.setStatus(status);
     return writeJson(response, Collections.singletonMap("error", message));
-  }
-
-  private static String safeMessage(Exception exception) {
-    String message = exception.getMessage();
-    return message == null || message.trim().isEmpty() ? exception.getClass().getSimpleName() : message;
   }
 
   static final class ChildOption {

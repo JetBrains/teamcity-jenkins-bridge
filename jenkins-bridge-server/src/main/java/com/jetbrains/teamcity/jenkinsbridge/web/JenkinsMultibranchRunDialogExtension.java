@@ -25,4 +25,8 @@ public final class JenkinsMultibranchRunDialogExtension extends SimplePageExtens
     // usually does not identify it. The client adapter already no-ops unless that dialog exists.
     return super.isAvailable(request);
   }
+
+  public void dispose() {
+    unregister();
+  }
 }

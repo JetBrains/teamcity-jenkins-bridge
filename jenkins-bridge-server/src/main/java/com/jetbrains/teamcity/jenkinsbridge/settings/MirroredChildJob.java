@@ -24,7 +24,7 @@ public record MirroredChildJob(@NotNull MirroredJob parent, @NotNull String jenk
 
   @Override
   @NotNull
-  public MirroredJob mapping() {
+  public MirroredJob configuredJob() {
     return parent;
   }
 }

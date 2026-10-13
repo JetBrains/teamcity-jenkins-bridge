@@ -14,8 +14,8 @@ public class MirroredChildJobTest {
     MirroredChildJob child = new MirroredChildJob(parent, "team/pipeline/feature%2Flogin");
 
     assertSame(parent, child.parent());
-    assertSame(parent, child.mapping());
-    assertSame(parent, parent.mapping());
+    assertSame(parent, child.configuredJob());
+    assertSame(parent, parent.configuredJob());
     assertEquals("team/pipeline", parent.jenkinsJob());
     assertEquals("team/pipeline/feature%2Flogin", child.jenkinsJob());
     assertEquals("Proj_Mirror::team/pipeline/feature%2Flogin", child.getMirrorKeyPrefix());

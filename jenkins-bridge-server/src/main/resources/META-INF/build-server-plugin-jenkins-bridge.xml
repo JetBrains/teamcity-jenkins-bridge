@@ -116,7 +116,8 @@
         class="com.jetbrains.teamcity.jenkinsbridge.web.JenkinsMultibranchChildrenController"/>
 
   <bean id="jenkinsMultibranchRunDialogExtension"
-        class="com.jetbrains.teamcity.jenkinsbridge.web.JenkinsMultibranchRunDialogExtension"/>
+        class="com.jetbrains.teamcity.jenkinsbridge.web.JenkinsMultibranchRunDialogExtension"
+        destroy-method="dispose"/>
 
   <bean id="jenkinsPipelineGraphTab"
         class="com.jetbrains.teamcity.jenkinsbridge.web.JenkinsPipelineGraphTab"/>

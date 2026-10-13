@@ -49,7 +49,7 @@ public record MirroredJob(String connectionId, String jenkinsJob, String teamCit
 
   @Override
   @NotNull
-  public MirroredJob mapping() {
+  public MirroredJob configuredJob() {
     return this;
   }
 

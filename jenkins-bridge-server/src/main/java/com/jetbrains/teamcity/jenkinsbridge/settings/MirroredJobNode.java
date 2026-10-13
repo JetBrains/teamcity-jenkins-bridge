@@ -8,9 +8,14 @@ import org.jetbrains.annotations.NotNull;
  * settings; the node names the concrete Jenkins job being read.
  */
 public interface MirroredJobNode {
-  /** The configured mapping that owns this node. */
+  /**
+   * Returns the configured {@link MirroredJob} that supplies the TeamCity build configuration,
+   * Jenkins connection, and polling settings for this node. A configured job returns itself;
+   * a multibranch child returns its parent configured job. {@link #jenkinsJob()} identifies the
+   * concrete Jenkins job to poll.
+   */
   @NotNull
-  MirroredJob mapping();
+  MirroredJob configuredJob();
 
   /** Full Jenkins path of this node, including the child path for a multibranch child. */
   @NotNull
@@ -22,15 +27,15 @@ public interface MirroredJobNode {
    */
   @NotNull
   default String getMirrorKeyPrefix() {
-    return mapping().teamCityBuildTypeExternalId() + "::" + jenkinsJob();
+    return configuredJob().teamCityBuildTypeExternalId() + "::" + jenkinsJob();
   }
 
   @NotNull
   default String describeForLog() {
-    MirroredJob mapping = mapping();
+    MirroredJob configuredJob = configuredJob();
     return "job " + jenkinsJob()
-        + " -> buildType=" + mapping.teamCityBuildTypeExternalId()
-        + " via connection " + mapping.connectionId()
-        + " (recentBuildLimit=" + mapping.recentBuildLimit() + ")";
+        + " -> buildType=" + configuredJob.teamCityBuildTypeExternalId()
+        + " via connection " + configuredJob.connectionId()
+        + " (recentBuildLimit=" + configuredJob.recentBuildLimit() + ")";
   }
 }
