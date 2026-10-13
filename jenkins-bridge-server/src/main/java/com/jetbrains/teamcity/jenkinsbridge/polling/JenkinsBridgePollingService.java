@@ -491,21 +491,31 @@ public class JenkinsBridgePollingService {
     }
 
     JenkinsClient jenkinsClient = jenkinsClientFor(mirroredJob);
-
     if (mirroredJob.isMultibranch()) {
-      Map<String, List<JenkinsBuildInfo>> branchBuilds =
-          jenkinsClient.listBranchBuilds(mirroredJob.jenkinsJob());
-      JobPollOutcome outcome = new JobPollOutcome();
-      Set<String> polledMirrorKeyPrefixes = new HashSet<String>();
-      for (var entry : branchBuilds.entrySet()) {
-        MirroredChildJob child = new MirroredChildJob(mirroredJob, entry.getKey());
-        outcome.merge(pollJob(jenkinsClient, child, entry.getValue()));
-        polledMirrorKeyPrefixes.add(child.getMirrorKeyPrefix());
-      }
-      updateSystemProblem(mirroredJob, outcome);
-      return polledMirrorKeyPrefixes;
+      return pollMultibranchPipeline(mirroredJob, jenkinsClient);
     }
 
+    return pollRegularPipeline(mirroredJob, jenkinsClient);
+  }
+
+  private Set<String> pollMultibranchPipeline(MirroredJob mirroredJob, JenkinsClient jenkinsClient)
+      throws BridgeHttpException, JenkinsDataException, IOException {
+    Map<String, List<JenkinsBuildInfo>> branchBuilds =
+        jenkinsClient.listBranchBuilds(mirroredJob.jenkinsJob());
+    JobPollOutcome outcome = new JobPollOutcome();
+    Set<String> polledMirrorKeyPrefixes = new HashSet<String>();
+    for (Map.Entry<String, List<JenkinsBuildInfo>> childJobEntry : branchBuilds.entrySet()) {
+      MirroredChildJob child = new MirroredChildJob(mirroredJob, childJobEntry.getKey());
+      JobPollOutcome childJobOutcome = pollJob(jenkinsClient, child, childJobEntry.getValue());
+      outcome.merge(childJobOutcome);
+      polledMirrorKeyPrefixes.add(child.getMirrorKeyPrefix());
+    }
+    updateSystemProblem(mirroredJob, outcome);
+    return polledMirrorKeyPrefixes;
+  }
+
+  private Set<String> pollRegularPipeline(MirroredJob mirroredJob, JenkinsClient jenkinsClient)
+      throws BridgeHttpException, JenkinsDataException, IOException {
     JobPollOutcome outcome = pollJob(
         jenkinsClient, mirroredJob, jenkinsClient.getBuilds(mirroredJob.jenkinsJob()));
     updateSystemProblem(mirroredJob, outcome);
