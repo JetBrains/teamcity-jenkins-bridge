@@ -101,9 +101,8 @@ public class JenkinsBridgeImportController extends BaseController {
       return error(response, 403, e.getMessage() == null
           ? "Project settings are read-only; Jenkins jobs cannot be enabled"
           : e.getMessage());
-    } catch (BridgeHttpException | JenkinsDataException e) {
-      if ("list".equals(action) && e instanceof BridgeHttpException httpException
-          && httpException.getStatusCode() == 404) {
+    } catch (BridgeHttpException e) {
+      if ("list".equals(action) && e.getStatusCode() == 404) {
         String folderPath = request.getParameter("folderPath");
         String message = folderPath == null || folderPath.trim().isEmpty()
             ? "Jenkins root folder path was not found (HTTP 404)."
@@ -111,9 +110,15 @@ public class JenkinsBridgeImportController extends BaseController {
         response.setStatus(HttpServletResponse.SC_OK);
         return writeJson(response, Collections.singletonMap("message", message));
       }
-      return error(response, 502, e.getClass().getSimpleName()
-          + (e.getMessage() == null ? "" : ": " + e.getMessage()));
+      return upstreamFailure(response, e);
+    } catch (JenkinsDataException e) {
+      return upstreamFailure(response, e);
     }
+  }
+
+  private ModelAndView upstreamFailure(HttpServletResponse response, Exception e) throws IOException {
+    return error(response, 502, e.getClass().getSimpleName()
+        + (e.getMessage() == null ? "" : ": " + e.getMessage()));
   }
 
   private ModelAndView handleList(HttpServletRequest request, HttpServletResponse response, SProject project,
