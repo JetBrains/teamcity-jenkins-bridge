@@ -110,8 +110,8 @@ promotion. Jenkins remains the execution source of truth.
 > and imported Jenkins multibranch parents. For a multibranch Pipeline, Run
 > Custom Build lists the currently runnable Jenkins branches and tags; Jenkins
 > still owns scanning and child discovery. The selected child is revalidated
-> before Jenkins is triggered. Multibranch children are triggered without
-> supplied parameter values, so Jenkins uses that child job's configured defaults.
+> before Jenkins is triggered. TeamCity cannot supply or override child
+> parameters; the bridge uses the selected child's Jenkins-configured defaults.
 
 ![Run Custom Build](docs/images/jenkins-bridge-run-custom-build.png)
 
@@ -285,10 +285,11 @@ parameters.
    This reduces the likelihood of stale parameters without replacing the
    trigger-time comparison and failed-to-start safeguard.
 
-   Multibranch child parameters are out of scope for TeamCity-first triggering.
-   The bridge does not read or synchronize a child's parameter definitions and
-   does not send parameter values when it triggers that child. Jenkins uses the
-   selected child's configured defaults.
+   Multibranch child parameters are out of scope for TeamCity-first triggering:
+   Run Custom Build does not expose child parameter fields, and TeamCity values
+   are not forwarded to the child. The bridge submits the selected child's
+   Jenkins-configured defaults so parameterized children can start; users cannot
+   override those defaults from TeamCity.
 
    Jenkins may briefly return the previous parameter definitions after a job configuration change, so the trigger-time safeguard remains necessary.
 

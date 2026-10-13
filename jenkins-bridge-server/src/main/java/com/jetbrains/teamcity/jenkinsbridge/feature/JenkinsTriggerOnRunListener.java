@@ -29,6 +29,7 @@ import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 import java.time.Instant;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -207,7 +208,21 @@ public class JenkinsTriggerOnRunListener {
         + promotion.getId());
 
     JenkinsJobParameters parameterDefinitions = JenkinsJobParameters.empty();
-    if (!multibranch) {
+    if (multibranch) {
+      // A parameterized Jenkins child requires a form submission even when TeamCity does not
+      // expose child parameters. Load its definitions only to send Jenkins' own defaults.
+      try {
+        parameterDefinitions = jenkinsClient.getJobParameters(targetJob);
+      } catch (BridgeHttpException | JenkinsDataException e) {
+        failTeamCityFirstAttempt(
+            queued,
+            promotion.getId(),
+            "Jenkins Bridge did not call Jenkins because defaults for the selected child job's "
+                + "parameters could not be loaded. See this failed TeamCity build for details.",
+            e);
+        return;
+      }
+    } else {
       JenkinsParameterSynchronizer.SynchronizationResult paramSynchronisationResult;
       try {
         paramSynchronisationResult =
@@ -243,7 +258,13 @@ public class JenkinsTriggerOnRunListener {
       parameterDefinitions = paramSynchronisationResult.getDefinitions();
     }
 
-    Map<String, String> parameters = jenkinsParameters(parameterDefinitions, promotion);
+    Map<String, String> parameters;
+    if (multibranch) {
+      parameters = JenkinsParameterPayloadBuilder.build(
+          parameterDefinitions, Collections.<String, String>emptyMap());
+    } else {
+      parameters = jenkinsParameters(parameterDefinitions, promotion);
+    }
     String invalidChoiceValues = JenkinsTeamCityRunParameterFactory.invalidChoiceValues(
         parameterDefinitions, parameters);
     if (!invalidChoiceValues.isEmpty()) {

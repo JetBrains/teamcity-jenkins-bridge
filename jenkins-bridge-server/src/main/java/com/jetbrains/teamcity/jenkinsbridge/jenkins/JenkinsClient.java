@@ -1323,7 +1323,8 @@ public class JenkinsClient {
 
   /**
    * Reads the build parameters a Jenkins job declares. Empty for a non-parameterized job (or a
-   * {@code 404}). Drives the TeamCity trigger form and validates which values are accepted.
+   * {@code 404}). Drives the regular-job TeamCity trigger form and validates accepted values;
+   * multibranch triggering uses a selected child's definitions only to submit Jenkins defaults.
    */
   public JenkinsJobParameters getJobParameters(String jobName) throws BridgeHttpException, JenkinsDataException {
     String tree = "property[parameterDefinitions[name,type,defaultParameterValue[value],choices]]";

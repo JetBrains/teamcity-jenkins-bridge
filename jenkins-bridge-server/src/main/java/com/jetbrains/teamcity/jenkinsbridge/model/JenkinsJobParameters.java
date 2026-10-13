@@ -13,7 +13,8 @@ import java.util.List;
 /**
  * The build parameters a Jenkins job declares, parsed from {@code /job/<path>/api/json}'s
  * {@code property[]} array (the entry carrying {@code parameterDefinitions}). Empty for a
- * non-parameterized job.
+ * non-parameterized job. Regular jobs use these definitions for TeamCity's trigger form;
+ * multibranch triggering reads a selected child's definitions only to submit Jenkins defaults.
  */
 public class JenkinsJobParameters {
   private static final Gson SNAPSHOT_GSON = new Gson();
