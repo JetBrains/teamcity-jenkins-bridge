@@ -3,6 +3,7 @@ package com.jetbrains.teamcity.jenkinsbridge.feature;
 import com.intellij.openapi.diagnostic.Logger;
 import com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityBranchResolver;
 import com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityBuildParameters;
+import com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityBridgeFeatureLookup;
 import com.jetbrains.teamcity.jenkinsbridge.util.Utilities;
 import jetbrains.buildServer.AgentRestrictor;
 import jetbrains.buildServer.serverSide.AddToQueuePreprocessor;
@@ -10,6 +11,7 @@ import jetbrains.buildServer.serverSide.BuildPromotion;
 import jetbrains.buildServer.serverSide.BuildPromotionEx;
 import jetbrains.buildServer.serverSide.SBuildFeatureDescriptor;
 import jetbrains.buildServer.serverSide.SBuildType;
+import org.jetbrains.annotations.NotNull;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -54,9 +56,15 @@ public class JenkinsQueueAgentlessPreprocessor implements AddToQueuePreprocessor
     return promotions;
   }
 
-  private void addBridgeParametersIfNeeded(BuildPromotion promotion, String triggeredBy) {
+  private void addBridgeParametersIfNeeded(@NotNull BuildPromotion promotion, String triggeredBy) {
     SBuildType buildType = promotion.getBuildType();
-    if (buildType == null || !hasBridgeFeature(buildType)) {
+    if (buildType == null) {
+      return;
+    }
+    SBuildFeatureDescriptor bridgeFeature =
+        TeamCityBridgeFeatureLookup.findBridgeFeature(buildType);
+
+    if (bridgeFeature == null) {
       return;
     }
     // Jenkins-first builds are already created agentless by the bridge and carry jenkins.build.key.
@@ -74,10 +82,18 @@ public class JenkinsQueueAgentlessPreprocessor implements AddToQueuePreprocessor
     }
     ex.setCustomParameters(parameters);
 
-    setMultibranchBranchIfMonitored(promotion, buildType);
+    setMultibranchBranchIfMonitored(promotion, buildType, bridgeFeature);
   }
 
-  private void setMultibranchBranchIfMonitored(BuildPromotion promotion, SBuildType buildType) {
+  /**
+   * Applies the selected Jenkins branch as TeamCity's desired branch when an attached Git root
+   * monitors it. TeamCity's configured default remains implicit; unmonitored refs leave the
+   * promotion unchanged. If VCS-root metadata is unavailable, the resolver preserves the name.
+   */
+  private void setMultibranchBranchIfMonitored(
+      @NotNull BuildPromotion promotion,
+      @NotNull SBuildType buildType,
+      @NotNull SBuildFeatureDescriptor bridgeFeature) {
     if (!Utilities.isBuildConfigMultibranch(buildType)) {
       return;
     }
@@ -87,35 +103,30 @@ public class JenkinsQueueAgentlessPreprocessor implements AddToQueuePreprocessor
     if (selectedChildPath == null || selectedChildPath.trim().isEmpty()) {
       return;
     }
-
-    SBuildFeatureDescriptor descriptor = buildType
-        .getBuildFeaturesOfType(BridgeBuildFeatureConstants.TYPE).stream().findFirst().orElse(null);
-    String parentPath = descriptor == null
-        ? null
-        : descriptor.getParameters().get(BridgeBuildFeatureConstants.PARAM_JENKINS_JOB);
+    String parentPath = bridgeFeature.getParameters()
+        .get(BridgeBuildFeatureConstants.PARAM_JENKINS_JOB);
     if (parentPath == null || parentPath.trim().isEmpty()) {
       return;
     }
 
-    String childPrefix = parentPath.trim() + "/";
-    if (!selectedChildPath.startsWith(childPrefix)) {
+    String parentPathPrefix = parentPath.trim() + "/";
+
+    if (!selectedChildPath.startsWith(parentPathPrefix)) {
       LOG.warn("Jenkins Bridge: cannot derive TeamCity branch from selected Jenkins child '"
           + selectedChildPath + "' because it is not under configured parent '" + parentPath + "'");
       return;
     }
 
     String branchName = Utilities.decodeBranchFragment(
-        selectedChildPath.substring(childPrefix.length()));
+        selectedChildPath.substring(parentPathPrefix.length()));
+
+    // Checks if the branch is actually monitored
     String teamCityBranch = TeamCityBranchResolver.resolveMultibranchSelection(buildType, branchName);
     if (teamCityBranch != null) {
       promotion.setDesiredBranchName(teamCityBranch);
       LOG.info("Jenkins Bridge: assigning TeamCity branch '" + teamCityBranch
           + "' for selected Jenkins child '" + selectedChildPath + "'");
     }
-  }
-
-  private boolean hasBridgeFeature(SBuildType buildType) {
-    return !buildType.getBuildFeaturesOfType(BridgeBuildFeatureConstants.TYPE).isEmpty();
   }
 
   private static String safeId(BuildPromotion promotion) {

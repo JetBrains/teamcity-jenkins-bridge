@@ -126,8 +126,11 @@ public class TeamCityBuildQueuer {
       // Check the name of the nested branch job for the branch name
       String job = properties.get("jenkins.job");
       if (job == null || job.trim().isEmpty()) {
-        SBuildFeatureDescriptor feature = buildType.getBuildFeaturesOfType(BridgeBuildFeatureConstants.TYPE).stream().findFirst().orElse(null);
-        job = feature != null ? feature.getParameters().get(BridgeBuildFeatureConstants.PARAM_JENKINS_JOB) : null;
+        SBuildFeatureDescriptor feature =
+            TeamCityBridgeFeatureLookup.findBridgeFeature(buildType);
+        job = feature == null
+            ? null
+            : feature.getParameters().get(BridgeBuildFeatureConstants.PARAM_JENKINS_JOB);
       }
       if (job != null && !job.trim().isEmpty()) {
         job = job.trim();

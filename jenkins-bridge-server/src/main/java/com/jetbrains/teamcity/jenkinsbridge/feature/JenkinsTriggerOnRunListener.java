@@ -10,6 +10,7 @@ import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsJobParameters;
 import com.jetbrains.teamcity.jenkinsbridge.persistence.BuildMirrorStore;
 import com.jetbrains.teamcity.jenkinsbridge.persistence.PendingTrigger;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsTriggerResponse;
+import com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityBridgeFeatureLookup;
 import com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityBuildParameters;
 import com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityQueuedBuildFailureService;
 import com.jetbrains.teamcity.jenkinsbridge.util.TeamCityNodeLog;
@@ -143,7 +144,7 @@ public class JenkinsTriggerOnRunListener {
       return;
     }
 
-    SBuildFeatureDescriptor descriptor = bridgeFeatureOrNull(buildType);
+    SBuildFeatureDescriptor descriptor = TeamCityBridgeFeatureLookup.findBridgeFeature(buildType);
     if (descriptor == null) {
       return;
     }
@@ -372,15 +373,6 @@ public class JenkinsTriggerOnRunListener {
 
     return queued.getTriggeredBy() != null
         && TRIGGERED_BY_BRIDGE.equals(queued.getTriggeredBy().getRawTriggeredBy());
-  }
-
-  @Nullable
-  private SBuildFeatureDescriptor bridgeFeatureOrNull(SBuildType buildType) {
-    for (SBuildFeatureDescriptor descriptor
-        : buildType.getBuildFeaturesOfType(BridgeBuildFeatureConstants.TYPE)) {
-      return descriptor;
-    }
-    return null;
   }
 
   private Map<String, String> jenkinsParameters(

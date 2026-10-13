@@ -7,6 +7,7 @@ import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClient;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClientFactory;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsDataException;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsJob;
+import com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityBridgeFeatureLookup;
 import com.jetbrains.teamcity.jenkinsbridge.util.ProjectPermissionHelper;
 import com.jetbrains.teamcity.jenkinsbridge.util.Utilities;
 import jetbrains.buildServer.controllers.BaseController;
@@ -57,9 +58,9 @@ public final class JenkinsMultibranchChildrenController extends BaseController {
       return error(response, 400, "This build configuration does not map a multibranch pipeline");
     }
 
-    SBuildFeatureDescriptor feature = buildType.getBuildFeaturesOfType(BridgeBuildFeatureConstants.TYPE)
-        .stream().findFirst().orElse(null);
-    String parentPath = feature == null ? null
+    SBuildFeatureDescriptor feature = TeamCityBridgeFeatureLookup.findBridgeFeature(buildType);
+    String parentPath = feature == null
+        ? null
         : feature.getParameters().get(BridgeBuildFeatureConstants.PARAM_JENKINS_JOB);
     if (parentPath == null || parentPath.trim().isEmpty()) {
       return error(response, 400, "The Jenkins multibranch mapping is incomplete");

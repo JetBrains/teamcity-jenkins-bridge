@@ -6,6 +6,7 @@ import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClientFactory;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsDataException;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsJobParameters;
 import com.jetbrains.teamcity.jenkinsbridge.persistence.BuildMirrorStore;
+import com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityBridgeFeatureLookup;
 import com.jetbrains.teamcity.jenkinsbridge.util.Utilities;
 import jetbrains.buildServer.serverSide.SBuildFeatureDescriptor;
 import jetbrains.buildServer.serverSide.SBuildType;
@@ -38,7 +39,7 @@ public final class JenkinsParameterSynchronizer {
   @NotNull
   public SynchronizationResult synchronize(@NotNull SBuildType buildType)
       throws BridgeHttpException, JenkinsDataException {
-    SBuildFeatureDescriptor feature = featureOf(buildType);
+    SBuildFeatureDescriptor feature = TeamCityBridgeFeatureLookup.findBridgeFeature(buildType);
     if (feature == null) {
       return SynchronizationResult.empty();
     }
@@ -83,12 +84,6 @@ public final class JenkinsParameterSynchronizer {
       throw new IllegalStateException("Could not persist Jenkins parameter state for "
           + buildType.getExternalId(), e);
     }
-  }
-
-  @Nullable
-  private static SBuildFeatureDescriptor featureOf(@NotNull SBuildType buildType) {
-    return buildType.getBuildFeaturesOfType(BridgeBuildFeatureConstants.TYPE)
-        .stream().findFirst().orElse(null);
   }
 
   public static final class SynchronizationResult {
