@@ -64,14 +64,14 @@ public record JenkinsPullRequestInfo(
         : flow.properties.branchJobProperty.branch;
     Head head = branch == null ? null : branch.head;
     if (head == null) {
-      LOG.warn("The branch job config declares no branch head");
+      LOG.debug("The branch job config declares no branch head");
       return Optional.empty();
     }
 
     // GitHub names the source branch sourceBranch, Bitbucket Cloud branchName, and GitLab originName.
     String sourceBranch = firstNonBlankString(head.sourceBranch, head.branchName, head.originName);
     if (sourceBranch.isEmpty()) {
-      LOG.warn("The branch head " + nullToEmpty(head.headClass)
+      LOG.debug("The branch head " + nullToEmpty(head.headClass)
           + " declares no pull or merge request source branch");
       return Optional.empty();
     }

@@ -36,7 +36,8 @@ public abstract class TeamCityIntegrationTestBase extends BaseServerTestCase {
         myProjectManager,
         myFixture.getSingletonService(BuildCustomizerFactory.class),
         null,
-        null);
+        null,
+        new com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityBranchResolver(myFixture.getSingletonService(jetbrains.buildServer.vcs.spec.BranchSpecs.class)));
     long promotionId = queuer.queueAgentlessBuild(
         myBuildType.getExternalId(),
         new LinkedHashMap<>(bridgeParameters),

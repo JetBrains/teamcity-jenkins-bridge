@@ -8,6 +8,13 @@ import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsVcsInfo;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsVcsRepository;
 import com.jetbrains.teamcity.jenkinsbridge.persistence.BuildMirror;
 import com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityVcsPublisher;
+import com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityRunningBuildLocator;
+import com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityBranchResolver;
+import com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityVcsFailurePolicy;
+import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsMultibranchScmSnapshot;
+import jetbrains.buildServer.vcs.spec.BranchSpecs;
+import jetbrains.buildServer.serverSide.parameters.ParameterFactory;
+import com.jetbrains.teamcity.jenkinsbridge.feature.BridgeBuildFeatureConstants;
 import com.jetbrains.teamcity.jenkinsbridge.vcs.VcsRefType;
 import com.jetbrains.teamcity.jenkinsbridge.vcs.VcsSyncResult;
 import jetbrains.buildServer.serverSide.impl.CancelableTaskHolder;
@@ -17,6 +24,7 @@ import org.mockito.Mockito;
 import org.testng.annotations.Test;
 
 import java.util.Collections;
+import java.util.Map;
 
 /** Verifies VCS-root and revision mutation against real TeamCity project/build APIs. */
 public class TeamCityVcsApiIT extends TeamCityIntegrationTestBase {
@@ -33,9 +41,11 @@ public class TeamCityVcsApiIT extends TeamCityIntegrationTestBase {
     Mockito.when(jenkinsClient.getBranchRefType("source-job")).thenReturn(VcsRefType.HEADS);
     JenkinsClientFactory clientFactory = Mockito.mock(JenkinsClientFactory.class);
     Mockito.when(clientFactory.forBuildType(myBuildType)).thenReturn(jenkinsClient);
+    configurePrimaryMetadata(clientFactory, "https://github.com/example/repository.git");
     BuildChainChangesCollector changesCollector = Mockito.mock(BuildChainChangesCollector.class);
     TeamCityVcsPublisher publisher = new TeamCityVcsPublisher(
-        myProjectManager, build.getLocator(), changesCollector, clientFactory);
+        myProjectManager, build.getLocator(), changesCollector, clientFactory, null,
+        new TeamCityBranchResolver(myFixture.getSingletonService(BranchSpecs.class)));
 
     JenkinsVcsInfo vcsInfo = new JenkinsVcsInfo(Collections.singletonList(
         new JenkinsVcsRepository(
@@ -77,9 +87,11 @@ public class TeamCityVcsApiIT extends TeamCityIntegrationTestBase {
     Mockito.when(jenkinsClient.getBranchRefType("source-job/v1.0")).thenReturn(VcsRefType.TAGS);
     JenkinsClientFactory clientFactory = Mockito.mock(JenkinsClientFactory.class);
     Mockito.when(clientFactory.forBuildType(myBuildType)).thenReturn(jenkinsClient);
+    configurePrimaryMetadata(clientFactory, "https://github.com/example/tag-repository.git");
     TeamCityVcsPublisher publisher = new TeamCityVcsPublisher(
         myProjectManager, Mockito.mock(TeamCityRunningBuildLocator.class),
-        Mockito.mock(BuildChainChangesCollector.class), clientFactory);
+        Mockito.mock(BuildChainChangesCollector.class), clientFactory, null,
+        new TeamCityBranchResolver(myFixture.getSingletonService(BranchSpecs.class)));
 
     publisher.prepareVcs(mirror, new JenkinsVcsInfo(Collections.singletonList(
         new JenkinsVcsRepository(
@@ -95,6 +107,8 @@ public class TeamCityVcsApiIT extends TeamCityIntegrationTestBase {
     assertNotNull(root);
     assertNotNull(myBuildType.getVcsRootInstanceEntryForParent(root));
     assertEquals("+:refs/tags/*", root.getProperty("teamcity:branchSpec"));
+    assertEquals("refs/heads/main", root.getProperty("branch"));
+    assertEquals("true", root.getProperty("reportTagRevisions"));
   }
 
   @Test
@@ -106,7 +120,8 @@ public class TeamCityVcsApiIT extends TeamCityIntegrationTestBase {
     mirror.setTeamCityBuildId(build.getPromotionId());
     TeamCityVcsPublisher publisher = new TeamCityVcsPublisher(
         myProjectManager, build.getLocator(), Mockito.mock(BuildChainChangesCollector.class),
-        Mockito.mock(JenkinsClientFactory.class));
+        Mockito.mock(JenkinsClientFactory.class), null,
+        new TeamCityBranchResolver(myFixture.getSingletonService(BranchSpecs.class)));
 
     VcsSyncResult result = publisher.applyVcsToBuild(mirror, new JenkinsVcsInfo(Collections.singletonList(
         new JenkinsVcsRepository("hudson.plugins.mercurial.MercurialTagAction",
@@ -114,6 +129,31 @@ public class TeamCityVcsApiIT extends TeamCityIntegrationTestBase {
     assertFalse(result.hasErrors());
     assertEquals(0, result.getNumberOfAttachedRepositories());
     assertTrue(myBuildType.getProject().getVcsRoots().isEmpty());
+  }
+
+  @Test
+  public void unknownRepositoryDefaultWarnsAndSuccessfulJenkinsMirrorFinishesSuccessfully() throws Exception {
+    TeamCityBuildFixture build = queueAndStartBuild(Map.of("jenkins.build.key", "vcs-unknown-default"), Map.of());
+    BuildMirror mirror = BuildMirror.create("vcs-unknown-default", "source-job/deb", buildInfo(15), myBuildType.getExternalId(), "it-now");
+    mirror.setTeamCityBuildId(build.getPromotionId());
+    var clients = Mockito.mock(JenkinsClientFactory.class);
+    Mockito.when(clients.getMultibranchScmSnapshot(myBuildType)).thenReturn(java.util.Optional.empty());
+    TeamCityVcsPublisher publisher = new TeamCityVcsPublisher(myProjectManager, build.getLocator(),
+        Mockito.mock(BuildChainChangesCollector.class), clients, null,
+        new TeamCityBranchResolver(myFixture.getSingletonService(BranchSpecs.class)));
+    VcsSyncResult result = publisher.applyVcsToBuild(mirror, new JenkinsVcsInfo(java.util.List.of(
+        new JenkinsVcsRepository("hudson.plugins.git.util.BuildData", "https://github.com/unknown/repo.git", "deb-commit", "refs/heads/deb"))));
+    assertTrue(result.hasErrors());
+    assertTrue(myBuildType.getVcsRoots().isEmpty());
+    build.finish("SUCCESS", new java.util.Date());
+    assertTrue(myFixture.getBuildsManager().findBuildInstanceById(build.getBuildId()).getBuildStatus().isSuccessful());
+  }
+
+  private void configurePrimaryMetadata(JenkinsClientFactory factory, String url) {
+    myBuildType.addConfigParameter(myFixture.getSingletonService(ParameterFactory.class).createSimpleParameter(
+        BridgeBuildFeatureConstants.INTERNAL_MULTIBRANCH_PARAM, "true"));
+    Mockito.when(factory.getMultibranchScmSnapshot(myBuildType)).thenReturn(java.util.Optional.of(new JenkinsMultibranchScmSnapshot(
+        java.util.List.of(new JenkinsMultibranchScmSnapshot.Child("source-job/main", "main", VcsRefType.HEADS, url, true, false)))));
   }
 
   private static JenkinsBuildInfo buildInfo(int number) {

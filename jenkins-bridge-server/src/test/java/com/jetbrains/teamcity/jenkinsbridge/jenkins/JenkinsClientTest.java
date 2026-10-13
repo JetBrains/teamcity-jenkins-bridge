@@ -42,6 +42,16 @@ public class JenkinsClientTest {
   }
 
   @Test
+  public void multibranchScmDiscoveryUsesExportedPrimaryHeadProjection() throws Exception {
+    StubResponseHttpClient http = new StubResponseHttpClient(); http.body = "{\"jobs\":[]}";
+    JenkinsClient client = new JenkinsClient(testConnection(), http, newJaxbUnmarshaller());
+    assertTrue(client.getMultibranchScmSnapshot("folder/pipeline").children().isEmpty());
+    String tree = "jobs[name,fullName,actions[_class],property[_class,branch[head[name,_class],scm[_class,userRemoteConfigs[url]],actions[_class]]]]";
+    assertEquals("http://jenkins/job/folder/job/pipeline/api/json?tree="
+        + java.net.URLEncoder.encode(tree, java.nio.charset.StandardCharsets.UTF_8), http.url);
+  }
+
+  @Test
   public void returnsEmptyReportWhenJenkinsHasNoTestReport() throws Exception {
     NotFoundHttpClient httpClient = new NotFoundHttpClient();
     JenkinsClient client = new JenkinsClient(testConnection(), httpClient, newJaxbUnmarshaller());

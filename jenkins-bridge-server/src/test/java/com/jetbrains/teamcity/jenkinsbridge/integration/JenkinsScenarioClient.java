@@ -122,6 +122,12 @@ final class JenkinsScenarioClient extends JenkinsClient {
   }
 
   @Override
+  public com.jetbrains.teamcity.jenkinsbridge.model.JenkinsPipelineGraph getPipelineGraphView(
+      String jobName, int buildNumber, String flowIdPrefix) {
+    return null;
+  }
+
+  @Override
   public JenkinsStages getStages(String jobName, int buildNumber)
       throws BridgeHttpException, JenkinsDataException {
     throwIfPresent(stagesHttpFailure, stagesDataFailure);

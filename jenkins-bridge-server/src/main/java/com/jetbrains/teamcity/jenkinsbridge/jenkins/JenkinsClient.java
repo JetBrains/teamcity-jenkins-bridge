@@ -593,7 +593,7 @@ public class JenkinsClient {
           return JenkinsStages.fromJson(json);
         }
       });
-      LOG.info("Jenkins Bridge: WFAPI describe for " + jobName + "#" + buildNumber
+      LOG.debug("Jenkins Bridge: WFAPI describe for " + jobName + "#" + buildNumber
           + " returned pipeline=" + stages.isPipeline() + ", stage count=" + stages.getStages().size());
       for (JenkinsStage stage : stages.getStages()) {
         LOG.debug("Jenkins Bridge: WFAPI stage id=" + stage.getId() + ", name='" + stage.getName()
@@ -602,7 +602,7 @@ public class JenkinsClient {
       return stages;
     } catch (BridgeHttpException e) {
       if (e.getStatusCode() == 404) {
-        LOG.info("Jenkins Bridge: WFAPI describe returned HTTP 404 for " + jobName + "#" + buildNumber
+        LOG.debug("Jenkins Bridge: WFAPI describe returned HTTP 404 for " + jobName + "#" + buildNumber
             + "; attempting Pipeline Graph View discovery");
         return JenkinsStages.notPipeline();
       }
@@ -626,34 +626,34 @@ public class JenkinsClient {
     JenkinsPipelineGraph graphView = getPipelineGraphView(jobName, buildNumber, flowIdPrefix);
     if (graphView != null && graphView.isPipeline()
         && (!graphView.getNodes().isEmpty() || !graphView.isComplete())) {
-      LOG.info("Jenkins Bridge: selecting Pipeline Graph View tree for " + jobName + "#" + buildNumber
+      LOG.debug("Jenkins Bridge: selecting Pipeline Graph View tree for " + jobName + "#" + buildNumber
           + " (" + graphView.getNodes().size() + " stage(s), complete=" + graphView.isComplete() + ")");
       return graphView;
     }
     if (graphView != null && graphView.isPipeline()) {
-      LOG.info("Jenkins Bridge: Pipeline Graph View tree for " + jobName + "#" + buildNumber
+      LOG.debug("Jenkins Bridge: Pipeline Graph View tree for " + jobName + "#" + buildNumber
           + " is complete but empty; trying Blue Ocean fallback");
     } else {
-      LOG.info("Jenkins Bridge: Pipeline Graph View tree unavailable for " + jobName + "#" + buildNumber
+      LOG.debug("Jenkins Bridge: Pipeline Graph View tree unavailable for " + jobName + "#" + buildNumber
           + "; trying Blue Ocean fallback");
     }
     JenkinsPipelineGraph blueOceanGraph = getBlueOceanPipelineGraph(jobName, buildNumber, flowIdPrefix);
     if (isUsableForNativeChain(blueOceanGraph)) {
-      LOG.info("Jenkins Bridge: selected Blue Ocean graph for " + jobName + "#" + buildNumber
+      LOG.debug("Jenkins Bridge: selected Blue Ocean graph for " + jobName + "#" + buildNumber
           + " after Pipeline Graph View was unavailable");
       return blueOceanGraph;
     }
 
-    LOG.info("Jenkins Bridge: Blue Ocean graph for " + jobName + "#" + buildNumber
+    LOG.debug("Jenkins Bridge: Blue Ocean graph for " + jobName + "#" + buildNumber
         + " has no usable explicit topology; diagnostics=" + blueOceanGraph.getDiagnostics()
         + "; trying WFAPI fallback");
     JenkinsPipelineGraph wfapiGraph = getWfapiPipelineGraph(
         jobName, buildNumber, flowIdPrefix, blueOceanGraph.getDiagnostics());
     if (wfapiGraph.isPipeline()) {
-      LOG.info("Jenkins Bridge: selected WFAPI graph for " + jobName + "#" + buildNumber
+      LOG.debug("Jenkins Bridge: selected WFAPI graph for " + jobName + "#" + buildNumber
           + " after Pipeline Graph View and Blue Ocean were unavailable");
     } else {
-      LOG.info("Jenkins Bridge: no usable Pipeline Graph View, Blue Ocean, or WFAPI graph for "
+      LOG.debug("Jenkins Bridge: no usable Pipeline Graph View, Blue Ocean, or WFAPI graph for "
           + jobName + "#" + buildNumber);
     }
     return wfapiGraph.isPipeline() ? wfapiGraph : blueOceanGraph;
@@ -666,7 +666,7 @@ public class JenkinsClient {
       JenkinsPipelineGraph graph = getBlueOceanPipelineGraph(jobName, buildNumber, flowIdPrefix);
       return isUsableForNativeChain(graph) ? graph : null;
     } catch (BridgeHttpException | JenkinsDataException e) {
-      LOG.warn("Jenkins Bridge: native chain topology unavailable for " + jobName + "#" + buildNumber, e);
+      LOG.debug("Jenkins Bridge: native chain topology unavailable for " + jobName + "#" + buildNumber, e);
       return null;
     }
   }
@@ -683,7 +683,7 @@ public class JenkinsClient {
           "Pipeline Graph View tree");
       JsonElement data = response.get("data");
       if (data == null || !data.isJsonObject()) {
-        LOG.info("Jenkins Bridge: Pipeline Graph View response for " + jobName + "#" + buildNumber
+        LOG.debug("Jenkins Bridge: Pipeline Graph View response for " + jobName + "#" + buildNumber
             + " has no data object");
         LOG.debug("Jenkins Bridge: Pipeline Graph View top-level response fields for " + jobName + "#"
             + buildNumber + " are " + response.keySet());
@@ -691,7 +691,7 @@ public class JenkinsClient {
       }
       JsonElement stages = data.getAsJsonObject().get("stages");
       if (stages == null || !stages.isJsonArray()) {
-        LOG.info("Jenkins Bridge: Pipeline Graph View response for " + jobName + "#" + buildNumber
+        LOG.debug("Jenkins Bridge: Pipeline Graph View response for " + jobName + "#" + buildNumber
             + " has no stages array");
         LOG.debug("Jenkins Bridge: Pipeline Graph View data fields for " + jobName + "#"
             + buildNumber + " are " + data.getAsJsonObject().keySet());
@@ -700,7 +700,7 @@ public class JenkinsClient {
       List<JenkinsPipelineGraphNode> nodes = new ArrayList<JenkinsPipelineGraphNode>();
       Set<String> ids = new LinkedHashSet<String>();
       if (!collectGraphViewStages(stages.getAsJsonArray(), "", flowIdPrefix, nodes, ids, 0)) {
-        LOG.warn("Jenkins Bridge: Pipeline Graph View returned an invalid stage tree for "
+        LOG.debug("Jenkins Bridge: Pipeline Graph View returned an invalid stage tree for "
             + jobName + "#" + buildNumber);
         return null;
       }
@@ -710,16 +710,16 @@ public class JenkinsClient {
         LOG.debug("Jenkins Bridge: Pipeline Graph View response has no primitive complete flag for "
             + jobName + "#" + buildNumber + "; treating it as incomplete");
       }
-      LOG.info("Jenkins Bridge: received Pipeline Graph View tree for " + jobName + "#" + buildNumber
+      LOG.debug("Jenkins Bridge: received Pipeline Graph View tree for " + jobName + "#" + buildNumber
           + " (" + nodes.size() + " stage(s), complete=" + isComplete + ")");
       return JenkinsPipelineGraph.hierarchy(nodes, isComplete,
           Collections.singletonList("Pipeline Graph View stage hierarchy; execution edges are unavailable"));
     } catch (BridgeHttpException | JenkinsDataException e) {
       if (e instanceof BridgeHttpException && ((BridgeHttpException) e).getStatusCode() == 404) {
-        LOG.info("Jenkins Bridge: Pipeline Graph View endpoint returned HTTP 404 for "
+        LOG.debug("Jenkins Bridge: Pipeline Graph View endpoint returned HTTP 404 for "
             + jobName + "#" + buildNumber);
       } else {
-        LOG.warn("Jenkins Bridge: Pipeline Graph View tree unavailable for " + jobName + "#" + buildNumber, e);
+        LOG.debug("Jenkins Bridge: Pipeline Graph View tree unavailable for " + jobName + "#" + buildNumber, e);
       }
       return null;
     }
@@ -850,7 +850,7 @@ public class JenkinsClient {
         nodes = parsed.getAsJsonObject().getAsJsonArray("nodes");
       } else {
         diagnostics.add("Blue Ocean nodes endpoint returned an unsupported JSON shape");
-        LOG.info("Jenkins Bridge: Blue Ocean nodes response for " + jobName + "#" + buildNumber
+        LOG.debug("Jenkins Bridge: Blue Ocean nodes response for " + jobName + "#" + buildNumber
             + " has an unsupported JSON shape");
         return JenkinsPipelineGraph.unavailable(diagnostics);
       }
@@ -1279,16 +1279,27 @@ public class JenkinsClient {
       var infoResult = JenkinsPullRequestInfo.fromConfigXml(response, xmlUnmarshaller);
       if (infoResult.isPresent()) {
         var info = infoResult.get();
-        LOG.info("Branch job " + jobName + " is pull request #" + info.number()
+        LOG.debug("Branch job " + jobName + " is pull request #" + info.number()
             + " merging from " + info.sourceBranch() + " into " + info.targetBranch());
       } else {
-        LOG.warn("Found no pull or merge request metadata for branch job " + jobName);
+        LOG.debug("Found no pull or merge request metadata for branch job " + jobName);
       }
       return infoResult;
     } catch (BridgeHttpException e) {
       LOG.warn("Failed to read the config of branch job " + jobName, e);
       return Optional.empty();
     }
+  }
+
+  /** SCM API primary-head metadata, exported by generic Git and hosting-specific branch sources. */
+  @NotNull
+  public com.jetbrains.teamcity.jenkinsbridge.model.JenkinsMultibranchScmSnapshot getMultibranchScmSnapshot(String parent)
+      throws BridgeHttpException, JenkinsDataException {
+    String tree = "jobs[name,fullName,actions[_class],property[_class,branch[head[name,_class],scm[_class,userRemoteConfigs[url]],actions[_class]]]]";
+    String response = httpClient.get(myConnection.getUrl() + jenkinsJobPath(parent)
+        + "/api/json?tree=" + encodeQueryValue(tree), myConnection.getUser(), myConnection.getToken(), "application/json");
+    return com.jetbrains.teamcity.jenkinsbridge.model.JenkinsMultibranchScmSnapshot.fromJson(
+        parseJsonObject(response, "multibranch SCM metadata"));
   }
 
   /** Reads the primary SCM serialized on a Jenkins multibranch child job. */

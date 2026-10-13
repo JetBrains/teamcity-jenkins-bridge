@@ -107,11 +107,9 @@ promotion. Jenkins remains the execution source of truth.
 
 > [!IMPORTANT]
 > TeamCity-first triggering currently applies to directly runnable Jenkins jobs,
-> and imported Jenkins multibranch parents. For a multibranch Pipeline, Run
-> Custom Build lists the currently runnable Jenkins branches and tags; Jenkins
-> still owns scanning and child discovery. The selected child is revalidated
-> before Jenkins is triggered. TeamCity cannot supply or override child
-> parameters; the bridge uses the selected child's Jenkins-configured defaults.
+> and imported Jenkins multibranch parents. For the multibranch Run Custom Build
+> flow, including branch labels and parameter limits, see
+> [TeamCity-first multibranch triggering](#teamcity-first-multibranch-triggering).
 
 ![Run Custom Build](docs/images/jenkins-bridge-run-custom-build.png)
 
@@ -181,12 +179,6 @@ useful when diagnosing behavior but are not required for the normal user flow.
   triggering path and may not be picked up and bound by the poller. Use the
   build configuration's normal **Run Custom Build** action instead. Support
   for this rerun action is planned for a later fix.
-- Jenkins SCM-source plugins own multibranch branch/tag discovery. TeamCity can
-  trigger an already discovered child from **Run Custom Build**, but it does not
-  initiate Jenkins scans. When the selected ref is monitored by an attached
-  TeamCity Git root, the TeamCity build is assigned that branch; otherwise its
-  TeamCity branch remains the configured default while Jenkins still runs the
-  selected child.
 - If TeamCity reports **“Jenkins Bridge called Jenkins, but did not receive a
   confirmed trigger response”**, the POST crossed the external-request boundary
   but the bridge could not prove whether Jenkins accepted it. The TeamCity
@@ -219,14 +211,9 @@ The import page reports created, skipped, and lock-contention failures separatel
 
 ## Triggering Jenkins builds
 
-An imported TeamCity build configuration is a TeamCity representation of one
-Jenkins job. For multibranch pipelines, Run Custom Build loads the current runnable
-Jenkins branches and tags into a dropdown; the selected child is resolved again before
-Jenkins is triggered. The TeamCity promotion is used as the user-facing build record,
-and is assigned the corresponding TeamCity branch when an attached Git root monitors
-that ref. Jenkins remains the execution source of truth. When the Jenkins run is
-created, the bridge binds it to the original TeamCity promotion and mirrors the
-Jenkins data into that build.
+An imported TeamCity build configuration represents a Jenkins job. A TeamCity-first
+trigger creates a TeamCity promotion, starts Jenkins, then binds the Jenkins run to
+that promotion and mirrors its data. Jenkins remains the execution source of truth.
 
 ### Before triggering
 
@@ -243,6 +230,21 @@ The generated configuration is read-only by default through
 `teamcity.ui.settings.readOnly=true`. This protects the generated configuration
 from accidental edits, while still allowing users to queue it and provide run
 parameters.
+
+### TeamCity-first multibranch triggering
+
+The **Run Custom Build** selector lists currently indexed, runnable Jenkins
+children (branches and tags). Jenkins owns indexing; TeamCity does not start scans.
+Before triggering Jenkins, the bridge resolves the selected child again. If it is
+missing or no longer buildable, the TeamCity promotion fails to start.
+
+TeamCity does not expose or forward child parameters; the selected child uses its
+Jenkins-configured defaults. The TeamCity branch label is separate from the
+selected Jenkins child: when an attached Git root maps the selected ref, TeamCity
+uses its logical branch name. The root's configured default (often `main`) appears
+as `<default>`; an unmapped ref also leaves the TeamCity branch at default. For a
+tag to map, its Git root must report tag revisions. These label rules do not change
+which Jenkins child is triggered.
 
 ### End-to-end flow
 
@@ -284,12 +286,6 @@ parameters.
    `jenkins.bridge.parameterRefreshPollCycles` poll cycles (100 by default).
    This reduces the likelihood of stale parameters without replacing the
    trigger-time comparison and failed-to-start safeguard.
-
-   Multibranch child parameters are out of scope for TeamCity-first triggering:
-   Run Custom Build does not expose child parameter fields, and TeamCity values
-   are not forwarded to the child. The bridge submits the selected child's
-   Jenkins-configured defaults so parameterized children can start; users cannot
-   override those defaults from TeamCity.
 
    Jenkins may briefly return the previous parameter definitions after a job configuration change, so the trigger-time safeguard remains necessary.
 
@@ -372,6 +368,33 @@ queue listener. The main-node poller owns queue resolution, build discovery,
 binding, and live synchronization. The separate technical design document
 describes a future move of the Jenkins POST into the poller; that change is not
 yet the behavior documented here.
+
+### VCS defaults and metadata
+
+The bridge discovers a repository's default from Jenkins' primary-head metadata,
+exposed by the Git plugin and compatible SCM sources. Exactly one primary ordinary
+branch for that repository is required. The branch selected for a build never
+becomes the root default merely because it was mirrored first.
+
+If Jenkins provides no unique default, the bridge reuses a suitable configured
+root or defers root creation and reports a VCS warning. Builds continue mirroring.
+SCM metadata is read directly from Jenkins when preparing builds or checking root
+repairs. TeamCity-first queue preparation also performs a live metadata lookup;
+no SCM metadata is cached between operations.
+
+Generated roots can be repaired automatically on the main node when every user is
+a Bridge configuration and all discovered defaults agree. Roots used by ordinary
+builds, templates, versioned settings, or users with uncertain metadata are preserved.
+Separate tag roots use the repository's head default and enable Git tag reporting.
+The run's actual branch/tag ref and exact Jenkins commit are pinned independently.
+Historical builds are not rewritten.
+
+Optional VCS lookup, inspection, preparation, and synchronization errors are reported
+as warnings and retried while the mirror is active. They do not block triggering,
+mirroring, or finishing. Mirrored promotions set TeamCity's native
+`teamcity.build.invalidBranchReporting=logWarning` policy before revision calculation,
+so an invalid branch label cannot replace the Jenkins result with a failed build.
+The policy applies only to mirrored promotions.
 
 ## Server settings
 

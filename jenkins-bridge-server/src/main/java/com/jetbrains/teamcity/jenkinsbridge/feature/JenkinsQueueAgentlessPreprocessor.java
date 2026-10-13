@@ -2,6 +2,8 @@ package com.jetbrains.teamcity.jenkinsbridge.feature;
 
 import com.intellij.openapi.diagnostic.Logger;
 import com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityBranchResolver;
+import com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityVcsFailurePolicy;
+import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClientFactory;
 import com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityBuildParameters;
 import com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityBridgeFeatureLookup;
 import com.jetbrains.teamcity.jenkinsbridge.util.Utilities;
@@ -25,7 +27,7 @@ import java.util.Map;
  * agentless, so TeamCity's normal agent/executor selection is not involved.
  *
  * <p>Scope is deliberately narrow: this adds the bridge correlation parameter and pins a selected
- * multibranch child to a matching TeamCity Git branch. It performs no Jenkins I/O — triggering Jenkins and recording the
+ * multibranch child to a matching TeamCity Git branch using live Jenkins SCM metadata. Triggering Jenkins and recording the
  * {@link com.jetbrains.teamcity.jenkinsbridge.persistence.PendingTrigger}
  * stay in {@link JenkinsTriggerOnRunListener}, off this latency-sensitive path. Non-bridge builds
  * pass through untouched after a cheap feature check. Artifact-storage setup is performed later
@@ -35,6 +37,14 @@ import java.util.Map;
  */
 public class JenkinsQueueAgentlessPreprocessor implements AddToQueuePreprocessor {
   private static final Logger LOG = Logger.getInstance(JenkinsQueueAgentlessPreprocessor.class.getName());
+
+  private final JenkinsClientFactory clients;
+  private final TeamCityBranchResolver branchResolver;
+
+  public JenkinsQueueAgentlessPreprocessor(JenkinsClientFactory clients, TeamCityBranchResolver branchResolver) {
+    this.clients = clients;
+    this.branchResolver = branchResolver;
+  }
 
   @Override
   public Map<BuildPromotion, AgentRestrictor> preprocess(
@@ -67,8 +77,11 @@ public class JenkinsQueueAgentlessPreprocessor implements AddToQueuePreprocessor
     if (bridgeFeature == null) {
       return;
     }
+    TeamCityVcsFailurePolicy.configure(promotion);
+    boolean hasJenkinsBuildKey = promotion.getCustomParameters()
+        .containsKey(BridgeBuildFeatureConstants.JENKINS_BUILD_KEY_PARAM);
     // Jenkins-first builds are already created agentless by the bridge and carry jenkins.build.key.
-    if (promotion.getCustomParameters().containsKey(BridgeBuildFeatureConstants.JENKINS_BUILD_KEY_PARAM)) {
+    if (hasJenkinsBuildKey) {
       return;
     }
     if (!(promotion instanceof BuildPromotionEx)) {
@@ -88,7 +101,7 @@ public class JenkinsQueueAgentlessPreprocessor implements AddToQueuePreprocessor
   /**
    * Applies the selected Jenkins branch as TeamCity's desired branch when an attached Git root
    * monitors it. TeamCity's configured default remains implicit; unmonitored refs leave the
-   * promotion unchanged. If VCS-root metadata is unavailable, the resolver preserves the name.
+   * promotion unchanged. Unavailable metadata leaves the branch unset.
    */
   private void setMultibranchBranchIfMonitored(
       @NotNull BuildPromotion promotion,
@@ -117,16 +130,16 @@ public class JenkinsQueueAgentlessPreprocessor implements AddToQueuePreprocessor
       return;
     }
 
-    String branchName = Utilities.decodeBranchFragment(
-        selectedChildPath.substring(parentPathPrefix.length()));
-
-    // Checks if the branch is actually monitored
-    String teamCityBranch = TeamCityBranchResolver.resolveMultibranchSelection(buildType, branchName);
-    if (teamCityBranch != null) {
-      promotion.setDesiredBranchName(teamCityBranch);
-      LOG.info("Jenkins Bridge: assigning TeamCity branch '" + teamCityBranch
-          + "' for selected Jenkins child '" + selectedChildPath + "'");
-    }
+    // The selected Jenkins child owns this mapping; discard any prior TeamCity branch input.
+    promotion.setDesiredBranchName(jetbrains.buildServer.serverSide.Branch.DEFAULT_BRANCH_NAME);
+    clients.getMultibranchScmSnapshot(buildType).flatMap(snapshot -> snapshot.child(selectedChildPath))
+        .filter(child -> !child.changeRequest())
+        .ifPresent(child -> {
+          var decision = branchResolver.resolve(buildType, child.ref(), child.remoteUrl());
+          if (decision.outcome() == TeamCityBranchResolver.Outcome.NAMED) {
+            promotion.setDesiredBranchName(decision.branchName());
+          }
+        });
   }
 
   private static String safeId(BuildPromotion promotion) {

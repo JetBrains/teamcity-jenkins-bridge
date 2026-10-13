@@ -24,6 +24,9 @@
   <bean id="jenkinsConnectionTestController"
         class="com.jetbrains.teamcity.jenkinsbridge.connection.JenkinsConnectionTestController"/>
 
+  <bean id="teamCityBranchResolver"
+        class="com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityBranchResolver"/>
+
   <bean id="jenkinsClientFactory"
         class="com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClientFactory"/>
 
@@ -44,6 +47,9 @@
 
   <bean id="teamCityArtifactPublisher"
         class="com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityArtifactPublisher"/>
+
+  <bean id="teamCityVcsRootRepair"
+        class="com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityVcsRootRepair"/>
 
   <bean id="teamCityVcsPublisher"
         class="com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityVcsPublisher"/>

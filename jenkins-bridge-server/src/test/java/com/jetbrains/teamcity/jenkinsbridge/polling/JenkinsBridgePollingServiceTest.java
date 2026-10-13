@@ -623,6 +623,19 @@ public class JenkinsBridgePollingServiceTest {
   }
 
   @Test
+  public void runningFirstHeadUsesKnownPrimaryCommitWithoutBuildData() throws Exception {
+    BuildMirrorStore store = new BuildMirrorStore(buildMockProjectManager());
+    FakeJenkinsClient client = new FakeJenkinsClient(); client.addBuild(buildInfo());
+    client.scmInfo = Optional.of(new JenkinsScmHeadInfo(VcsRefType.HEADS, "deb", "source", "https://github.com/org/repo.git"));
+    client.buildVcs = new JenkinsVcsInfo(Collections.emptyList(), Optional.of(new JenkinsScmRevision("deb", "deb-sha")));
+    CapturingMirrorService mirrorService = new CapturingMirrorService();
+    pollMultibranchChild(newService(provider(), client, mirrorService, store), client,
+        new MirroredJob("conn1", "job", "buildType", "Build", 1, false), 1);
+    assertEquals("refs/heads/deb", mirrorService.lastQueueVcs.repositories().getFirst().rawBranchName());
+    assertEquals("deb-sha", mirrorService.lastQueueVcs.repositories().getFirst().sha1());
+  }
+
+  @Test
   public void runningRegularJobDoesNotFetchMultibranchVcsMetadataBeforeQueueing() throws Exception {
     JenkinsBridgeSettingsProvider provider = provider();
     BuildMirrorStore store = new BuildMirrorStore(buildMockProjectManager());

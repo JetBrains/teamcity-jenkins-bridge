@@ -52,10 +52,10 @@ public class JenkinsTriggerOnRunListener {
     @Override
     public void buildTypeAddedToQueue(SQueuedBuild queued) {
       LOG.debug(TeamCityNodeLog.currentNode(teamCityNodes)
-          + " [Jenkins Bridge DEBUG] Queue callback received for TeamCity promotion "
+          + " Queue callback received for TeamCity promotion "
           + queued.getBuildPromotion().getId());
       if (!mayTriggerOnCurrentNode()) {
-        LOG.info(TeamCityNodeLog.currentNode(teamCityNodes)
+        LOG.debug(TeamCityNodeLog.currentNode(teamCityNodes)
             + " Jenkins Bridge trigger skipped because this node is not main");
         return;
       }
@@ -94,7 +94,7 @@ public class JenkinsTriggerOnRunListener {
   private void triggerJenkinsSafely(SQueuedBuild queued) {
     TriggerAttemptContext attempt = new TriggerAttemptContext();
     LOG.debug(TeamCityNodeLog.currentNode(teamCityNodes)
-        + " [Jenkins Bridge DEBUG] Evaluating TeamCity promotion "
+        + " Evaluating TeamCity promotion "
         + queued.getBuildPromotion().getId() + " for Jenkins trigger");
     try {
       triggerJenkins(queued, attempt);
@@ -134,7 +134,7 @@ public class JenkinsTriggerOnRunListener {
     attempt.setPromotionId(promotion.getId());
     if (shouldSkip(queued) || hasPendingTrigger(queued.getBuildPromotion().getId())) {
       LOG.debug(TeamCityNodeLog.currentNode(teamCityNodes)
-          + " [Jenkins Bridge DEBUG] Skipping TeamCity promotion "
+          + " Skipping TeamCity promotion "
           + queued.getBuildPromotion().getId()
           + " because it is not bridge-triggerable or already pending");
       return;
@@ -204,7 +204,7 @@ public class JenkinsTriggerOnRunListener {
         originatingNode, targetJob);
     mirrorStore.savePendingTrigger(provisional);
     LOG.debug(TeamCityNodeLog.currentNode(teamCityNodes)
-        + " [Jenkins Bridge DEBUG] Saved provisional Jenkins trigger for TeamCity promotion "
+        + " Saved provisional Jenkins trigger for TeamCity promotion "
         + promotion.getId());
 
     JenkinsJobParameters parameterDefinitions = JenkinsJobParameters.empty();
@@ -281,7 +281,7 @@ public class JenkinsTriggerOnRunListener {
     try {
       attempt.markJenkinsRequestStarted();
       LOG.debug(TeamCityNodeLog.currentNode(teamCityNodes)
-          + " [Jenkins Bridge DEBUG] Sending Jenkins trigger request for TeamCity promotion "
+          + " Sending Jenkins trigger request for TeamCity promotion "
           + promotion.getId());
       trigger = jenkinsClient.triggerBuildWithQueueId(targetJob, parameters, cause);
     } catch (BridgeHttpException | JenkinsDataException e) {

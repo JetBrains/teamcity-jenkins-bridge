@@ -23,7 +23,8 @@ import static org.mockito.Mockito.when;
 public class JenkinsQueueAgentlessPreprocessorTest {
 
   private final JenkinsQueueAgentlessPreprocessor preprocessor =
-      new JenkinsQueueAgentlessPreprocessor();
+      new JenkinsQueueAgentlessPreprocessor(mock(com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClientFactory.class),
+          mock(com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityBranchResolver.class));
 
   @Test
   public void returnsSameMapAndToleratesEmpty() {

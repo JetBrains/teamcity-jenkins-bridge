@@ -86,6 +86,13 @@
   </profiles>
 
   <dependencies>
+    <!-- Exercise logical branch naming with TeamCity's real parser in the unit suite. -->
+    <dependency>
+      <groupId>org.jetbrains.teamcity</groupId>
+      <artifactId>server-vcs-impl</artifactId>
+      <version>${teamcity-version}</version>
+      <scope>test</scope>
+    </dependency>
 
     <dependency>
       <groupId>org.jetbrains.teamcity</groupId>

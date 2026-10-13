@@ -1,6 +1,5 @@
 package com.jetbrains.teamcity.jenkinsbridge.teamcity;
 
-import com.jetbrains.teamcity.jenkinsbridge.feature.BridgeBuildFeatureConstants;
 import com.jetbrains.teamcity.jenkinsbridge.artifactstorage.JenkinsStorageAutomaticActivator;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClientFactory;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsVcsInfo;
@@ -8,6 +7,8 @@ import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsVcsRepository;
 import com.jetbrains.teamcity.jenkinsbridge.util.Utilities;
 import com.jetbrains.teamcity.jenkinsbridge.vcs.VcsBuildCustomization;
 import com.jetbrains.teamcity.jenkinsbridge.vcs.VcsRefType;
+import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsScmHeadInfo;
+import com.intellij.openapi.diagnostic.Logger;
 import jetbrains.buildServer.serverSide.*;
 import org.jetbrains.annotations.Nullable;
 
@@ -15,13 +16,13 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-import static com.jetbrains.teamcity.jenkinsbridge.util.Utilities.decodeBranchFragment;
 import static com.jetbrains.teamcity.jenkinsbridge.util.Utilities.findBuildType;
-import static com.jetbrains.teamcity.jenkinsbridge.util.Utilities.lastPathSegment;
 
 public class TeamCityBuildQueuer {
   private static final String TRIGGERED_BY = "Jenkins Bridge";
 
+  private static final Logger LOG = Logger.getInstance(TeamCityBuildQueuer.class.getName());
+  private final TeamCityBranchResolver branchResolver;
   private final ProjectManager projectManager;
   private final BuildCustomizerFactory buildCustomizerFactory;
   private final JenkinsClientFactory jenkinsClientFactory;
@@ -31,8 +32,10 @@ public class TeamCityBuildQueuer {
       ProjectManager projectManager,
       BuildCustomizerFactory buildCustomizerFactory,
       JenkinsClientFactory jenkinsClientFactory,
-      JenkinsStorageAutomaticActivator storageActivator
+      JenkinsStorageAutomaticActivator storageActivator,
+      TeamCityBranchResolver branchResolver
   ) {
+    this.branchResolver = branchResolver;
     this.projectManager = projectManager;
     this.buildCustomizerFactory = buildCustomizerFactory;
     this.jenkinsClientFactory = jenkinsClientFactory;
@@ -75,12 +78,18 @@ public class TeamCityBuildQueuer {
         bridgeParameters,
         jenkinsBuildParameters));
 
+    TeamCityVcsFailurePolicy.configure(parameters);
+
     BuildCustomizer customizer = buildCustomizerFactory.createBuildCustomizer(buildType, null);
     customizer.setParameters(parameters);
     if (branchResolution.branchName() != null && customizer instanceof BuildCustomizerEx customizerEx) {
-      customizerEx.setDesiredBranchName(branchResolution.branchName(), false);
+      try {
+        customizerEx.setDesiredBranchName(branchResolution.branchName(), false);
+      } catch (RuntimeException e) {
+        LOG.warn("Jenkins Bridge: optional desired branch assignment failed", e);
+      }
     }
-    applyVcsCustomization(customizer, vcsCustomization, branchResolution.branchName() == null);
+    applyVcsCustomization(customizer, vcsCustomization);
 
     BuildPromotion promotion = customizer.createPromotion();
     if (storageActivator != null) {
@@ -98,17 +107,18 @@ public class TeamCityBuildQueuer {
 
   private void applyVcsCustomization(
       BuildCustomizer customizer,
-      @Nullable VcsBuildCustomization vcsCustomization,
-      boolean applyDesiredBranch
-  ) throws TeamCityBuildQueueException {
+      @Nullable VcsBuildCustomization vcsCustomization
+  ) {
     if (vcsCustomization == null || !(customizer instanceof BuildCustomizerEx customizerEx)) {
       return;
     }
-    if (applyDesiredBranch && vcsCustomization.desiredBranchName() != null) {
-      customizerEx.setDesiredBranchName(vcsCustomization.desiredBranchName(), false);
-    }
     if (vcsCustomization.hasRevisions()) {
-      customizerEx.setProvidedUpperLimitRevisions(vcsCustomization.upperLimitRevisions());
+      try {
+        customizerEx.setProvidedUpperLimitRevisions(vcsCustomization.upperLimitRevisions());
+      } catch (RuntimeException e) {
+        vcsCustomization.result().addError("Pre-queue revision pinning failed: " + Utilities.describeException(e));
+        LOG.warn("Jenkins Bridge: optional pre-queue revision pinning failed", e);
+      }
     }
   }
 
@@ -117,45 +127,41 @@ public class TeamCityBuildQueuer {
    * the immutable branch name correctly, and any pull/merge request parameters to publish alongside it.
    */
   private BranchResolution resolveBranch(SBuildType buildType, Map<String, String> properties,
-                                          @Nullable JenkinsVcsInfo vcsInfo)
-      throws TeamCityBuildQueueException {
+                                          @Nullable JenkinsVcsInfo vcsInfo) {
     String branchName = null;
-    VcsRefType refType = null;
     Map<String, String> pullRequestParameters = Collections.emptyMap();
-    if (Utilities.isBuildConfigMultibranch(buildType)) {
-      // Check the name of the nested branch job for the branch name
-      String job = properties.get("jenkins.job");
-      if (job == null || job.trim().isEmpty()) {
-        SBuildFeatureDescriptor feature =
-            TeamCityBridgeFeatureLookup.findBridgeFeature(buildType);
-        job = feature == null
-            ? null
-            : feature.getParameters().get(BridgeBuildFeatureConstants.PARAM_JENKINS_JOB);
-      }
-      if (job != null && !job.trim().isEmpty()) {
-        job = job.trim();
-        branchName = decodeBranchFragment(lastPathSegment(job));
-        refType = jenkinsClientFactory.forBuildType(buildType).getBranchRefType(job);
-        if (Utilities.looksLikePullOrMergeRequestBranch(branchName)) {
-          var pullRequestInfoResult = jenkinsClientFactory.forBuildType(buildType).getPullRequestInfo(job);
-          if (pullRequestInfoResult.isPresent()) {
-            var pullRequestInfo = pullRequestInfoResult.get();
-            branchName = pullRequestInfo.sourceBranch();
-            pullRequestParameters = TeamCityBuildParameters.pullRequestParameters(pullRequestInfo);
+    try {
+      if (Utilities.isBuildConfigMultibranch(buildType)) {
+        String job = properties.get("jenkins.job");
+        if (job == null || job.isBlank()) return new BranchResolution(null, pullRequestParameters);
+        var client = jenkinsClientFactory.forBuildType(buildType);
+        var snapshot = jenkinsClientFactory.getMultibranchScmSnapshot(buildType);
+        var child = snapshot.flatMap(data -> data.child(job));
+        var scm = child.map(c -> c.scmInfo());
+        if (scm.isEmpty()) scm = client.getBranchScmInfo(job);
+        if (scm.isPresent()) {
+          JenkinsScmHeadInfo head = scm.get();
+          String name = head.headName();
+          if (Utilities.looksLikePullOrMergeRequestBranch(name) || child.map(c -> c.changeRequest()).orElse(false)) {
+            var pr = client.getPullRequestInfo(job);
+            if (pr.isEmpty()) return new BranchResolution(null, pullRequestParameters);
+            name = pr.get().sourceBranch();
+            pullRequestParameters = TeamCityBuildParameters.pullRequestParameters(pr.get());
+          }
+          String ref = (head.refType() == VcsRefType.TAGS ? "refs/tags/" : "refs/heads/") + name;
+          branchName = branchResolver.resolve(buildType, ref, head.remoteUrl()).branchName();
+        }
+      } else if (vcsInfo != null) {
+        for (JenkinsVcsRepository repo : vcsInfo.repositories()) {
+          TeamCityBranch branch = TeamCityBranch.fromJenkinsGit(repo.rawBranchName());
+          if (!branch.isDefault()) {
+            branchName = branchResolver.resolve(buildType, branch.ref(), repo.remoteUrl()).branchName();
+            break;
           }
         }
       }
-    } else if (vcsInfo != null) {
-      for (JenkinsVcsRepository repo : vcsInfo.repositories()) {
-        TeamCityBranch branch = TeamCityBranch.fromJenkinsGit(repo.rawBranchName());
-        if (!branch.isDefault()) {
-          branchName = branch.displayName();
-          refType = branch.ref().startsWith("refs/tags/") ? VcsRefType.TAGS : VcsRefType.HEADS;
-        }
-      }
-    }
-    if (branchName != null && refType != null) {
-      branchName = TeamCityBranchResolver.resolve(buildType, branchName, refType);
+    } catch (Exception e) {
+      LOG.warn("Jenkins Bridge: optional queue branch mapping failed for " + buildType.getExternalId(), e);
     }
     return new BranchResolution(branchName, pullRequestParameters);
   }

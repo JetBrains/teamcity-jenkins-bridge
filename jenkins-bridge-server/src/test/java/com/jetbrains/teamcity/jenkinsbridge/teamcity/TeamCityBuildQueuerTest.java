@@ -46,7 +46,8 @@ public class TeamCityBuildQueuerTest {
   private final JenkinsStorageAutomaticActivator storageActivator = mock(JenkinsStorageAutomaticActivator.class);
   private final SProject project = mock(SProject.class);
   private final TeamCityBuildQueuer queuer = new TeamCityBuildQueuer(
-      projectManager, customizerFactory, jenkinsClientFactory, storageActivator);
+      projectManager, customizerFactory, jenkinsClientFactory, storageActivator,
+      new TeamCityBranchResolver(new jetbrains.buildServer.vcs.spec.BranchSpecsImpl(null, mock(jetbrains.buildServer.ExtensionHolder.class))));
 
   @Before
   public void setUp() {
@@ -59,6 +60,7 @@ public class TeamCityBuildQueuerTest {
     when(parametersProvider.getAll()).thenReturn(Collections.emptyMap());
     when(buildType.getParametersProvider()).thenReturn(parametersProvider);
     when(customizerFactory.createBuildCustomizer(eq(buildType), any())).thenReturn(customizer);
+    when(jenkinsClientFactory.getMultibranchScmSnapshot(buildType)).thenReturn(Optional.empty());
     when(jenkinsClient.getPullRequestInfo(anyString())).thenReturn(Optional.empty());
 
     when(promotion.getId()).thenReturn(55L);
@@ -119,7 +121,7 @@ public class TeamCityBuildQueuerTest {
   }
 
   @Test
-  public void queueAgentlessBuildFallsBackToRawBranchNameWhenPullRequestInfoIsUnavailable() throws Exception {
+  public void queueAgentlessBuildLeavesBranchUnsetWhenPullRequestInfoIsUnavailable() throws Exception {
     withMultibranchFeature("team/my-pipeline/PR-1-merge");
     Map<String, String> properties = new LinkedHashMap<>();
     properties.put("jenkins.job", "team/my-pipeline/PR-1-merge");
@@ -127,7 +129,7 @@ public class TeamCityBuildQueuerTest {
 
     queuer.queueAgentlessBuild(BUILD_TYPE_ID, properties, Collections.emptyMap(), null);
 
-    verify(customizer).setDesiredBranchName("PR-1-merge", false);
+    verify(customizer, never()).setDesiredBranchName(anyString(), org.mockito.ArgumentMatchers.anyBoolean());
   }
 
   @Test
@@ -135,6 +137,8 @@ public class TeamCityBuildQueuerTest {
     when(buildType.getBuildFeaturesOfType(BridgeBuildFeatureConstants.TYPE))
         .thenReturn(Collections.emptyList());
     SVcsRoot gitRoot = mock(SVcsRoot.class);
+    when(gitRoot.getProperty("branch")).thenReturn("refs/heads/main");
+    when(gitRoot.getProperty("url")).thenReturn("https://github.com/org/repo.git");
     when(gitRoot.getVcsName()).thenReturn(VcsProvider.GIT.teamCityVcsName());
     when(gitRoot.getProperty(GenericVcsConstants.BRANCH_SPEC_PROP)).thenReturn("+:refs/heads/*");
     when(buildType.getVcsRoots()).thenReturn(Collections.singletonList(gitRoot));
@@ -152,7 +156,7 @@ public class TeamCityBuildQueuerTest {
 
     queuer.queueAgentlessBuild(BUILD_TYPE_ID, properties(), Collections.emptyMap(), null,
         new VcsBuildCustomization(new com.jetbrains.teamcity.jenkinsbridge.vcs.VcsSyncResult(),
-            revisions, "v1.0.0"));
+            revisions));
 
     verify(customizer).setProvidedUpperLimitRevisions(revisions);
     verify(customizer).createPromotion();
@@ -170,7 +174,47 @@ public class TeamCityBuildQueuerTest {
     verify(customizer, never()).setDesiredBranchName(anyString(), org.mockito.ArgumentMatchers.anyBoolean());
   }
 
-  private void withMultibranchFeature(String jenkinsJob) {
+  @Test
+  public void configuredDefaultDoesNotRegainExplicitNameFromRevisionCustomization() throws Exception {
+    withMultibranchFeature("team/my-pipeline/main");
+    when(buildType.getVcsRoots().getFirst().getProperty("branch")).thenReturn("refs/heads/main");
+    Map<Long, RepositoryVersion> pins = Map.of(17L, new RepositoryVersion("jenkins-sha", "jenkins-sha", "refs/heads/main"));
+    queuer.queueAgentlessBuild(BUILD_TYPE_ID, properties(), Collections.emptyMap(), null,
+        new VcsBuildCustomization(new com.jetbrains.teamcity.jenkinsbridge.vcs.VcsSyncResult(), pins));
+    verify(customizer, never()).setDesiredBranchName(anyString(), org.mockito.ArgumentMatchers.anyBoolean());
+    verify(customizer).setProvidedUpperLimitRevisions(pins);
+    verify(customizer).setParameters(argThat((Map<String, String> parameters) -> "logWarning".equals(parameters.get("teamcity.build.invalidBranchReporting"))));
+  }
+
+  @Test
+  public void inaccessibleRootDoesNotBlockQueueing() throws Exception {
+    withMultibranchFeature("team/my-pipeline/main");
+    when(buildType.getVcsRoots().getFirst().getProperty("branch")).thenThrow(new IllegalStateException("root unavailable"));
+    assertEquals(55L, queuer.queueAgentlessBuild(BUILD_TYPE_ID, properties(), Collections.emptyMap(), null));
+    verify(customizer, never()).setDesiredBranchName(anyString(), org.mockito.ArgumentMatchers.anyBoolean());
+    verify(promotion).addToQueue(anyString());
+  }
+
+  @Test
+  public void failedChildTypeReadDoesNotGuessHeadOrBlockQueueing() throws Exception {
+    withMultibranchFeature("team/my-pipeline/main");
+    when(jenkinsClient.getBranchScmInfo("team/my-pipeline/main")).thenThrow(new IllegalStateException("SCM unavailable"));
+    assertEquals(55L, queuer.queueAgentlessBuild(BUILD_TYPE_ID, properties(), Collections.emptyMap(), null));
+    verify(customizer, never()).setDesiredBranchName(anyString(), org.mockito.ArgumentMatchers.anyBoolean());
+  }
+
+  private void withMultibranchFeature(String jenkinsJob) throws Exception {
+    String head = com.jetbrains.teamcity.jenkinsbridge.util.Utilities.decodeBranchFragment(
+        com.jetbrains.teamcity.jenkinsbridge.util.Utilities.lastPathSegment(jenkinsJob));
+    when(jenkinsClient.getBranchScmInfo(jenkinsJob)).thenReturn(Optional.of(
+        new com.jetbrains.teamcity.jenkinsbridge.model.JenkinsScmHeadInfo(
+            com.jetbrains.teamcity.jenkinsbridge.vcs.VcsRefType.HEADS, head, "", "https://github.com/org/repo.git")));
+    SVcsRoot root = mock(SVcsRoot.class);
+    when(root.getVcsName()).thenReturn("jetbrains.git");
+    when(root.getProperty("url")).thenReturn("https://github.com/org/repo.git");
+    when(root.getProperty("branch")).thenReturn("refs/heads/master");
+    when(root.getProperty("teamcity:branchSpec")).thenReturn("+:refs/heads/*");
+    when(buildType.getVcsRoots()).thenReturn(Collections.singletonList(root));
     Map<String, String> params = new LinkedHashMap<>();
     params.put(BridgeBuildFeatureConstants.PARAM_JENKINS_JOB, jenkinsJob);
     SBuildFeatureDescriptor descriptor = mock(SBuildFeatureDescriptor.class);

@@ -111,10 +111,13 @@ public class TeamCityBuildMirrorService {
       try {
         vcsCustomization = teamCityVcsPublisher.prepareVcs(mirror, vcsInfo);
         if (vcsCustomization.result().hasErrors()) {
+          mirror.setVcsSyncErrors(vcsCustomization.result().getErrors());
+          mirrorStore.saveMirror(mirror);
           LOG.warn("Jenkins Bridge: VCS preparation reported errors for "
               + mirror.getJenkinsBuildKey() + ": " + vcsCustomization.result().getErrors());
         }
-      } catch (TeamCityVcsOperationalException e) {
+      } catch (TeamCityVcsOperationalException | RuntimeException e) {
+        recordVcsFetchFailure(mirror, e);
         LOG.warn("Jenkins Bridge: failed to prepare VCS before queueing "
             + mirror.getJenkinsBuildKey(), e);
       }
@@ -175,6 +178,9 @@ public class TeamCityBuildMirrorService {
         mirror.getJenkinsBuildParameters(),
         vcsInfo,
         vcsCustomization);
+    if (vcsCustomization != null && vcsCustomization.result().hasErrors()) {
+      mirror.setVcsSyncErrors(vcsCustomization.result().getErrors());
+    }
     mirror.setTeamCityBuildId(buildId);
     mirror.setVcsDataMissingAtQueue(!hasUsableVcsInfo(vcsInfo));
     mirror.setSyncState(SyncState.TEAMCITY_CREATED);
@@ -522,9 +528,9 @@ public class TeamCityBuildMirrorService {
     if (vcsInfo != null && !vcsInfo.repositories().isEmpty()) {
       try {
         result = teamCityVcsPublisher.applyVcsToBuild(mirror, vcsInfo);
-      } catch (TeamCityVcsOperationalException e) {
+      } catch (TeamCityVcsOperationalException | RuntimeException e) {
         LOG.warn("VCS mirroring failed for " + mirror.getJenkinsBuildKey(), e);
-        result.addError(describeException(e.getCause()));
+        result.addError(describeException(e));
       }
     }
     mirror.setVcsSynced(result.getErrors().isEmpty());

@@ -68,7 +68,7 @@ public class TeamCitySecureArtifactSigningSecretProvider implements JenkinsArtif
     if (token == null || token.isEmpty()) {
       throw new IllegalStateException("TeamCity artifact signing secret was not persisted");
     }
-    LOG.info("Jenkins Bridge initialized or reused the shared artifact signing secret for build type "
+    LOG.debug("Jenkins Bridge initialized or reused the shared artifact signing secret for build type "
         + buildType.getExternalId());
     return decrypt(secureDataStorage, token);
   }
