@@ -408,7 +408,7 @@ public class JenkinsClient {
 
   private List<JenkinsJob> listJobsPage(String folderPath, int start, int limit)
       throws BridgeHttpException, JenkinsDataException {
-    String tree = "jobs[name,fullName,url,_class,buildable,color]";
+    String tree = "jobs[name,fullName,displayName,url,_class,buildable,color]";
     if (start >= 0 && limit > 0) {
       tree += "{" + start + "," + (start + limit) + "}";
     }
@@ -424,9 +424,9 @@ public class JenkinsClient {
     if (jobs == null) {
       return result;
     }
-    for (JsonElement element : jobs) {
-      if (element != null && element.isJsonObject()) {
-        result.add(JenkinsJob.fromJson(element.getAsJsonObject()));
+    for (JsonElement jobJsonElement : jobs) {
+      if (jobJsonElement != null && jobJsonElement.isJsonObject()) {
+        result.add(JenkinsJob.fromJson(jobJsonElement.getAsJsonObject()));
       }
     }
     return result;

@@ -349,7 +349,7 @@ public class JenkinsClientTest {
 
     client.listJobs("");
 
-    assertEquals("http://jenkins/api/json?tree=jobs%5Bname%2CfullName%2Curl%2C_class%2Cbuildable%2Ccolor%5D",
+    assertEquals("http://jenkins/api/json?tree=jobs%5Bname%2CfullName%2CdisplayName%2Curl%2C_class%2Cbuildable%2Ccolor%5D",
         httpClient.url);
   }
 
@@ -364,7 +364,7 @@ public class JenkinsClientTest {
 
     List<JenkinsJob> jobs = client.listJobs("team");
 
-    assertEquals("http://jenkins/job/team/api/json?tree=jobs%5Bname%2CfullName%2Curl%2C_class%2Cbuildable%2Ccolor%5D",
+    assertEquals("http://jenkins/job/team/api/json?tree=jobs%5Bname%2CfullName%2CdisplayName%2Curl%2C_class%2Cbuildable%2Ccolor%5D",
         httpClient.url);
     assertEquals(2, jobs.size());
     assertEquals("team/free", jobs.get(0).getFullName());
@@ -380,7 +380,7 @@ public class JenkinsClientTest {
 
     List<JenkinsJob> jobs = client.listJobs("", 100, 100);
 
-    assertEquals("http://jenkins/api/json?tree=jobs%5Bname%2CfullName%2Curl%2C_class%2Cbuildable%2Ccolor%5D%7B100%2C200%7D",
+    assertEquals("http://jenkins/api/json?tree=jobs%5Bname%2CfullName%2CdisplayName%2Curl%2C_class%2Cbuildable%2Ccolor%5D%7B100%2C200%7D",
         httpClient.url);
     assertEquals(1, jobs.size());
     assertEquals("job-100", jobs.get(0).getFullName());
@@ -396,7 +396,7 @@ public class JenkinsClientTest {
 
     List<JenkinsJob> jobs = client.listJobs("team", 0, 100, "beta");
 
-    assertEquals("http://jenkins/job/team/api/json?tree=jobs%5Bname%2CfullName%2Curl%2C_class%2Cbuildable%2Ccolor%5D%7B0%2C100%7D",
+    assertEquals("http://jenkins/job/team/api/json?tree=jobs%5Bname%2CfullName%2CdisplayName%2Curl%2C_class%2Cbuildable%2Ccolor%5D%7B0%2C100%7D",
         httpClient.url);
     assertEquals(1, jobs.size());
     assertEquals("team/beta", jobs.get(0).getFullName());

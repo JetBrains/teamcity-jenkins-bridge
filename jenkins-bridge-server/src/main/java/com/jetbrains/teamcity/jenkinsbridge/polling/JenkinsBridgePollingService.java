@@ -201,7 +201,7 @@ public class JenkinsBridgePollingService {
     boolean refreshParametersRequired = shouldRefreshParameters(
         settings.getParameterRefreshPollCycles());
     List<MirroredJob> mirroredJobs = mirroredJobProvider.discoverMirroredJobs();
-    Set<String> successfullyPolledMappings = new HashSet<String>();
+    Set<String> polledMirrorKeyPrefixes = new HashSet<String>();
     if (systemProblemReporter != null) {
       systemProblemReporter.reconcile(mirroredJobs);
     }
@@ -218,7 +218,7 @@ public class JenkinsBridgePollingService {
         if (refreshParametersRequired && !mirroredJob.isMultibranch()) {
           refreshParameters(mirroredJob);
         }
-        successfullyPolledMappings.addAll(pollPipeline(mirroredJob));
+        polledMirrorKeyPrefixes.addAll(pollPipeline(mirroredJob));
       } catch (BridgeHttpException e) {
         reportAuthoritativePollingFailure(mirroredJob, e);
         LOG.warn("Jenkins Bridge: failed to poll " + mirroredJob.describeForLog(), e);
@@ -230,7 +230,7 @@ public class JenkinsBridgePollingService {
         LOG.error("Jenkins Bridge: failed to poll " + mirroredJob.describeForLog(), e);
       }
     }
-    checkIfWeNeedPruning(successfullyPolledMappings);
+    checkIfWeNeedPruning(polledMirrorKeyPrefixes);
     reconcileOrphanedMetadataIfDue();
   }
 
@@ -252,26 +252,26 @@ public class JenkinsBridgePollingService {
   /**
    * Checks whether pruning is needed and prunes finished active mirrors when it is. A total mirror
    * count of 1,000 or fewer returns without scanning. Above 1,000, the second scan finds finished
-   * mirrors belonging to mappings successfully polled in this cycle; an empty result also returns
+   * mirrors belonging to job prefixes polled in this cycle; an empty result also returns
    * without pruning.
    */
-  private void checkIfWeNeedPruning(Set<String> successfullyPolledMappings) throws IOException {
+  private void checkIfWeNeedPruning(Set<String> polledMirrorKeyPrefixes) throws IOException {
     if (mirrorStore.getMirrorCount() <= FINISHED_MIRROR_PRUNING_THRESHOLD
-        || successfullyPolledMappings.isEmpty()) {
+        || polledMirrorKeyPrefixes.isEmpty()) {
       return;
     }
-    Set<String> mappingsWithFinishedMirrors =
-        mirrorStore.getFinishedMirrorMappings(successfullyPolledMappings);
-    if (mappingsWithFinishedMirrors.isEmpty()) {
+    Set<String> mirrorKeyPrefixesWithFinishedMirrors =
+        mirrorStore.getFinishedMirrorMappings(polledMirrorKeyPrefixes);
+    if (mirrorKeyPrefixesWithFinishedMirrors.isEmpty()) {
       return;
     }
     String pruneTime = Instant.now().toString();
-    for (String mapping : mappingsWithFinishedMirrors) {
-      mirrorStore.setLastPruned(mapping, pruneTime);
+    for (String mirrorKeyPrefix : mirrorKeyPrefixesWithFinishedMirrors) {
+      mirrorStore.setLastPruned(mirrorKeyPrefix, pruneTime);
     }
-    mirrorStore.pruneFinishedMirrors(mappingsWithFinishedMirrors);
+    mirrorStore.pruneFinishedMirrors(mirrorKeyPrefixesWithFinishedMirrors);
     LOG.info("Jenkins Bridge pruned finished mirrors for "
-        + mappingsWithFinishedMirrors.size() + " mapping(s)");
+        + mirrorKeyPrefixesWithFinishedMirrors.size() + " job prefix(es)");
   }
 
   private boolean shouldRefreshParameters(int refreshIntervalCycles) {
@@ -496,14 +496,14 @@ public class JenkinsBridgePollingService {
       Map<String, List<JenkinsBuildInfo>> branchBuilds =
           jenkinsClient.listBranchBuilds(mirroredJob.jenkinsJob());
       JobPollOutcome outcome = new JobPollOutcome();
-      Set<String> mappings = new HashSet<String>();
+      Set<String> polledMirrorKeyPrefixes = new HashSet<String>();
       for (var entry : branchBuilds.entrySet()) {
         MirroredChildJob child = new MirroredChildJob(mirroredJob, entry.getKey());
         outcome.merge(pollJob(jenkinsClient, child, entry.getValue()));
-        mappings.add(child.getMirrorKeyPrefix());
+        polledMirrorKeyPrefixes.add(child.getMirrorKeyPrefix());
       }
       updateSystemProblem(mirroredJob, outcome);
-      return mappings;
+      return polledMirrorKeyPrefixes;
     }
 
     JobPollOutcome outcome = pollJob(
