@@ -29,6 +29,7 @@ public enum VcsProvider {
       params.put(GenericVcsConstants.BRANCH_SPEC_PROP, refType == VcsRefType.TAGS
           ? GitConstants.BRANCH_SPEC_ALL_TAGS
           : GitConstants.BRANCH_SPEC_ALL_HEADS);
+      if (refType == VcsRefType.TAGS) params.put(GitConstants.REPORT_TAG_REVISIONS_PROP, "true");
       params.put(GenericVcsConstants.AUTH_METHOD_PROP, GenericVcsConstants.AUTH_METHOD_ANONYMOUS);
       return params;
     }

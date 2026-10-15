@@ -18,15 +18,19 @@ public class JenkinsJob {
   private final String type;
   private final String displayType;
   private final boolean importable;
+  private final String displayName;
+  private final boolean buildable;
 
   private JenkinsJob(String name, String fullName, String url, String type, String displayType,
-      boolean importable) {
+      boolean importable, String displayName, boolean buildable) {
     this.name = name;
     this.fullName = fullName;
     this.url = url;
     this.type = type;
     this.displayType = displayType;
     this.importable = importable;
+    this.displayName = displayName;
+    this.buildable = buildable;
   }
 
   public static JenkinsJob fromJson(JsonObject json) {
@@ -37,7 +41,14 @@ public class JenkinsJob {
     }
     String url = getString(json, "url");
     String type = getString(json, "_class");
-    return new JenkinsJob(name, fullName, url, type, displayType(type), isImportableClass(type));
+    String displayName = getString(json, "displayName");
+    if (displayName.isEmpty()) {
+      displayName = name;
+    }
+    boolean buildable = json.has("buildable") && !json.get("buildable").isJsonNull()
+        && json.get("buildable").getAsBoolean();
+    return new JenkinsJob(name, fullName, url, type, displayType(type), isImportableClass(type),
+        displayName, buildable);
   }
 
   /**
@@ -101,6 +112,14 @@ public class JenkinsJob {
 
   public boolean isImportable() {
     return importable;
+  }
+
+  public String getDisplayName() {
+    return displayName;
+  }
+
+  public boolean isBuildable() {
+    return buildable;
   }
 
   public boolean isMultibranch() {

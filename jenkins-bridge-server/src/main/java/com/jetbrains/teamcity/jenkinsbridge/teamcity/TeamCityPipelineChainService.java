@@ -341,15 +341,20 @@ public class TeamCityPipelineChainService {
     if (!(customizer instanceof BuildCustomizerEx)) {
       throw new TeamCityPipelineChainException("TeamCity BuildCustomizer does not support dynamic Jenkins Pipeline dependencies");
     }
-    customizer.setParameters(TeamCityBuildParameters.mergeWithJenkinsParameters(
-        topBuildParameters(mirror),
-        mirror.getJenkinsBuildParameters()));
+    Map<String, String> parameters = TeamCityBuildParameters.mergeWithJenkinsParameters(
+        topBuildParameters(mirror), mirror.getJenkinsBuildParameters());
+    TeamCityVcsFailurePolicy.configure(parameters);
+    customizer.setParameters(parameters);
     customizer.setRebuildDependencies(true);
     ((BuildCustomizerEx) customizer).setDependenciesSupplier(
         dependenciesSupplier(plan, buildTypesByNodeId, sourceBuildType));
     if (vcsCustomization != null && vcsCustomization.hasRevisions()) {
-      ((BuildCustomizerEx) customizer).setProvidedUpperLimitRevisions(
-          vcsCustomization.upperLimitRevisions());
+      try {
+        ((BuildCustomizerEx) customizer).setProvidedUpperLimitRevisions(vcsCustomization.upperLimitRevisions());
+      } catch (RuntimeException e) {
+        vcsCustomization.result().addError("Pre-queue revision pinning failed: "
+            + com.jetbrains.teamcity.jenkinsbridge.util.Utilities.describeException(e));
+      }
     }
     BuildPromotion promotion = customizer.createPromotion();
     SQueuedBuild queuedBuild = promotion.addToQueue(TRIGGERED_BY);

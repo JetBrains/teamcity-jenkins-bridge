@@ -115,7 +115,7 @@ public class BuildMirrorStore {
     for (PendingTrigger pending : state.getPendingTriggers().values()) {
       if (cause.equals(pending.getTriggerCause())
           && nullToEmpty(controller).equals(nullToEmpty(pending.getJenkinsController()))
-          && nullToEmpty(job).equals(nullToEmpty(pending.getJenkinsJob()))) return pending;
+          && nullToEmpty(job).equals(nullToEmpty(pending.getTargetJenkinsJob()))) return pending;
     }
     return null;
   }

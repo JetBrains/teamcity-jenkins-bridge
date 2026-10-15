@@ -1,10 +1,13 @@
 package com.jetbrains.teamcity.jenkinsbridge.settings;
 
+import org.jetbrains.annotations.NotNull;
+
 import static com.jetbrains.teamcity.jenkinsbridge.util.Utilities.nullToEmpty;
 
 /**
- * One Jenkins job mirrored into a TeamCity build configuration. One {@code MirroredJob} corresponds
- * to many {@code BuildMirror}s (one per Jenkins build).
+ * Runtime snapshot of one Jenkins Bridge build feature mapping a Jenkins job to a TeamCity build
+ * configuration. Recreated on each polling discovery from persisted TeamCity configuration and
+ * kept only in memory. One mapping can produce many build mirrors.
  *
  * <p>A mirrored job names the Jenkins connection to read from, the Jenkins job, and the target
  * TeamCity build config (the config that hosts the Jenkins Bridge build feature).
@@ -12,7 +15,8 @@ import static com.jetbrains.teamcity.jenkinsbridge.util.Utilities.nullToEmpty;
  * @param isMultibranch When true, jenkinsJob is a multibranch pipeline path and the poller polls each branch job under it.
  */
 public record MirroredJob(String connectionId, String jenkinsJob, String teamCityBuildTypeExternalId,
-                          String teamCityBuildTypeName, int recentBuildLimit, boolean isMultibranch) {
+                          String teamCityBuildTypeName, int recentBuildLimit, boolean isMultibranch)
+    implements MirroredJobNode {
   public MirroredJob(
       String connectionId,
       String jenkinsJob,
@@ -43,14 +47,21 @@ public record MirroredJob(String connectionId, String jenkinsJob, String teamCit
         ? teamCityBuildTypeName : teamCityBuildTypeExternalId;
   }
 
-  /**
-   * Prefix that namespaces this job's persisted mirrors and its polling watermark.
-   *
-   * <p>The prefix is {@code <externalId>::<job>} so two configs mirroring the same Jenkins job do
-   * not collide.
-   */
-  public String getMirrorKeyPrefix() {
-    return teamCityBuildTypeExternalId + "::" + jenkinsJob;
+  @Override
+  @NotNull
+  public MirroredJob configuredJob() {
+    return this;
+  }
+
+  @Override
+  @NotNull
+  public String jenkinsJob() {
+    return jenkinsJob;
+  }
+
+  /** Prefix for a child job triggered through this mapped configuration. */
+  public String getMirrorKeyPrefix(String childJob) {
+    return teamCityBuildTypeExternalId + "::" + childJob;
   }
 
   public boolean hasMinimumConfiguration() {
@@ -77,12 +88,5 @@ public record MirroredJob(String connectionId, String jenkinsJob, String teamCit
       result.append(" (build configuration ").append(teamCityBuildTypeExternalId).append(')');
     }
     return result.toString();
-  }
-
-  public String describeForLog() {
-    return "job " + jenkinsJob
-        + " -> buildType=" + teamCityBuildTypeExternalId
-        + " via connection " + connectionId
-        + " (recentBuildLimit=" + recentBuildLimit + ")";
   }
 }

@@ -1,6 +1,6 @@
 package com.jetbrains.teamcity.jenkinsbridge.web;
 
-import com.jetbrains.teamcity.jenkinsbridge.feature.BridgeBuildFeatureConstants;
+import com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityBridgeFeatureLookup;
 import com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityBuildParameters;
 import jetbrains.buildServer.controllers.BuildNotFoundException;
 import jetbrains.buildServer.parameters.ParametersProvider;
@@ -55,7 +55,7 @@ public class JenkinsPullRequestExtension extends SimplePageExtension {
     if (build == null) return false;
     SBuildType buildType = build.getBuildType();
     if (buildType == null) return false;
-    if (buildType.getBuildFeaturesOfType(BridgeBuildFeatureConstants.TYPE).isEmpty()) return false;
+    if (!TeamCityBridgeFeatureLookup.hasBridgeFeature(buildType)) return false;
     return !StringUtil.isEmpty(build.getParametersProvider().get(TeamCityBuildParameters.PULL_REQUEST_NUMBER));
   }
 

@@ -1,5 +1,6 @@
 package com.jetbrains.teamcity.jenkinsbridge.feature;
 
+import com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityBridgeFeatureLookup;
 import jetbrains.buildServer.BuildAgent;
 import jetbrains.buildServer.serverSide.BuildPromotionEx;
 import jetbrains.buildServer.serverSide.QueuedBuildEx;
@@ -40,7 +41,7 @@ public class JenkinsQueueWaitReasonPrecondition implements StartBuildPreconditio
     if (buildType == null
         || !promotion.isAgentLessBuild()
         || promotion.getCustomParameters().containsKey(BridgeBuildFeatureConstants.JENKINS_BUILD_KEY_PARAM)
-        || buildType.getBuildFeaturesOfType(BridgeBuildFeatureConstants.TYPE).isEmpty()) {
+        || !TeamCityBridgeFeatureLookup.hasBridgeFeature(buildType)) {
       return null;
     }
     return WAIT_REASON;

@@ -51,7 +51,7 @@ public record TeamCityBranch(String ref, String displayName) {
     }
 
     if (branch.startsWith(REFS_TAGS)) {
-      return new TeamCityBranch(branch, lastSegment(branch));
+      return new TeamCityBranch(branch, branch.substring(REFS_TAGS.length()));
     }
     if (branch.startsWith(REFS_HEADS)) {
       return new TeamCityBranch(branch, branch.substring(REFS_HEADS.length()));

@@ -42,6 +42,16 @@ public class JenkinsClientTest {
   }
 
   @Test
+  public void multibranchScmDiscoveryUsesExportedPrimaryHeadProjection() throws Exception {
+    StubResponseHttpClient http = new StubResponseHttpClient(); http.body = "{\"jobs\":[]}";
+    JenkinsClient client = new JenkinsClient(testConnection(), http, newJaxbUnmarshaller());
+    assertTrue(client.getMultibranchScmSnapshot("folder/pipeline").children().isEmpty());
+    String tree = "jobs[name,fullName,actions[_class],property[_class,branch[head[name,_class],scm[_class,userRemoteConfigs[url]],actions[_class]]]]";
+    assertEquals("http://jenkins/job/folder/job/pipeline/api/json?tree="
+        + java.net.URLEncoder.encode(tree, java.nio.charset.StandardCharsets.UTF_8), http.url);
+  }
+
+  @Test
   public void returnsEmptyReportWhenJenkinsHasNoTestReport() throws Exception {
     NotFoundHttpClient httpClient = new NotFoundHttpClient();
     JenkinsClient client = new JenkinsClient(testConnection(), httpClient, newJaxbUnmarshaller());
@@ -64,6 +74,21 @@ public class JenkinsClientTest {
     } catch (JenkinsDataException expected) {
       assertTrue(expected.getMessage().contains("build information"));
     }
+  }
+
+  @Test
+  public void resolvesCanonicalBuildableMultibranchChildPath() throws Exception {
+    StubResponseHttpClient httpClient = new StubResponseHttpClient();
+    httpClient.body = "{\"jobs\":["
+        + "{\"name\":\"feature%2Flogin\",\"fullName\":\"team/pipeline/feature%2Flogin\","
+        + "\"displayName\":\"feature/login\",\"_class\":\"org.jenkinsci.plugins.workflow.job.WorkflowJob\",\"buildable\":true},"
+        + "{\"name\":\"disabled\",\"fullName\":\"team/pipeline/disabled\","
+        + "\"_class\":\"org.jenkinsci.plugins.workflow.job.WorkflowJob\",\"buildable\":false}]}";
+    JenkinsClient client = new JenkinsClient(testConnection(), httpClient, newJaxbUnmarshaller());
+
+    assertEquals("team/pipeline/feature%2Flogin",
+        client.findMultibranchChildJob("team/pipeline", "team/pipeline/feature%2Flogin"));
+    assertNull(client.findMultibranchChildJob("team/pipeline", "disabled"));
   }
 
   @Test
@@ -334,7 +359,7 @@ public class JenkinsClientTest {
 
     client.listJobs("");
 
-    assertEquals("http://jenkins/api/json?tree=jobs%5Bname%2CfullName%2Curl%2C_class%2Cbuildable%2Ccolor%5D",
+    assertEquals("http://jenkins/api/json?tree=jobs%5Bname%2CfullName%2CdisplayName%2Curl%2C_class%2Cbuildable%2Ccolor%5D",
         httpClient.url);
   }
 
@@ -349,7 +374,7 @@ public class JenkinsClientTest {
 
     List<JenkinsJob> jobs = client.listJobs("team");
 
-    assertEquals("http://jenkins/job/team/api/json?tree=jobs%5Bname%2CfullName%2Curl%2C_class%2Cbuildable%2Ccolor%5D",
+    assertEquals("http://jenkins/job/team/api/json?tree=jobs%5Bname%2CfullName%2CdisplayName%2Curl%2C_class%2Cbuildable%2Ccolor%5D",
         httpClient.url);
     assertEquals(2, jobs.size());
     assertEquals("team/free", jobs.get(0).getFullName());
@@ -365,7 +390,7 @@ public class JenkinsClientTest {
 
     List<JenkinsJob> jobs = client.listJobs("", 100, 100);
 
-    assertEquals("http://jenkins/api/json?tree=jobs%5Bname%2CfullName%2Curl%2C_class%2Cbuildable%2Ccolor%5D%7B100%2C200%7D",
+    assertEquals("http://jenkins/api/json?tree=jobs%5Bname%2CfullName%2CdisplayName%2Curl%2C_class%2Cbuildable%2Ccolor%5D%7B100%2C200%7D",
         httpClient.url);
     assertEquals(1, jobs.size());
     assertEquals("job-100", jobs.get(0).getFullName());
@@ -381,7 +406,7 @@ public class JenkinsClientTest {
 
     List<JenkinsJob> jobs = client.listJobs("team", 0, 100, "beta");
 
-    assertEquals("http://jenkins/job/team/api/json?tree=jobs%5Bname%2CfullName%2Curl%2C_class%2Cbuildable%2Ccolor%5D%7B0%2C100%7D",
+    assertEquals("http://jenkins/job/team/api/json?tree=jobs%5Bname%2CfullName%2CdisplayName%2Curl%2C_class%2Cbuildable%2Ccolor%5D%7B0%2C100%7D",
         httpClient.url);
     assertEquals(1, jobs.size());
     assertEquals("team/beta", jobs.get(0).getFullName());

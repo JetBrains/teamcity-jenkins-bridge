@@ -147,7 +147,8 @@ public class TeamCityMirrorOrchestrationIT extends TeamCityIntegrationTestBase {
     TeamCityRunningBuildLocator locator = new TeamCityRunningBuildLocator(
         myFixture.getBuildsManager(), myFixture.getBuildPromotionManager(), myProjectManager);
     TeamCityBuildQueuer queuer = new TeamCityBuildQueuer(
-        myProjectManager, myFixture.getSingletonService(BuildCustomizerFactory.class), null, null);
+        myProjectManager, myFixture.getSingletonService(BuildCustomizerFactory.class), null, null,
+        new com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityBranchResolver(myFixture.getSingletonService(jetbrains.buildServer.vcs.spec.BranchSpecs.class)));
     BuildMirrorStore mirrorStore = new BuildMirrorStore(myProjectManager) {
       private int saves;
 

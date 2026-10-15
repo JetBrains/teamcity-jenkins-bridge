@@ -1,6 +1,5 @@
 package com.jetbrains.teamcity.jenkinsbridge.feature;
 
-import com.google.gson.Gson;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsParameterDefinition;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsJobParameters;
 import jetbrains.buildServer.serverSide.SBuildType;
@@ -21,7 +20,6 @@ import java.util.Set;
  * prompted in the normal TeamCity Run dialog.
  */
 public final class JenkinsTeamCityRunParameterFactory {
-  private static final Gson SNAPSHOT_GSON = new Gson();
   private static final String PROMPT_TEXT_SPEC = "text display='prompt'";
   private static final String BOOLEAN_SPEC =
       "checkbox checkedValue='true' uncheckedValue='false' display='prompt'";
@@ -41,6 +39,7 @@ public final class JenkinsTeamCityRunParameterFactory {
 
     String lowerName = name.toLowerCase(Locale.ROOT);
     return !BridgeBuildFeatureConstants.JENKINS_BUILD_KEY_PARAM.equals(name)
+        && !BridgeBuildFeatureConstants.MULTIBRANCH_BRANCH_PARAM.equals(name)
         && !TeamCityBuildParameters.AGENTLESS_BUILD_PROPERTY.equals(name)
         && !lowerName.startsWith("teamcity.")
         && !lowerName.startsWith("jenkins.build.")
@@ -54,18 +53,6 @@ public final class JenkinsTeamCityRunParameterFactory {
     String value = defaultValue(definition);
     String spec = spec(definition);
     return parameterFactory.createTypedParameter(name, value, spec);
-  }
-
-  /** Returns a stable JSON representation of the Jenkins definitions used to render TeamCity. */
-  @NotNull
-  public static String snapshot(@NotNull JenkinsJobParameters definitions) {
-    return SNAPSHOT_GSON.toJson(definitions.getParameters());
-  }
-
-  /** Returns an exact, readable representation suitable for trigger diagnostics. */
-  @NotNull
-  public static String describe(@NotNull JenkinsJobParameters definitions) {
-    return snapshot(definitions);
   }
 
   /** Returns a diagnostic for submitted values that are invalid for current Jenkins choices. */

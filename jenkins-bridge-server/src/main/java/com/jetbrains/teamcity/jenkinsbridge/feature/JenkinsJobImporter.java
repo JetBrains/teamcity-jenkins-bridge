@@ -130,7 +130,7 @@ public class JenkinsJobImporter {
       return;
     }
     if (lock == null) {
-      LOG.info("Jenkins Bridge import lock was not acquired for project " + project.getExternalId()
+      LOG.debug("Jenkins Bridge import lock was not acquired for project " + project.getExternalId()
           + ", connection " + connectionId + ", Jenkins job " + fullName);
       result.addFailed(fullName,
           "Another TeamCity node is currently importing this Jenkins job. Please refresh and try again.");
@@ -186,7 +186,9 @@ public class JenkinsJobImporter {
     SBuildType buildType = buildConfigCreator.createMirrorBuildType(
         project, externalId, fullName, connectionId, jenkinsClient.jobUrl(fullName),
         jenkinsType, isMultibranch);
-    parameterSynchronizer.synchronize(jenkinsClient, buildType, fullName);
+    if (!isMultibranch) {
+      parameterSynchronizer.synchronize(jenkinsClient, buildType, fullName);
+    }
     buildType.schedulePersisting("Jenkins Bridge: persist imported Jenkins job build configuration").awaitUninterruptibly();
 
     return externalId;

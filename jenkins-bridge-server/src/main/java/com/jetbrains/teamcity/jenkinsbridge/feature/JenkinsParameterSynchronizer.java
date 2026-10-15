@@ -6,6 +6,8 @@ import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsClientFactory;
 import com.jetbrains.teamcity.jenkinsbridge.jenkins.JenkinsDataException;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsJobParameters;
 import com.jetbrains.teamcity.jenkinsbridge.persistence.BuildMirrorStore;
+import com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityBridgeFeatureLookup;
+import com.jetbrains.teamcity.jenkinsbridge.util.Utilities;
 import jetbrains.buildServer.serverSide.SBuildFeatureDescriptor;
 import jetbrains.buildServer.serverSide.SBuildType;
 import jetbrains.buildServer.serverSide.parameters.ParameterFactory;
@@ -15,9 +17,11 @@ import org.jetbrains.annotations.Nullable;
 import java.io.IOException;
 
 /**
- * Owns the complete Jenkins-parameter synchronization flow for a mirrored build configuration.
+ * Reconciles regular-job definitions into TeamCity configuration parameters. Multibranch child
+ * parameters are not synchronized because TeamCity-first multibranch triggering does not support
+ * user-supplied Jenkins parameter values.
  * Callers decide when to persist the TeamCity build configuration or whether a definition change
- * should prevent a trigger; this service owns fetching, reconciliation, and bridge-state updates.
+ * should prevent a trigger.
  */
 public final class JenkinsParameterSynchronizer {
   private final JenkinsClientFactory jenkinsClientFactory;
@@ -35,7 +39,7 @@ public final class JenkinsParameterSynchronizer {
   @NotNull
   public SynchronizationResult synchronize(@NotNull SBuildType buildType)
       throws BridgeHttpException, JenkinsDataException {
-    SBuildFeatureDescriptor feature = featureOf(buildType);
+    SBuildFeatureDescriptor feature = TeamCityBridgeFeatureLookup.findBridgeFeature(buildType);
     if (feature == null) {
       return SynchronizationResult.empty();
     }
@@ -47,21 +51,24 @@ public final class JenkinsParameterSynchronizer {
   }
 
   @NotNull
-  public SynchronizationResult synchronize(@NotNull JenkinsClient client,
+  public SynchronizationResult synchronize(@NotNull JenkinsClient jenkinsClient,
                                            @NotNull SBuildType buildType,
                                            @NotNull String job)
       throws BridgeHttpException, JenkinsDataException {
-    JenkinsJobParameters definitions = client.getJobParameters(job);
     try {
-      String previousSnapshot = mirrorStore.getImportedJenkinsParameterSnapshot(
-          buildType.getExternalId());
+      if (Utilities.isBuildConfigMultibranch(buildType)) {
+        throw new IllegalArgumentException(
+            "Jenkins parameter synchronization is not supported for multibranch pipelines");
+      }
+      String previousSnapshot = mirrorStore.getImportedJenkinsParameterSnapshot(buildType.getExternalId());
+      JenkinsJobParameters definitions = jenkinsClient.getJobParameters(job);
       JenkinsTeamCityRunParameterFactory.SynchronizationResult teamCityResult =
           JenkinsTeamCityRunParameterFactory.synchronize(
               parameterFactory,
               buildType,
               definitions,
               mirrorStore.getImportedJenkinsParameterNames(buildType.getExternalId()));
-      String currentSnapshot = JenkinsTeamCityRunParameterFactory.snapshot(definitions);
+      String currentSnapshot = definitions.snapshot();
 
       mirrorStore.saveImportedJenkinsParameterNames(
           buildType.getExternalId(), teamCityResult.getImportedNames());
@@ -77,12 +84,6 @@ public final class JenkinsParameterSynchronizer {
       throw new IllegalStateException("Could not persist Jenkins parameter state for "
           + buildType.getExternalId(), e);
     }
-  }
-
-  @Nullable
-  private static SBuildFeatureDescriptor featureOf(@NotNull SBuildType buildType) {
-    return buildType.getBuildFeaturesOfType(BridgeBuildFeatureConstants.TYPE)
-        .stream().findFirst().orElse(null);
   }
 
   public static final class SynchronizationResult {

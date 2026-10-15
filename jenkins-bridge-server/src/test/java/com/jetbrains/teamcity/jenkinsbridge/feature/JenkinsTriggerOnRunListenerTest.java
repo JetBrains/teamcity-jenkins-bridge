@@ -70,7 +70,7 @@ public class JenkinsTriggerOnRunListenerTest {
             + "\"defaultParameterValue\":{\"value\":\"2026.08\"}}]}]}").getAsJsonObject());
     when(fixture.client.getJobParameters("job")).thenReturn(definitions);
     when(fixture.store.getImportedJenkinsParameterSnapshot("buildType"))
-        .thenReturn(JenkinsTeamCityRunParameterFactory.snapshot(definitions));
+        .thenReturn(definitions.snapshot());
     when(fixture.client.triggerBuildWithQueueId(any(), any(), anyString()))
         .thenReturn(new JenkinsTriggerResponse("/queue/item/1/", 1L));
 
@@ -211,7 +211,7 @@ public class JenkinsTriggerOnRunListenerTest {
   }
 
   @Test
-  public void multibranchParentFailsWithActionableReasonWithoutCallingJenkins() throws Exception {
+  public void multibranchRunWithoutSelectionFailsBeforeCreatingJenkinsClient() throws Exception {
     Fixture fixture = new Fixture();
     when(fixture.buildType.getParameterValue(
         BridgeBuildFeatureConstants.INTERNAL_MULTIBRANCH_PARAM)).thenReturn("true");
@@ -219,9 +219,7 @@ public class JenkinsTriggerOnRunListenerTest {
     fixture.listener().buildTypeAddedToQueue(fixture.queued);
 
     verify(fixture.failureService).failQueuedPromotion(eq(42L), contains(
-        "cannot start Jenkins multibranch parent jobs from TeamCity"));
-    verify(fixture.failureService).failQueuedPromotion(eq(42L), contains(
-        "Scan and start the desired branch or tag in Jenkins"));
+        "needs a Jenkins branch name to start a multibranch pipeline"));
     verify(fixture.clientFactory, never()).forBuildType(any());
     verify(fixture.store, never()).savePendingTrigger(any());
     verify(fixture.storageActivator, never()).configurePromotionStorage(any(), anyString());

@@ -1,8 +1,10 @@
 package com.jetbrains.teamcity.jenkinsbridge.model;
 
+import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -11,9 +13,11 @@ import java.util.List;
 /**
  * The build parameters a Jenkins job declares, parsed from {@code /job/<path>/api/json}'s
  * {@code property[]} array (the entry carrying {@code parameterDefinitions}). Empty for a
- * non-parameterized job.
+ * non-parameterized job. Regular jobs use these definitions for TeamCity's trigger form;
+ * multibranch triggering reads a selected child's definitions only to submit Jenkins defaults.
  */
 public class JenkinsJobParameters {
+  private static final Gson SNAPSHOT_GSON = new Gson();
   private final List<JenkinsParameterDefinition> parameters;
 
   private JenkinsJobParameters(List<JenkinsParameterDefinition> parameters) {
@@ -50,6 +54,12 @@ public class JenkinsJobParameters {
 
   public List<JenkinsParameterDefinition> getParameters() {
     return parameters;
+  }
+
+  /** Stable representation shared by schema persistence and trigger comparisons. */
+  @NotNull
+  public String snapshot() {
+    return SNAPSHOT_GSON.toJson(parameters);
   }
 
   public boolean isParameterized() {

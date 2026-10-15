@@ -12,10 +12,12 @@ import java.util.Map;
 
 /**
  * Per-build mirror record: correlates one Jenkins build with its TeamCity build and tracks how far
- * the sync has progressed. One instance per Jenkins build; persisted in {@link BridgeState}.
+ * the sync has progressed. One instance per Jenkins build and owning TeamCity build configuration;
+ * persisted in {@link BridgeState}.
  */
 public class BuildMirror {
   private String jenkinsBuildKey;
+  // Concrete Jenkins job owning this build; the child job for a multibranch pipeline.
   private String jenkinsJob;
   private int jenkinsBuildNumber;
   private long jenkinsBuildTimestamp;

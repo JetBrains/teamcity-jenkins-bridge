@@ -64,7 +64,7 @@ public class BuildResultMetadataCleanup extends CleanupExtensionAdapter {
     try {
       int removed = mirrorStore.removeOrphanedResultMetadata(buildsManager);
       if (removed > 0) {
-        LOG.info("Jenkins Bridge removed " + removed + " orphaned result metadata record(s)");
+        LOG.debug("Jenkins Bridge removed " + removed + " orphaned result metadata record(s)");
       }
     } catch (IOException | RuntimeException e) {
       // Orphan reconciliation is best effort and must not fail the Jenkins poll cycle.

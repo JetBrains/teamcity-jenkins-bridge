@@ -58,6 +58,8 @@ public class JenkinsJobImporterTest {
     when(targetProject.getBuildTypes()).thenReturn(Collections.emptyList());
     when(targetProject.createBuildType(anyString(), anyString())).thenReturn(buildType);
     when(buildType.schedulePersisting(anyString())).thenReturn(persistTask);
+    when(jenkinsClient.getControllerIdentity()).thenReturn("http://jenkins");
+    when(buildType.getExternalId()).thenReturn("buildType");
     when(jenkinsClient.jobUrl(anyString())).thenReturn("http://jenkins/job/x/");
     when(jenkinsClient.getJobParameters(anyString())).thenReturn(JenkinsJobParameters.empty());
     when(parameterFactory.createSimpleParameter(anyString(), anyString()))
@@ -103,7 +105,17 @@ public class JenkinsJobImporterTest {
         BridgeBuildFeatureConstants.INTERNAL_MULTIBRANCH_PARAM, "true", "text display='hidden'");
     verify(parameterFactory).createTypedParameter(
         "teamcity.ui.settings.readOnly", "true", "text display='hidden'");
-    verify(jenkinsClient).getJobParameters("pipeline");
+    verify(jenkinsClient, never()).getJobParameters("pipeline");
+    assertEquals(1, result.getCreated().size());
+  }
+
+  @Test
+  public void regularJobStillImportsParameterDefinitions() throws Exception {
+    when(jenkinsClient.getJobClass("regular")).thenReturn("org.jenkinsci.plugins.workflow.job.WorkflowJob");
+
+    ImportResult result = importer.importJobs("TeamA", "conn1", Collections.singletonList("regular"));
+
+    verify(jenkinsClient).getJobParameters("regular");
     assertEquals(1, result.getCreated().size());
   }
 

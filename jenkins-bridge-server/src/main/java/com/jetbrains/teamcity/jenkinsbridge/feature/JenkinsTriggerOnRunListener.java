@@ -10,6 +10,7 @@ import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsJobParameters;
 import com.jetbrains.teamcity.jenkinsbridge.persistence.BuildMirrorStore;
 import com.jetbrains.teamcity.jenkinsbridge.persistence.PendingTrigger;
 import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsTriggerResponse;
+import com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityBridgeFeatureLookup;
 import com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityBuildParameters;
 import com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityQueuedBuildFailureService;
 import com.jetbrains.teamcity.jenkinsbridge.util.TeamCityNodeLog;
@@ -28,6 +29,7 @@ import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 import java.time.Instant;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -38,10 +40,6 @@ import java.util.Map;
 public class JenkinsTriggerOnRunListener {
   private static final Logger LOG = Logger.getInstance(JenkinsTriggerOnRunListener.class.getName());
   private static final String TRIGGERED_BY_BRIDGE = "Jenkins Bridge";
-  private static final String MULTIBRANCH_PARENT_REASON =
-      "Jenkins Bridge cannot start Jenkins multibranch parent jobs from TeamCity. "
-          + "Scan and start the desired branch or tag in Jenkins; "
-          + "the bridge will mirror that child build into TeamCity.";
 
   private final EventDispatcher<BuildServerListener> eventDispatcher;
   private final JenkinsClientFactory jenkinsClientFactory;
@@ -54,10 +52,10 @@ public class JenkinsTriggerOnRunListener {
     @Override
     public void buildTypeAddedToQueue(SQueuedBuild queued) {
       LOG.debug(TeamCityNodeLog.currentNode(teamCityNodes)
-          + " [Jenkins Bridge DEBUG] Queue callback received for TeamCity promotion "
+          + " Queue callback received for TeamCity promotion "
           + queued.getBuildPromotion().getId());
       if (!mayTriggerOnCurrentNode()) {
-        LOG.info(TeamCityNodeLog.currentNode(teamCityNodes)
+        LOG.debug(TeamCityNodeLog.currentNode(teamCityNodes)
             + " Jenkins Bridge trigger skipped because this node is not main");
         return;
       }
@@ -96,7 +94,7 @@ public class JenkinsTriggerOnRunListener {
   private void triggerJenkinsSafely(SQueuedBuild queued) {
     TriggerAttemptContext attempt = new TriggerAttemptContext();
     LOG.debug(TeamCityNodeLog.currentNode(teamCityNodes)
-        + " [Jenkins Bridge DEBUG] Evaluating TeamCity promotion "
+        + " Evaluating TeamCity promotion "
         + queued.getBuildPromotion().getId() + " for Jenkins trigger");
     try {
       triggerJenkins(queued, attempt);
@@ -136,7 +134,7 @@ public class JenkinsTriggerOnRunListener {
     attempt.setPromotionId(promotion.getId());
     if (shouldSkip(queued) || hasPendingTrigger(queued.getBuildPromotion().getId())) {
       LOG.debug(TeamCityNodeLog.currentNode(teamCityNodes)
-          + " [Jenkins Bridge DEBUG] Skipping TeamCity promotion "
+          + " Skipping TeamCity promotion "
           + queued.getBuildPromotion().getId()
           + " because it is not bridge-triggerable or already pending");
       return;
@@ -147,7 +145,7 @@ public class JenkinsTriggerOnRunListener {
       return;
     }
 
-    SBuildFeatureDescriptor descriptor = bridgeFeatureOrNull(buildType);
+    SBuildFeatureDescriptor descriptor = TeamCityBridgeFeatureLookup.findBridgeFeature(buildType);
     if (descriptor == null) {
       return;
     }
@@ -157,25 +155,41 @@ public class JenkinsTriggerOnRunListener {
       return;
     }
 
-    // A multibranch parent is a discovery container, not a runnable Jenkins child job. Reject it
-    // before creating trigger state or making Jenkins requests so TeamCity records an actionable
-    // failure instead of waiting indefinitely or reporting an unrelated trigger error.
-    if (Utilities.isBuildConfigMultibranch(buildType)) {
-      failureService.failQueuedPromotion(promotion.getId(), MULTIBRANCH_PARENT_REASON);
-      LOG.warn(MULTIBRANCH_PARENT_REASON);
+    boolean multibranch = Utilities.isBuildConfigMultibranch(buildType);
+
+    String selectedChildPath = multibranch ? promotion.getCustomParameters().get(
+        BridgeBuildFeatureConstants.MULTIBRANCH_BRANCH_PARAM) : null;
+
+    boolean noChildPathSelected = selectedChildPath == null || selectedChildPath.trim().isEmpty();
+    if (multibranch && noChildPathSelected) {
+      failTeamCityFirstAttempt(
+          queued,
+          promotion.getId(),
+          "Jenkins Bridge needs a Jenkins branch name to start a multibranch pipeline. "
+              + "Set the 'Jenkins branch' parameter and run the build again.",
+          null);
+      return;
+    }
+
+    // The Jenkins server is whichever connection this build configuration mirrors from.
+    attempt.markCleanupEligible();
+    JenkinsClient jenkinsClient = jenkinsClientFactory.forBuildType(buildType);
+
+    String targetJob = job;
+    if (multibranch) {
+      targetJob = resolveMultibranchChildJob(queued, jenkinsClient, job, selectedChildPath);
+      if (targetJob == null) {
+        return;
+      }
+    }
+
+    if (hasPendingTrigger(promotion.getId())) {
       return;
     }
 
     storageActivator.configurePromotionStorage(
         promotion, buildType.getProject().getExternalId());
 
-    // The Jenkins server is whichever connection this build configuration mirrors from.
-    attempt.markCleanupEligible();
-    JenkinsClient jenkinsClient = jenkinsClientFactory.forBuildType(buildType);
-
-    if (hasPendingTrigger(promotion.getId())) {
-      return;
-    }
     String controller = jenkinsClient.getControllerIdentity();
     Long correlatedPromotionId = JenkinsTriggerCorrelation.decode(
         promotion.getCustomParameters().get(TeamCityBuildParameters.TEAMCITY_PROMOTION_ID));
@@ -186,62 +200,90 @@ public class JenkinsTriggerOnRunListener {
     // startup can find this record and either bind the accepted Jenkins run or fail the TeamCity
     // promotion with an explicit uncertain-trigger reason.
     PendingTrigger provisional = new PendingTrigger(
-        promotion.getId(), job, buildType.getExternalId(), "", -1L, controller, now(), cause, originatingNode);
+        promotion.getId(), job, buildType.getExternalId(), "", -1L, controller, now(), cause,
+        originatingNode, targetJob);
     mirrorStore.savePendingTrigger(provisional);
     LOG.debug(TeamCityNodeLog.currentNode(teamCityNodes)
-        + " [Jenkins Bridge DEBUG] Saved provisional Jenkins trigger for TeamCity promotion "
+        + " Saved provisional Jenkins trigger for TeamCity promotion "
         + promotion.getId());
 
-    JenkinsParameterSynchronizer.SynchronizationResult paramSynchronisationResult;
-    try {
-      paramSynchronisationResult = parameterSynchronizer.synchronize(jenkinsClient, buildType, job);
-    } catch (BridgeHttpException | JenkinsDataException e) {
-      failTeamCityFirstAttempt(
-          queued,
-          promotion.getId(),
-          "Jenkins Bridge did not call Jenkins because Jenkins parameters could not be loaded. "
-              + "See this failed TeamCity build for details.",
-          e);
-      return;
-    }
-    // Jenkins REST was read above, but the Jenkins build-trigger POST has not started yet.
-    if (paramSynchronisationResult.isTeamCityChanged()) {
-      buildType.schedulePersisting(
-          "Jenkins Bridge: update Jenkins Run Custom Build parameters")
-          .awaitUninterruptibly();
+    JenkinsJobParameters parameterDefinitions = JenkinsJobParameters.empty();
+    if (multibranch) {
+      // A parameterized Jenkins child requires a form submission even when TeamCity does not
+      // expose child parameters. Load its definitions only to send Jenkins' own defaults.
+      try {
+        parameterDefinitions = jenkinsClient.getJobParameters(targetJob);
+      } catch (BridgeHttpException | JenkinsDataException e) {
+        failTeamCityFirstAttempt(
+            queued,
+            promotion.getId(),
+            "Jenkins Bridge did not call Jenkins because defaults for the selected child job's "
+                + "parameters could not be loaded. See this failed TeamCity build for details.",
+            e);
+        return;
+      }
+    } else {
+      JenkinsParameterSynchronizer.SynchronizationResult paramSynchronisationResult;
+      try {
+        paramSynchronisationResult =
+            parameterSynchronizer.synchronize(jenkinsClient, buildType, targetJob);
+      } catch (BridgeHttpException | JenkinsDataException e) {
+        failTeamCityFirstAttempt(
+            queued,
+            promotion.getId(),
+            "Jenkins Bridge did not call Jenkins because Jenkins parameters could not be loaded. "
+                + "See this failed TeamCity build for details.",
+            e);
+        return;
+      }
+
+      // Jenkins REST was read above, but the Jenkins build-trigger POST has not started yet.
+      if (paramSynchronisationResult.isTeamCityChanged()) {
+        buildType.schedulePersisting(
+            "Jenkins Bridge: update Jenkins Run Custom Build parameters")
+            .awaitUninterruptibly();
+      }
+
+      if (paramSynchronisationResult.isDefinitionChanged()) {
+        failTeamCityFirstAttempt(
+            queued,
+            promotion.getId(),
+            parameterDefinitionsChangedReason(
+                paramSynchronisationResult.getPreviousSnapshot(),
+                paramSynchronisationResult.getDefinitions()),
+            null);
+        return;
+      }
+
+      parameterDefinitions = paramSynchronisationResult.getDefinitions();
     }
 
-    JenkinsJobParameters parameterDefinitions = paramSynchronisationResult.getDefinitions();
-    // If Jenkins parameter definitions in the form when it was rendered,
-    // fail this stale submission
-    if (paramSynchronisationResult.isDefinitionChanged()) {
+    Map<String, String> parameters;
+    if (multibranch) {
+      parameters = JenkinsParameterPayloadBuilder.build(
+          parameterDefinitions, Collections.<String, String>emptyMap());
+    } else {
+      parameters = jenkinsParameters(parameterDefinitions, promotion);
+    }
+    String invalidChoiceValues = JenkinsTeamCityRunParameterFactory.invalidChoiceValues(
+        parameterDefinitions, parameters);
+    if (!invalidChoiceValues.isEmpty()) {
       failTeamCityFirstAttempt(
           queued,
           promotion.getId(),
-          parameterDefinitionsChangedReason(paramSynchronisationResult.getPreviousSnapshot(), parameterDefinitions),
+          "Jenkins Bridge did not start the build because submitted parameter values are no longer valid: "
+              + invalidChoiceValues,
           null);
       return;
     }
 
     JenkinsTriggerResponse trigger;
     try {
-      Map<String, String> parameters = jenkinsParameters(parameterDefinitions, promotion);
-      String invalidChoiceValues = JenkinsTeamCityRunParameterFactory.invalidChoiceValues(
-          parameterDefinitions, parameters);
-      if (!invalidChoiceValues.isEmpty()) {
-        failTeamCityFirstAttempt(
-            queued,
-            promotion.getId(),
-            "Jenkins Bridge did not start the build because submitted parameter values are no longer valid: "
-                + invalidChoiceValues,
-            null);
-        return;
-      }
       attempt.markJenkinsRequestStarted();
       LOG.debug(TeamCityNodeLog.currentNode(teamCityNodes)
-          + " [Jenkins Bridge DEBUG] Sending Jenkins trigger request for TeamCity promotion "
+          + " Sending Jenkins trigger request for TeamCity promotion "
           + promotion.getId());
-      trigger = jenkinsClient.triggerBuildWithQueueId(job, parameters, cause);
+      trigger = jenkinsClient.triggerBuildWithQueueId(targetJob, parameters, cause);
     } catch (BridgeHttpException | JenkinsDataException e) {
       failTeamCityFirstAttempt(
           queued,
@@ -264,11 +306,43 @@ public class JenkinsTriggerOnRunListener {
         buildType.getExternalId(),
         trigger.getQueueItemUrl(),
         trigger.getQueueId(),
-        controller, now(), cause, originatingNode);
+        controller, now(), cause, originatingNode, targetJob);
     mirrorStore.savePendingTrigger(pendingTrigger);
-    LOG.info(TeamCityNodeLog.currentNode(teamCityNodes) + " Jenkins Bridge triggered " + job
+    LOG.info(TeamCityNodeLog.currentNode(teamCityNodes) + " Jenkins Bridge triggered " + targetJob
         + " from TeamCity promotion " + promotion.getId()
         + " via Jenkins queue item " + trigger.getQueueItemUrl());
+  }
+
+  @Nullable
+  private String resolveMultibranchChildJob(
+      SQueuedBuild queued,
+      JenkinsClient jenkinsClient,
+      String parentJob,
+      String selectedChildPath
+  ) throws IOException {
+    String targetJob;
+    try {
+      targetJob = jenkinsClient.findMultibranchChildJob(parentJob, selectedChildPath);
+    } catch (BridgeHttpException | JenkinsDataException e) {
+      failTeamCityFirstAttempt(
+          queued,
+          queued.getBuildPromotion().getId(),
+          "Jenkins Bridge did not call Jenkins because it could not resolve branch '"
+              + selectedChildPath.trim() + "' under multibranch pipeline '" + parentJob + "'.",
+          e);
+      return null;
+    }
+    if (targetJob == null) {
+      failTeamCityFirstAttempt(
+          queued,
+          queued.getBuildPromotion().getId(),
+          "Jenkins Bridge did not call Jenkins because branch '" + selectedChildPath.trim()
+              + "' is not an active child of multibranch pipeline '" + parentJob + "'. "
+              + "Scan the pipeline in Jenkins, refresh the branch name, and run again.",
+          null);
+      return null;
+    }
+    return targetJob;
   }
 
   private String parameterDefinitionsChangedReason(String previousSnapshot,
@@ -276,7 +350,7 @@ public class JenkinsTriggerOnRunListener {
     return "Jenkins Bridge did not start the build because Jenkins parameter definitions changed. "
         + "The TeamCity parameters were refreshed; run the build again.\n"
         + "Before: " + (previousSnapshot == null ? "<not recorded>" : previousSnapshot) + "\n"
-        + "After: " + JenkinsTeamCityRunParameterFactory.describe(currentDefinitions);
+        + "After: " + currentDefinitions.snapshot();
   }
 
   private void cleanupBeforeJenkinsRequestIfNeeded(
@@ -339,15 +413,6 @@ public class JenkinsTriggerOnRunListener {
 
     return queued.getTriggeredBy() != null
         && TRIGGERED_BY_BRIDGE.equals(queued.getTriggeredBy().getRawTriggeredBy());
-  }
-
-  @Nullable
-  private SBuildFeatureDescriptor bridgeFeatureOrNull(SBuildType buildType) {
-    for (SBuildFeatureDescriptor descriptor
-        : buildType.getBuildFeaturesOfType(BridgeBuildFeatureConstants.TYPE)) {
-      return descriptor;
-    }
-    return null;
   }
 
   private Map<String, String> jenkinsParameters(

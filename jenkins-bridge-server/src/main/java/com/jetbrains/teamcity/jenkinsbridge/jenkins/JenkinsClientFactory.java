@@ -1,9 +1,13 @@
 package com.jetbrains.teamcity.jenkinsbridge.jenkins;
 
+import com.intellij.openapi.diagnostic.Logger;
 import com.jetbrains.teamcity.jenkinsbridge.connection.JenkinsConnection;
 import com.jetbrains.teamcity.jenkinsbridge.connection.JenkinsConnectionConstants;
 import com.jetbrains.teamcity.jenkinsbridge.connection.JenkinsConnectionResolver;
 import com.jetbrains.teamcity.jenkinsbridge.http.BridgeHttpClient;
+import com.jetbrains.teamcity.jenkinsbridge.feature.BridgeBuildFeatureConstants;
+import com.jetbrains.teamcity.jenkinsbridge.model.JenkinsMultibranchScmSnapshot;
+import com.jetbrains.teamcity.jenkinsbridge.teamcity.TeamCityBridgeFeatureLookup;
 import com.jetbrains.teamcity.jenkinsbridge.xml.JaxbUnmarshaller;
 import jetbrains.buildServer.serverSide.BuildPromotion;
 import jetbrains.buildServer.serverSide.SBuildType;
@@ -11,10 +15,13 @@ import jetbrains.buildServer.serverSide.SProject;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.Optional;
+
 /**
  * Builds a {@link JenkinsClient} for a given Jenkins connection.
  */
 public class JenkinsClientFactory {
+  private static final Logger LOG = Logger.getInstance(JenkinsClientFactory.class.getName());
   @NotNull private final BridgeHttpClient myHttpClient;
   @NotNull private final JaxbUnmarshaller myXmlUnmarshaller;
   @NotNull private final JenkinsConnectionResolver myConnectionResolver;
@@ -25,6 +32,21 @@ public class JenkinsClientFactory {
     myHttpClient = httpClient;
     myXmlUnmarshaller = xmlUnmarshaller;
     myConnectionResolver = connectionResolver;
+  }
+
+  /** Reads current Jenkins metadata on every call; failed optional discovery leaves VCS defaults unknown. */
+  @NotNull
+  public Optional<JenkinsMultibranchScmSnapshot> getMultibranchScmSnapshot(@NotNull SBuildType buildType) {
+    try {
+      var feature = TeamCityBridgeFeatureLookup.findBridgeFeature(buildType);
+      if (feature == null) return Optional.empty();
+      String parent = feature.getParameters().get(BridgeBuildFeatureConstants.PARAM_JENKINS_JOB);
+      if (parent == null || parent.isBlank()) return Optional.empty();
+      return Optional.of(forBuildType(buildType).getMultibranchScmSnapshot(parent.trim()));
+    } catch (Exception e) {
+      LOG.warn("Jenkins Bridge: optional SCM discovery failed for " + buildType.getExternalId(), e);
+      return Optional.empty();
+    }
   }
 
   /**

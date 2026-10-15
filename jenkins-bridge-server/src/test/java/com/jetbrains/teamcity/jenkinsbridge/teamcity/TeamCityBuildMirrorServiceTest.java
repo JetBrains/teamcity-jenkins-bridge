@@ -282,16 +282,18 @@ public class TeamCityBuildMirrorServiceTest {
     assertTrue(hasVcsErrorContaining(mirror, "RuntimeException"));
   }
 
-  @Test(expected = IllegalStateException.class)
-  public void syncVcsDoesNotHideUnexpectedRuntimeFailure() throws Exception {
+  @Test
+  public void syncVcsRecordsUnexpectedRuntimeFailureWithoutBlockingMirror() throws Exception {
     CapturingVcsPublisher publisher = new CapturingVcsPublisher();
     publisher.throwError = true;
     publisher.unexpectedError = new IllegalStateException("unexpected bridge defect");
     TeamCityBuildMirrorService service = new TeamCityBuildMirrorService(
         null, null, null, null, new CapturingLogger(), null, null, publisher, null, null, null, new NoopStore());
 
-    service.syncVcsIfNeeded(
-        BuildMirror.create("job#1@1", "job", buildInfo(1), "buildType", "now"), gitVcsInfo());
+    BuildMirror mirror = BuildMirror.create("job#1@1", "job", buildInfo(1), "buildType", "now");
+    service.syncVcsIfNeeded(mirror, gitVcsInfo());
+    assertFalse(mirror.isVcsSynced());
+    assertTrue(hasVcsErrorContaining(mirror, "IllegalStateException"));
   }
 
   @Test
@@ -375,7 +377,7 @@ public class TeamCityBuildMirrorServiceTest {
     final VcsSyncResult result = new VcsSyncResult();
 
     CapturingVcsPublisher() {
-      super(null, null, null, null);
+      super(null, null, null, null, null, null);
     }
 
     @Override
@@ -479,7 +481,7 @@ public class TeamCityBuildMirrorServiceTest {
     Map<String, String> jenkinsParameters;
 
     CapturingQueuer() {
-      super(null, null, null, null);
+      super(null, null, null, null, null);
     }
 
     @Override
